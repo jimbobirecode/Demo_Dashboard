@@ -73,6 +73,12 @@ export const OPTIONAL_COLUMNS = [
   'payment_link_sent_by',
   'stripe_checkout_session_id',
   'stripe_paid_at',
+
+  // migration_add_payment_receipts.sql
+  'stripe_payment_intent_id',
+  'stripe_last_payment_amount',
+  'payment_receipt_sent_at',
+  'pre_play_clock_started_at',
 ];
 
 /** Every column of `tour_operators`; the table itself may not exist. */

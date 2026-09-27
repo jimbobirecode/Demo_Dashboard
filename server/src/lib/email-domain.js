@@ -19,6 +19,25 @@ import { surveyTemplateData } from './vero-domain.js';
 /** Bookings only enter a campaign once the club has committed to them. */
 export const SENDABLE_STATUSES = ['Booked'];
 
+/**
+ * Payment statuses that mean money has been received. Reaching one starts a
+ * booking's pre-play clock — by a Stripe payment, or by staff recording it.
+ */
+export const CLOCK_STARTING_PAYMENTS = ['Paid', 'Deposit paid'];
+
+/**
+ * When a booking's pre-play clock started, or null if it has not.
+ *
+ * The stamp is written when the payment is recorded. A booking marked paid
+ * before the stamp existed (or on an install without the column) still counts
+ * as started — the money is in — it just has no time to show.
+ */
+export function prePlayClockStart(booking) {
+  if (booking.prePlayClockStartedAt) return booking.prePlayClockStartedAt;
+  if (CLOCK_STARTING_PAYMENTS.includes(booking.paymentStatus)) return booking.stripePaidAt ?? 'before-tracking';
+  return null;
+}
+
 /** How far back `showAll` looks for a post-play send. */
 const POST_PLAY_LOOKBACK_DAYS = 30;
 
@@ -33,6 +52,8 @@ export const CAMPAIGNS = {
     templateEnv: 'SENDGRID_TEMPLATE_PRE_ARRIVAL',
     column: 'pre_arrival_email_sent_at',
     field: 'preArrivalEmailSentAt',
+    /** Only paid bookings are welcomed; payment starts the clock. */
+    startsOnPayment: true,
   },
   post_play: {
     id: 'post_play',
@@ -79,6 +100,9 @@ export function readEmailConfig(env = process.env) {
   }
 
   return {
+    // PRE_ARRIVAL_REQUIRES_PAYMENT=false lists every Booked booking again, as
+    // before payment started the clock — for a club that invoices after play.
+    requirePayment: !/^(false|0|no|off)$/i.test(String(env.PRE_ARRIVAL_REQUIRES_PAYMENT ?? '').trim()),
     hasApiKey: Boolean(env.SENDGRID_API_KEY),
     apiKey: env.SENDGRID_API_KEY ?? null,
     fromEmail: env.FROM_EMAIL ?? null,
@@ -113,28 +137,53 @@ export function targetDate(campaign, days, today) {
 /**
  * The bookings a campaign would send to.
  *
- * `scope: 'due'` is the scheduled behaviour — exactly the play date that falls
- * `days` either side of today. `scope: 'all'` is the manual catch-up the
+ * `scope: 'due'` is the scheduled behaviour. For the post-play thank you it is
+ * exactly the play date `days` ago. For the pre-arrival welcome it is every
+ * paid booking playing between today and `days` from now: the welcome falls
+ * due `days` before play and stays due until it is sent, so a guest who pays
+ * the day before still gets one. `scope: 'all'` is the manual catch-up the
  * Streamlit page offered: every upcoming booking for pre-arrival, the last 30
  * days of play for post-play. Rows already emailed are kept in the list and
  * flagged, so the page can offer a deliberate resend.
  */
-export function selectCandidates(bookings, { campaign, days, today, scope = 'due' } = {}) {
+export function selectCandidates(
+  bookings,
+  { campaign, days, today, scope = 'due', requirePayment = true } = {},
+) {
   const inScope =
     scope === 'all'
       ? (date) =>
           campaign.direction === 'before'
             ? date >= today
             : date <= today && date >= addDays(today, -POST_PLAY_LOOKBACK_DAYS)
+      : campaign.direction === 'before'
+        ? (date) => date >= today && date <= targetDate(campaign, days, today)
         : (date) => date === targetDate(campaign, days, today);
+
+  const gated = campaign.startsOnPayment && requirePayment;
 
   return bookings
     .filter((booking) => booking.date && SENDABLE_STATUSES.includes(booking.status))
     .filter((booking) => inScope(booking.date))
-    .map((booking) => ({ ...booking, sentAt: booking[campaign.field] ?? null }))
+    .filter((booking) => !gated || prePlayClockStart(booking))
+    .map((booking) => ({
+      ...booking,
+      sentAt: booking[campaign.field] ?? null,
+      clockStartedAt: prePlayClockStart(booking),
+    }))
     .sort((a, b) =>
       campaign.direction === 'before' ? compare(a, b) : compare(b, a),
     );
+}
+
+/**
+ * Booked bookings in the window that are only missing because they have not
+ * been paid — counted so the page can say why somebody is not listed.
+ */
+export function countAwaitingPayment(bookings, options) {
+  if (!options.campaign.startsOnPayment || options.requirePayment === false) return 0;
+  const all = selectCandidates(bookings, { ...options, requirePayment: false });
+  return all.filter((booking) => !booking.clockStartedAt).length;
 }
 
 function compare(a, b) {

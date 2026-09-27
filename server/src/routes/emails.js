@@ -19,6 +19,7 @@ import { getBookingColumns } from '../lib/schema.js';
 import {
   CAMPAIGN_IDS,
   buildTemplateData,
+  countAwaitingPayment,
   campaignReady,
   cleanEmail,
   getCampaign,
@@ -107,6 +108,7 @@ router.get('/pending', async (req, res, next) => {
     const { days } = config.campaigns[campaign.id];
     const today = todayInClubZone();
     const { bookings } = await loadClubBookings(req.user.customerId);
+    const options = { campaign, days, today, scope, requirePayment: config.requirePayment };
 
     res.json({
       campaign: campaign.id,
@@ -114,7 +116,9 @@ router.get('/pending', async (req, res, next) => {
       days,
       today,
       targetDate: targetDate(campaign, days, today),
-      bookings: selectCandidates(bookings, { campaign, days, today, scope }),
+      startsOnPayment: Boolean(campaign.startsOnPayment && config.requirePayment),
+      awaitingPayment: countAwaitingPayment(bookings, options),
+      bookings: selectCandidates(bookings, options),
     });
   } catch (err) {
     next(err);

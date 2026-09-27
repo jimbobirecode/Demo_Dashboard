@@ -216,11 +216,17 @@ export default function Emails() {
         <KpiTile
           label="In this window"
           value={formatNumber(bookings.length)}
-          sub={scope === 'due' ? 'Play date due today' : 'Wider catch-up window'}
+          sub={
+            scope !== 'due'
+              ? 'Wider catch-up window'
+              : pending?.startsOnPayment
+                ? `Paid, playing in the next ${pending.days} days`
+                : 'Play date due today'
+          }
           accent="var(--north-sea)"
         />
         <KpiTile
-          label={scope === 'due' ? 'Target play date' : 'Campaign timing'}
+          label={scope === 'due' ? (pending?.startsOnPayment ? 'Playing by' : 'Target play date') : 'Campaign timing'}
           value={scope === 'due' ? (pending ? formatDate(pending.targetDate) : '—') : timing}
           sub={
             scope === 'due'
@@ -252,7 +258,7 @@ export default function Emails() {
       <div className="toolbar">
         <div className="segmented" role="group" aria-label="Which bookings to list">
           <button type="button" aria-pressed={scope === 'due'} onClick={() => setScope('due')}>
-            Due today
+            Due now
           </button>
           <button type="button" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>
             {campaignId === 'pre_arrival' ? 'All upcoming' : 'Last 30 days'}
@@ -275,6 +281,14 @@ export default function Emails() {
 
       {notice && <div className={`banner ${notice.kind}`}>{notice.text}</div>}
 
+      {pending?.startsOnPayment && pending.awaitingPayment > 0 && (
+        <div className="banner">
+          {formatNumber(pending.awaitingPayment)} booked {pending.awaitingPayment === 1 ? 'guest is' : 'guests are'} not
+          listed because no payment has been received yet. Payment starts a guest&rsquo;s pre-play emails
+          &mdash; a Stripe payment, or marking the payment Paid or Deposit paid in the booking.
+        </div>
+      )}
+
       <div className="table-wrap">
         <table className="data">
           <thead>
@@ -296,6 +310,7 @@ export default function Emails() {
               <th>Tee time</th>
               <th className="num">Players</th>
               <th>Status</th>
+              {pending?.startsOnPayment && <th>Paid</th>}
               <th>{campaign.sentLabel}</th>
             </tr>
           </thead>
@@ -320,6 +335,15 @@ export default function Emails() {
                 <td>
                   <StatusPill status={booking.status} />
                 </td>
+                {pending?.startsOnPayment && (
+                  <td className={booking.clockStartedAt ? undefined : 'muted'}>
+                    {!booking.clockStartedAt
+                      ? 'Not paid'
+                      : booking.clockStartedAt === 'before-tracking'
+                        ? booking.paymentStatus
+                        : formatDateTime(booking.clockStartedAt)}
+                  </td>
+                )}
                 <td className={booking.sentAt ? undefined : 'muted'}>
                   {booking.sentAt ? formatDateTime(booking.sentAt) : 'Not sent'}
                 </td>
@@ -330,7 +354,7 @@ export default function Emails() {
 
         {!loading && !bookings.length && (
           <div className="empty">
-            No confirmed bookings {campaignId === 'pre_arrival' ? 'are due a welcome' : 'are due a thank you'} in
+            No booked guests {campaignId === 'pre_arrival' ? 'are due a welcome' : 'are due a thank you'} in
             this window.
             {scope === 'due' && ' Try the wider window above.'}
           </div>

@@ -19,7 +19,7 @@ function loadConfig() {
  * (or Deposit paid for a part payment) once the guest pays. Nothing here marks
  * a booking paid — only Stripe does.
  */
-export default function PaymentLinkPanel({ booking, onSend }) {
+export default function PaymentLinkPanel({ booking, onSend, onSendReceipt }) {
   const [config, setConfig] = useState(null);
   const [configError, setConfigError] = useState(null);
   const [amount, setAmount] = useState(() => defaultAmount(booking));
@@ -47,6 +47,20 @@ export default function PaymentLinkPanel({ booking, onSend }) {
   const closed = ['Rejected', 'Cancelled'].includes(booking.status);
   const sent = Boolean(booking.paymentLinkSentAt);
   const awaiting = sent && booking.paymentStatus === 'Pending';
+
+  const paidViaStripe = Boolean(booking.stripePaidAt) && !awaiting;
+
+  async function resendReceipt() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      setMessage({ kind: 'success', text: await onSendReceipt(booking) });
+    } catch (err) {
+      setMessage({ kind: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function send() {
     const value = Number(amount);
@@ -82,7 +96,7 @@ export default function PaymentLinkPanel({ booking, onSend }) {
         <div className="secondary" style={{ fontSize: '0.8125rem' }}>
           {formatCurrency(booking.paymentLinkAmount)} link emailed {formatDateTime(booking.paymentLinkSentAt)}
           {booking.paymentLinkSentBy ? ` by ${booking.paymentLinkSentBy}` : ''} ·{' '}
-          {booking.stripePaidAt && !awaiting ? (
+          {paidViaStripe ? (
             <strong>paid via Stripe {formatDateTime(booking.stripePaidAt)}</strong>
           ) : awaiting ? (
             <strong>awaiting payment</strong>
@@ -102,6 +116,40 @@ export default function PaymentLinkPanel({ booking, onSend }) {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {paidViaStripe && (
+        <div className="secondary" style={{ fontSize: '0.8125rem' }}>
+          {booking.lastPaymentAmount != null && <>{formatCurrency(booking.lastPaymentAmount)} received · </>}
+          {booking.paymentReceiptSentAt ? (
+            <>receipt emailed {formatDateTime(booking.paymentReceiptSentAt)}</>
+          ) : (
+            <strong style={{ color: 'var(--status-rejected, #DB4F7D)' }}>receipt not sent</strong>
+          )}
+          {onSendReceipt && (
+            <>
+              {' '}·{' '}
+              <button
+                type="button"
+                className="btn-sm"
+                onClick={resendReceipt}
+                disabled={busy}
+                style={{ padding: '0.1rem 0.5rem' }}
+              >
+                {booking.paymentReceiptSentAt ? 'Resend receipt' : 'Send receipt'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {booking.prePlayClockStartedAt && (
+        <div className="secondary" style={{ fontSize: '0.8125rem' }}>
+          Pre-play emails started {formatDateTime(booking.prePlayClockStartedAt)}
+          {booking.preArrivalEmailSentAt
+            ? ` · welcome sent ${formatDateTime(booking.preArrivalEmailSentAt)}`
+            : ' · welcome listed on Guest Emails when due'}
         </div>
       )}
 

@@ -14,6 +14,7 @@ import { query } from '../db.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { getBookingColumns } from '../lib/schema.js';
 import { verifyWebhookSignature } from '../lib/stripe.js';
+import { sendReceipt } from './payments.js';
 import {
   applyPaidSession,
   bookingRefFromSession,
@@ -46,19 +47,34 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
   const session = paidSessionFromEvent(event);
   if (!session) return res.json({ received: true, ignored: event.type });
 
+  let recorded;
   try {
-    const result = await recordPayment(session);
-    console.log(`[stripe] ${event.type} ${session.id}: ${result}`);
-    res.json({ received: true, result });
+    recorded = await recordPayment(session);
+    console.log(`[stripe] ${event.type} ${session.id}: ${recorded.result}`);
   } catch (err) {
     console.error('[stripe] could not record payment', session.id, err);
-    res.status(500).json({ error: 'Could not record the payment' });
+    return res.status(500).json({ error: 'Could not record the payment' });
   }
+
+  // The payment is safely recorded before the receipt is attempted, and a
+  // failed receipt is still answered 200: a retry would find the payment
+  // already counted and send nothing. The drawer offers a resend instead.
+  let receipt = null;
+  if (recorded.booking) {
+    const outcome = await sendReceipt(recorded.booking, readPaymentLinkConfig()).catch((err) => ({
+      ok: false,
+      message: err.message,
+    }));
+    receipt = outcome.ok ? 'sent' : `not sent: ${outcome.message}`;
+    console.log(`[stripe] receipt for ${recorded.booking.bookingId}: ${receipt}`);
+  }
+
+  res.json({ received: true, result: recorded.result, receipt });
 });
 
 async function recordPayment(session) {
   const columns = await getBookingColumns();
-  if (!columns.has('stripe_checkout_session_id')) return 'skipped: migration not run';
+  if (!columns.has('stripe_checkout_session_id')) return { result: 'skipped: migration not run' };
 
   const ref = bookingRefFromSession(session);
   let rows = [];
@@ -81,28 +97,53 @@ async function recordPayment(session) {
     ));
   }
   // Not ours (another integration on the same Stripe account); nothing to retry.
-  if (rows.length !== 1) return rows.length ? 'skipped: booking id is ambiguous' : 'skipped: no matching booking';
+  if (rows.length !== 1) {
+    return { result: rows.length ? 'skipped: booking id is ambiguous' : 'skipped: no matching booking' };
+  }
 
   const booking = serialiseBooking(rows[0]);
   const change = applyPaidSession(booking, session);
-  if (!change) return 'already recorded';
+  if (!change) return { result: 'already recorded' };
+
+  const params = [change.amountPaid, change.paymentStatus, session.id, booking.bookingId, booking.club];
+  const sets = ['amount_paid = $1', 'payment_status = $2', 'stripe_checkout_session_id = $3', 'stripe_paid_at = NOW()'];
+  const add = (column, value) => {
+    if (!columns.has(column)) return;
+    params.push(value);
+    sets.push(`"${column}" = $${params.length}`);
+  };
+
+  add('status', change.bookingStatus);
+  add('stripe_payment_intent_id', change.reference);
+  add('stripe_last_payment_amount', change.received);
+  // A new payment needs a new receipt.
+  if (columns.has('payment_receipt_sent_at')) sets.push('payment_receipt_sent_at = NULL');
+  // Payment starts the pre-play emails; a later payment does not restart them.
+  if (columns.has('pre_play_clock_started_at')) {
+    sets.push('pre_play_clock_started_at = COALESCE(pre_play_clock_started_at, NOW())');
+  }
+  if (columns.has('updated_at')) sets.push('updated_at = NOW()');
+  if (columns.has('updated_by')) {
+    params.push('Stripe');
+    sets.push(`updated_by = $${params.length}`);
+  }
 
   // The session id is part of the WHERE clause as well, so two deliveries of
   // the same event racing each other cannot both add the money.
   const result = await query(
     `UPDATE public.bookings
-        SET amount_paid = $1,
-            payment_status = $2,
-            stripe_checkout_session_id = $3,
-            stripe_paid_at = NOW()
+        SET ${sets.join(', ')}
       WHERE booking_id = $4 AND club = $5
-        AND stripe_checkout_session_id IS DISTINCT FROM $3`,
-    [change.amountPaid, change.paymentStatus, session.id, booking.bookingId, booking.club],
+        AND stripe_checkout_session_id IS DISTINCT FROM $3
+    RETURNING ${columns.selectList}`,
+    params,
   );
 
-  return result.rowCount
-    ? `${booking.bookingId} ${change.paymentStatus}, ${change.received} received`
-    : 'already recorded';
+  if (!result.rowCount) return { result: 'already recorded' };
+  return {
+    result: `${booking.bookingId} ${change.paymentStatus} (booking ${change.bookingStatus}), ${change.received} received`,
+    booking: serialiseBooking(result.rows[0]),
+  };
 }
 
 export default router;

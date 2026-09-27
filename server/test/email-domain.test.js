@@ -9,6 +9,7 @@ import {
   publicEmailConfig,
   readEmailConfig,
   selectCandidates,
+  countAwaitingPayment,
   targetDate,
   todayInClubZone,
   validateRecipient,
@@ -32,6 +33,8 @@ function booking(overrides = {}) {
     players: 4,
     total: 1292,
     status: 'Booked',
+    paymentStatus: 'Paid',
+    prePlayClockStartedAt: '2026-03-01T10:00:00.000Z',
     golfCourses: '',
     hotelRequired: false,
     hotelCheckin: null,
@@ -73,11 +76,13 @@ test('campaign timing follows the environment, defaulting to 3 days before and 2
   assert.equal(readEmailConfig({ ...ENV, PRE_ARRIVAL_DAYS: 'soon' }).campaigns.pre_arrival.days, 3);
 });
 
-test('the due window is the single play date the campaign targets', () => {
+test('a welcome falls due days before play and stays due until play', () => {
   const bookings = [
     booking({ bookingId: 'RD-DUE', date: '2026-03-18' }),
-    booking({ bookingId: 'RD-EARLY', date: '2026-03-17' }),
+    booking({ bookingId: 'RD-MISSED', date: '2026-03-17', prePlayClockStartedAt: '2026-03-16T09:00:00Z' }),
+    booking({ bookingId: 'RD-TODAY', date: '2026-03-15' }),
     booking({ bookingId: 'RD-LATE', date: '2026-03-19' }),
+    booking({ bookingId: 'RD-PLAYED', date: '2026-03-14' }),
   ];
 
   const due = selectCandidates(bookings, {
@@ -86,7 +91,48 @@ test('the due window is the single play date the campaign targets', () => {
     today: '2026-03-15',
   });
 
+  assert.deepEqual(due.map((b) => b.bookingId), ['RD-TODAY', 'RD-MISSED', 'RD-DUE']);
+});
+
+test('a thank you is due on the single play date the campaign targets', () => {
+  const bookings = [
+    booking({ bookingId: 'RD-DUE', date: '2026-03-13' }),
+    booking({ bookingId: 'RD-EARLIER', date: '2026-03-12' }),
+    booking({ bookingId: 'RD-LATER', date: '2026-03-14' }),
+  ];
+  const due = selectCandidates(bookings, { campaign: CAMPAIGNS.post_play, days: 2, today: '2026-03-15' });
   assert.deepEqual(due.map((b) => b.bookingId), ['RD-DUE']);
+});
+
+test('payment starts the pre-play clock; an unpaid booking is not welcomed', () => {
+  const bookings = [
+    booking({ bookingId: 'RD-PAID' }),
+    booking({ bookingId: 'RD-DEPOSIT', paymentStatus: 'Deposit paid', prePlayClockStartedAt: null }),
+    booking({ bookingId: 'RD-UNPAID', paymentStatus: 'Unpaid', prePlayClockStartedAt: null }),
+    booking({ bookingId: 'RD-PENDING', paymentStatus: 'Pending', prePlayClockStartedAt: null }),
+  ];
+  const options = { campaign: CAMPAIGNS.pre_arrival, days: 3, today: '2026-03-15' };
+
+  const due = selectCandidates(bookings, options);
+  assert.deepEqual(due.map((b) => b.bookingId).sort(), ['RD-DEPOSIT', 'RD-PAID']);
+  assert.equal(due.find((b) => b.bookingId === 'RD-PAID').clockStartedAt, '2026-03-01T10:00:00.000Z');
+  assert.equal(countAwaitingPayment(bookings, options), 2);
+
+  const ungated = selectCandidates(bookings, { ...options, requirePayment: false });
+  assert.equal(ungated.length, 4, 'PRE_ARRIVAL_REQUIRES_PAYMENT=false restores the old list');
+  assert.equal(countAwaitingPayment(bookings, { ...options, requirePayment: false }), 0);
+
+  const thanks = selectCandidates(
+    [booking({ date: '2026-03-13', paymentStatus: 'Unpaid', prePlayClockStartedAt: null })],
+    { campaign: CAMPAIGNS.post_play, days: 2, today: '2026-03-15' },
+  );
+  assert.equal(thanks.length, 1, 'the thank you is not gated on payment');
+});
+
+test('requiring payment is on unless switched off', () => {
+  assert.equal(readEmailConfig(ENV).requirePayment, true);
+  assert.equal(readEmailConfig({ ...ENV, PRE_ARRIVAL_REQUIRES_PAYMENT: 'false' }).requirePayment, false);
+  assert.equal(readEmailConfig({ ...ENV, PRE_ARRIVAL_REQUIRES_PAYMENT: 'true' }).requirePayment, true);
 });
 
 test('only committed bookings are ever emailed', () => {
