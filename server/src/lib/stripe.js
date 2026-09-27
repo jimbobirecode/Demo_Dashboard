@@ -47,17 +47,18 @@ export function formEncode(value, prefix = '', out = new URLSearchParams()) {
   return out;
 }
 
-async function call(secretKey, path, params, fetchImpl) {
+async function call(secretKey, path, params, fetchImpl, method = 'POST') {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const encoded = formEncode(params).toString();
   try {
-    const response = await fetchImpl(`${API}${path}`, {
-      method: 'POST',
+    const response = await fetchImpl(method === 'GET' && encoded ? `${API}${path}?${encoded}` : `${API}${path}`, {
+      method,
       headers: {
         Authorization: `Bearer ${secretKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
+        ...(method === 'GET' ? {} : { 'Content-Type': 'application/x-www-form-urlencoded' }),
       },
-      body: formEncode(params).toString(),
+      ...(method === 'GET' ? {} : { body: encoded }),
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => null);
@@ -123,6 +124,21 @@ export async function createPaymentLink({
 /** Switch a link off so a superseded amount cannot still be paid. */
 export async function deactivatePaymentLink({ secretKey, linkId, fetchImpl = fetch }) {
   return call(secretKey, `/payment_links/${encodeURIComponent(linkId)}`, { active: false }, fetchImpl);
+}
+
+/**
+ * The completed, paid Checkout Sessions a payment link has produced — how the
+ * dashboard finds a payment for itself when the webhook has not delivered it.
+ */
+export async function paidSessionsForLink({ secretKey, linkId, fetchImpl = fetch }) {
+  const page = await call(
+    secretKey,
+    '/checkout/sessions',
+    { payment_link: linkId, status: 'complete', limit: 10 },
+    fetchImpl,
+    'GET',
+  );
+  return (page?.data ?? []).filter((session) => session.payment_status === 'paid');
 }
 
 /**

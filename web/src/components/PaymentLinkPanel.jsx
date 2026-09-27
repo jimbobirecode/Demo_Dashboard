@@ -2,14 +2,13 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatCurrency, formatDateTime } from '../lib/format.js';
 
-/** Fetched once per page load: whether the server can send links at all. */
-let configRequest = null;
+/**
+ * Fetched each time the panel opens rather than once per page: it carries the
+ * recent webhook deliveries, which are the thing somebody is looking for when
+ * a payment has not shown up.
+ */
 function loadConfig() {
-  configRequest ??= api.paymentConfig().catch((err) => {
-    configRequest = null;
-    throw err;
-  });
-  return configRequest;
+  return api.paymentConfig();
 }
 
 /**
@@ -19,7 +18,7 @@ function loadConfig() {
  * (or Deposit paid for a part payment) once the guest pays. Nothing here marks
  * a booking paid — only Stripe does.
  */
-export default function PaymentLinkPanel({ booking, onSend, onSendReceipt }) {
+export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onCheck }) {
   const [config, setConfig] = useState(null);
   const [configError, setConfigError] = useState(null);
   const [amount, setAmount] = useState(() => defaultAmount(booking));
@@ -41,6 +40,21 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt }) {
     setMessage(null);
   }, [booking.bookingId, booking.payment?.outstanding]);
 
+  // Opening a booking that is still awaiting payment asks Stripe directly, so
+  // a payment whose webhook never arrived is picked up the moment anyone looks.
+  const awaitingNow = Boolean(booking.paymentLinkSentAt) && booking.paymentStatus === 'Pending';
+  useEffect(() => {
+    if (!awaitingNow || !onCheck) return;
+    let live = true;
+    onCheck(booking, { quiet: true })
+      .then((result) => live && result?.found && setMessage({ kind: 'success', text: result.message }))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking.bookingId, awaitingNow]);
+
   if (configError) return null;
   if (!config) return null;
 
@@ -49,6 +63,20 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt }) {
   const awaiting = sent && booking.paymentStatus === 'Pending';
 
   const paidViaStripe = Boolean(booking.stripePaidAt) && !awaiting;
+
+  async function checkStripe() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await onCheck(booking);
+      setMessage({ kind: result.found ? 'success' : 'info', text: result.message });
+      setConfig(await loadConfig());
+    } catch (err) {
+      setMessage({ kind: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function resendReceipt() {
     setBusy(true);
@@ -103,6 +131,20 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt }) {
           ) : (
             `payment now marked ${booking.paymentStatus}`
           )}
+          {awaiting && onCheck && (
+            <>
+              {' '}·{' '}
+              <button
+                type="button"
+                className="btn-sm"
+                onClick={checkStripe}
+                disabled={busy}
+                style={{ padding: '0.1rem 0.5rem' }}
+              >
+                Check Stripe for payment
+              </button>
+            </>
+          )}
           {booking.paymentLinkUrl && awaiting && (
             <>
               {' '}·{' '}
@@ -118,6 +160,8 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt }) {
           )}
         </div>
       )}
+
+      {awaiting && <WebhookStatus webhooks={config.webhooks} />}
 
       {paidViaStripe && (
         <div className="secondary" style={{ fontSize: '0.8125rem' }}>
@@ -193,6 +237,37 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Whether Stripe's webhook is reaching this server, in words. A payment that
+ * has not shown up is almost always one of: no endpoint in Stripe, the wrong
+ * signing secret, or the endpoint in the other mode (test vs live).
+ */
+function WebhookStatus({ webhooks }) {
+  if (!webhooks) return null;
+  const [last] = webhooks.entries;
+  const style = { fontSize: '0.8125rem' };
+
+  if (!last) {
+    return (
+      <div className="secondary" style={style}>
+        No webhook from Stripe since the server started ({formatDateTime(webhooks.startedAt)}). If the guest has
+        paid, check Stripe → Developers → Webhooks has an endpoint for <code>/api/stripe/webhook</code> in the same
+        mode (test or live) as the payment.
+      </div>
+    );
+  }
+
+  const problem = last.outcome === 'rejected' || last.outcome === 'failed';
+  return (
+    <div className={problem ? 'banner error' : 'secondary'} style={style}>
+      Last Stripe webhook {formatDateTime(last.at)}: <strong>{last.outcome}</strong>
+      {last.type ? ` (${last.type})` : ''}
+      {last.bookingId ? ` for ${last.bookingId}` : ''}
+      {last.detail ? ` — ${last.detail}` : ''}
     </div>
   );
 }

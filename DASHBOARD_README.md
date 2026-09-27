@@ -479,6 +479,24 @@ A receipt that fails to send never undoes the payment. The drawer shows
 *receipt not sent* with a **Send receipt** button, and **Resend receipt** once
 one has gone.
 
+**If a payment does not show up.** Opening a booking that is awaiting payment
+asks Stripe directly whether its link has been paid, and records the payment
+(and sends the receipt) if so; **Check Stripe for payment** does the same on
+demand. So a payment is never lost to a webhook that did not arrive. Under
+that, the drawer shows the last webhook delivery and what happened to it — or
+that none has arrived since the server started. The usual causes:
+
+- no endpoint in Stripe for `https://<dashboard>/api/stripe/webhook`;
+- the endpoint made in the other mode — test and live each have their own
+  endpoints and their own signing secret;
+- `STRIPE_WEBHOOK_SECRET` set to a different endpoint's secret (the drawer
+  says *Signature mismatch*).
+
+Opening `https://<dashboard>/api/stripe/webhook` in a browser confirms the URL
+and whether the secret is set. Anything that stops a payment being recorded —
+the secret or a migration missing, the database unreachable — is answered 5xx,
+so Stripe keeps retrying for up to three days until it can be.
+
 Setup: run `migration_add_stripe_payment_links.sql` and then
 `migration_add_payment_receipts.sql`, set `STRIPE_SECRET_KEY`
 and `STRIPE_WEBHOOK_SECRET` (see `.env.example`), and in Stripe → Developers →

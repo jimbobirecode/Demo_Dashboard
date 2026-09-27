@@ -4,6 +4,7 @@
  *   GET  /api/payments/config                      what is configured, secrets stripped
  *   POST /api/payments/bookings/:bookingId/link    create a link, email it, mark Pending
  *   POST /api/payments/bookings/:bookingId/receipt resend the receipt for the last payment
+ *   POST /api/payments/bookings/:bookingId/check   ask Stripe whether the link has been paid
  *
  * The webhook that records the payment lives in `stripe-webhook.js`: it is
  * called by Stripe, not by a signed-in user, and needs the raw request body.
@@ -15,7 +16,9 @@ import { serialiseBooking } from '../lib/bookings-domain.js';
 import { buildAuditSet, getBookingColumns } from '../lib/schema.js';
 import { BRAND } from '../lib/brand.js';
 import { sendPaymentEmail } from '../lib/payment-mailer.js';
-import { createPaymentLink, deactivatePaymentLink, prefilledLinkUrl } from '../lib/stripe.js';
+import { createPaymentLink, deactivatePaymentLink, paidSessionsForLink, prefilledLinkUrl } from '../lib/stripe.js';
+import { recordStripePayment } from '../lib/record-payment.js';
+import { recentWebhooks } from '../lib/webhook-log.js';
 import {
   PENDING_PAYMENT_STATUS,
   buildPaymentEmail,
@@ -41,6 +44,7 @@ router.get('/config', async (req, res, next) => {
       ...publicPaymentLinkConfig(readPaymentLinkConfig()),
       migrated: columns.has('stripe_payment_link_id'),
       migration: MIGRATION,
+      webhooks: recentWebhooks(),
     });
   } catch (err) {
     next(err);
@@ -208,6 +212,59 @@ router.post('/bookings/:bookingId/receipt', async (req, res, next) => {
       message: `Receipt emailed to ${booking.guestEmail}`,
     });
   } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Ask Stripe directly whether this booking's link has been paid, and record
+ * the payment if so — the same recording the webhook does, so whichever sees
+ * a payment first counts it and the other finds it already counted.
+ *
+ * The drawer calls this when it opens on a booking still awaiting payment, so
+ * a payment whose webhook never arrived (endpoint not set up, wrong secret,
+ * server asleep) still lands the moment somebody looks.
+ */
+router.post('/bookings/:bookingId/check', async (req, res, next) => {
+  const config = readPaymentLinkConfig();
+  if (!config.secretKey) return res.status(409).json({ error: 'STRIPE_SECRET_KEY is not set' });
+
+  try {
+    const columns = await getBookingColumns();
+    const club = req.user.customerId;
+    const load = async () =>
+      (await query(`SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
+        req.params.bookingId,
+        club,
+      ])).rows[0];
+
+    const row = await load();
+    if (!row) return res.status(404).json({ error: 'Booking not found' });
+    const booking = serialiseBooking(row);
+    if (!booking.paymentLinkId) {
+      return res.status(400).json({ error: 'No payment link has been sent for this booking' });
+    }
+
+    const sessions = await paidSessionsForLink({ secretKey: config.secretKey, linkId: booking.paymentLinkId });
+    let found = 0;
+    let receipt = null;
+    for (const session of sessions) {
+      const recorded = await recordStripePayment(session);
+      if (!recorded.booking) continue;
+      found += 1;
+      const outcome = await sendReceipt(recorded.booking, config).catch((err) => ({ ok: false, message: err.message }));
+      receipt = outcome.ok ? 'receipt emailed' : `receipt not sent: ${outcome.message}`;
+    }
+
+    const message = found
+      ? `Payment found in Stripe and recorded; ${receipt}`
+      : sessions.length
+        ? 'Stripe shows this link paid, and the payment is already recorded'
+        : 'No payment yet — Stripe has no completed payment for this link';
+
+    res.json({ booking: await withAccount(serialiseBooking(await load()), club), found, message });
+  } catch (err) {
+    if (/^Stripe /.test(err.message)) return res.status(502).json({ error: err.message });
     next(err);
   }
 });

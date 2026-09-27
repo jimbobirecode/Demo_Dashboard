@@ -119,6 +119,8 @@ export const api = {
   setPayment: (bookingId, patch) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/payment`, { method: 'PATCH', body: patch }),
   paymentConfig: () => request('/payments/config'),
+  checkPayment: (bookingId) =>
+    request(`/payments/bookings/${encodeURIComponent(bookingId)}/check`, { method: 'POST' }),
   sendReceipt: (bookingId) =>
     request(`/payments/bookings/${encodeURIComponent(bookingId)}/receipt`, { method: 'POST' }),
   sendPaymentLink: (bookingId, amount) =>
