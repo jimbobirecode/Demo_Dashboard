@@ -176,6 +176,33 @@ never saw; leaving it out of revenue would understate what the course actually
 took. The KPI row reports `enquiries` and `imported` separately so the split is
 visible rather than implied.
 
+## Inbox
+
+Emails the bot should not answer by itself: questions, complaints, tour
+operators, enquiries with no dates, and anything Claude flags as needing a
+person. The core API triages every inbound email and routes it (see
+`ROYAL_DORNOCH_DEMO.md` in the core API repo); the ones held for a person land
+here, and the guest is told a person will reply.
+
+Each email shows what Claude understood it to be, why it was held, the whole
+conversation so far, and a **drafted reply** written only from the club's own
+information. Edit it, press **Send reply** (it goes from `FROM_EMAIL`, quoting
+the guest's email, with the booking reference in the subject so their next
+reply threads back), or **Dismiss** it. An email not yet tied to a booking can
+be attached to one by its reference. The sidebar shows how many are waiting.
+
+Changes and cancellations that quote a booking reference skip the Inbox: they
+become **Guest Requests**, marked *read from an email*, and are approved or
+declined there as usual.
+
+**Conversation on every booking.** Every email to and from the guest — the
+enquiry, the bot's availability reply, the payment link, the receipt, the
+journey emails, staff replies — is recorded and shown in the booking drawer
+under *Emails with the guest*, with **Email the guest** to write a new one.
+
+Needs `migration_add_email_inbox.sql`. Without it the Inbox page says so and
+the core API answers everything automatically, as before.
+
 ## Guest requests
 
 A guest follows a link in their confirmation email, sees their booking, and

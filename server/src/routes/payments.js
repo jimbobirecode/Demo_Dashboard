@@ -98,6 +98,7 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
       templateId: config.templateId,
       data,
       build: buildPaymentEmail,
+      record: { club, bookingId: booking.bookingId, kind: 'payment_link', sentBy: req.user.username },
     });
 
     if (!outcome.ok) {
@@ -157,7 +158,7 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
  * Resolves to the SendGrid outcome; never throws for a failed send, because a
  * receipt that did not go out must not undo a payment that did.
  */
-export async function sendReceipt(booking, config) {
+export async function sendReceipt(booking, config, sentBy = 'Stripe') {
   const columns = await getBookingColumns();
   if (!booking.guestEmail) return { ok: false, message: 'No guest email address' };
   if (!config.sendgridKey || !config.fromEmail) return { ok: false, message: 'SendGrid is not configured' };
@@ -173,6 +174,7 @@ export async function sendReceipt(booking, config) {
     templateId: config.receiptTemplateId,
     data,
     build: buildReceiptEmail,
+    record: { club: booking.club, bookingId: booking.bookingId, kind: 'receipt', sentBy },
   });
 
   if (outcome.ok && columns.has('payment_receipt_sent_at')) {
@@ -200,7 +202,7 @@ router.post('/bookings/:bookingId/receipt', async (req, res, next) => {
       return res.status(400).json({ error: 'There is no Stripe payment on this booking to send a receipt for' });
     }
 
-    const outcome = await sendReceipt(booking, config);
+    const outcome = await sendReceipt(booking, config, req.user.username);
     if (!outcome.ok) return res.status(502).json({ error: `The receipt was not sent: ${outcome.message}` });
 
     const fresh = await query(

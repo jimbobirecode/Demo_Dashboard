@@ -31,6 +31,7 @@ import {
   validateRecipient,
 } from '../lib/email-domain.js';
 import { sendTemplateEmail } from '../lib/sendgrid.js';
+import { logEmail } from '../lib/email-log.js';
 import {
   buildRoundPayload,
   publicVeroConfig,
@@ -247,6 +248,19 @@ router.post('/send', async (req, res, next) => {
       if (outcome.ok) {
         sent += 1;
         const recorded = await markSent(campaign, bookingId, req.user.customerId, columns);
+        // On the booking's conversation. The words live in the SendGrid
+        // template, so what is recorded is which email went, and when.
+        await logEmail({
+          club: req.user.customerId,
+          direction: 'outbound',
+          booking_id: bookingId,
+          from_email: config.fromEmail,
+          to_email: email,
+          subject: campaign.label,
+          body_text: `${campaign.label} sent from the SendGrid template (${config.campaigns[campaign.id].templateId}).`,
+          sent_by: req.user.username,
+          kind: campaign.id,
+        });
         if (!recorded) tracked = false;
       } else {
         failed += 1;

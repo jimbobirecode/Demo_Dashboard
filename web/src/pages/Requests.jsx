@@ -109,6 +109,9 @@ export default function Requests() {
                   <td>{formatDateTime(request.createdAt)}</td>
                   <td>
                     <strong>{request.kind === 'cancel' ? 'Cancel' : 'Amend'}</strong>
+                    {request.source === 'email' && (
+                      <span className="muted" style={{ fontSize: '0.75rem' }}> · read from an email</span>
+                    )}
                     {request.requestedDate && (
                       <div style={{ fontSize: '0.8125rem' }}>
                         Move to {formatDate(request.requestedDate)}
@@ -117,7 +120,9 @@ export default function Requests() {
                       </div>
                     )}
                     {request.message && (
-                      <div className="muted" style={{ fontSize: '0.8125rem' }}>“{request.message}”</div>
+                      <div className="muted" style={{ fontSize: '0.8125rem', whiteSpace: 'pre-line' }}>
+                        “{request.message.length > 400 ? `${request.message.slice(0, 400)}…` : request.message}”
+                      </div>
                     )}
                   </td>
                   <td className="num">

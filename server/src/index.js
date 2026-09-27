@@ -17,6 +17,7 @@ import waitlistRoutes from './routes/waitlist.js';
 import importRoutes from './routes/imports.js';
 import changeRoutes from './routes/changes.js';
 import paymentRoutes from './routes/payments.js';
+import inboxRoutes from './routes/inbox.js';
 import stripeWebhookRoutes from './routes/stripe-webhook.js';
 import { pool } from './db.js';
 
@@ -59,6 +60,7 @@ app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/imports', importRoutes);
 app.use('/api/changes', changeRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/inbox', inboxRoutes);
 
 const distDir = path.resolve(__dirname, '../../web/dist');
 if (fs.existsSync(distDir)) {
