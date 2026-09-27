@@ -35,6 +35,7 @@ export function readPaymentLinkConfig(env = process.env) {
     fromEmail: env.FROM_EMAIL ?? null,
     fromName: env.FROM_NAME ?? BRAND.fromName,
     templateId: env.SENDGRID_TEMPLATE_PAYMENT_LINK ?? null,
+    receiptTemplateId: env.SENDGRID_TEMPLATE_PAYMENT_RECEIPT ?? null,
     currency: (env.STRIPE_CURRENCY ?? BRAND.currency).toUpperCase(),
     testMode: String(env.STRIPE_SECRET_KEY ?? '').startsWith('sk_test_'),
     missing,
@@ -147,6 +148,28 @@ export function buildPaymentEmail(data) {
     data.club_name,
   ].join('\n');
 
+  const html = emailShell({
+    clubName: data.club_name,
+    paragraphs: [
+      `Hi ${escape(data.first_name)},`,
+      `Thank you for booking with ${escape(data.club_name)}. You can pay <strong>${escape(data.amount)}</strong> securely online using the button below.`,
+    ],
+    button: { href: data.payment_url, label: `Pay ${data.amount}` },
+    details,
+    footer:
+      'Payments are processed securely by Stripe. If the button does not work, copy this link into your browser:<br>' +
+      `<a href="${escape(data.payment_url)}" style="color:#1a5e58;word-break:break-all;">${escape(data.payment_url)}</a><br><br>` +
+      'Questions? Just reply to this email.',
+  });
+
+  return { subject, text, html };
+}
+
+/**
+ * The frame both built-in emails share. `paragraphs` and `footer` are HTML the
+ * caller has already escaped; `details` and the button are escaped here.
+ */
+function emailShell({ clubName, paragraphs, button = null, details = [], footer = '' }) {
   const rows = details
     .map(
       ([label, value]) =>
@@ -155,26 +178,106 @@ export function buildPaymentEmail(data) {
     )
     .join('');
 
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#f3f6f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f4;padding:24px 12px;"><tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;">
-<tr><td style="padding:28px 32px 8px;font-size:20px;font-weight:700;color:#1a5e58;">${escape(data.club_name)}</td></tr>
+<tr><td style="padding:28px 32px 8px;font-size:20px;font-weight:700;color:#1a5e58;">${escape(clubName)}</td></tr>
 <tr><td style="padding:8px 32px;font-size:15px;line-height:1.6;color:#1f2d27;">
-<p style="margin:0 0 12px;">Hi ${escape(data.first_name)},</p>
-<p style="margin:0 0 20px;">Thank you for booking with ${escape(data.club_name)}. You can pay <strong>${escape(data.amount)}</strong> securely online using the button below.</p>
+${paragraphs.map((p, i) => `<p style="margin:0 0 ${i === paragraphs.length - 1 ? 20 : 12}px;">${p}</p>`).join('\n')}
 </td></tr>
-<tr><td align="center" style="padding:4px 32px 24px;">
-<a href="${escape(data.payment_url)}" style="display:inline-block;background:#1a5e58;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">Pay ${escape(data.amount)}</a>
-</td></tr>
+${
+  button
+    ? `<tr><td align="center" style="padding:4px 32px 24px;">
+<a href="${escape(button.href)}" style="display:inline-block;background:#1a5e58;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">${escape(button.label)}</a>
+</td></tr>`
+    : ''
+}
 <tr><td style="padding:0 32px 8px;"><table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e3ebe6;font-size:14px;">${rows}</table></td></tr>
-<tr><td style="padding:16px 32px 28px;font-size:13px;line-height:1.6;color:#5b6b63;">
-Payments are processed securely by Stripe. If the button does not work, copy this link into your browser:<br>
-<a href="${escape(data.payment_url)}" style="color:#1a5e58;word-break:break-all;">${escape(data.payment_url)}</a><br><br>
-Questions? Just reply to this email.
-</td></tr>
+<tr><td style="padding:16px 32px 28px;font-size:13px;line-height:1.6;color:#5b6b63;">${footer}</td></tr>
 </table></td></tr></table>
 </body></html>`;
+}
+
+/**
+ * What a receipt template is given, and what the built-in receipt is written
+ * from. `received` is this payment; the booking already carries the new
+ * running total, so the balance is what is left after it.
+ */
+export function buildReceiptEmailData(booking, { received, currency, paidAt, reference }) {
+  const total = Number(booking.total) || 0;
+  const paid = Number(booking.amountPaid) || 0;
+  const balance = Math.max(Math.round((total - paid) * 100) / 100, 0);
+
+  return {
+    first_name: firstName(booking),
+    guest_name: booking.guestName ?? '',
+    booking_id: booking.bookingId,
+    club_name: BRAND.fullName,
+    play_date: formatPlayDate(booking.date),
+    tee_time: booking.teeTime && booking.teeTime !== 'Not Specified' ? booking.teeTime : '',
+    players: booking.players ?? '',
+    course: booking.golfCourses ?? '',
+    amount_received: formatMoney(received, currency),
+    paid_on: formatPaidOn(paidAt),
+    payment_reference: reference ?? '',
+    booking_total: formatMoney(total, currency),
+    total_paid: formatMoney(paid, currency),
+    balance_due: formatMoney(balance, currency),
+    paid_in_full: balance === 0,
+  };
+}
+
+function formatPaidOn(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(BRAND.locale, {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: BRAND.timeZone,
+  }).format(date);
+}
+
+/** The receipt sent when no SendGrid receipt template is configured. */
+export function buildReceiptEmail(data) {
+  const subject = `Payment received – booking ${data.booking_id} – ${data.club_name}`;
+  const details = [
+    ['Amount received', data.amount_received],
+    ['Paid on', data.paid_on],
+    ['Payment reference', data.payment_reference],
+    ['Booking reference', data.booking_id],
+    ['Date', data.play_date],
+    ['Tee time', data.tee_time],
+    ['Course', data.course],
+    ['Players', data.players],
+    ['Booking total', data.booking_total],
+    ['Paid to date', data.total_paid],
+    ...(data.paid_in_full ? [] : [['Balance remaining', data.balance_due]]),
+  ].filter(([, value]) => value !== '' && value != null);
+
+  const status = data.paid_in_full
+    ? 'Your booking is paid in full and confirmed.'
+    : `Your booking is confirmed. A balance of ${data.balance_due} remains.`;
+
+  const text = [
+    `Hi ${data.first_name},`,
+    '',
+    `Thank you — we have received your payment of ${data.amount_received}. ${status}`,
+    '',
+    ...details.map(([label, value]) => `${label}: ${value}`),
+    '',
+    'Please keep this email as your receipt. We look forward to welcoming you.',
+    '',
+    data.club_name,
+  ].join('\n');
+
+  const html = emailShell({
+    clubName: data.club_name,
+    paragraphs: [
+      `Hi ${escape(data.first_name)},`,
+      `Thank you — we have received your payment of <strong>${escape(data.amount_received)}</strong>. ${escape(status)}`,
+    ],
+    details,
+    footer: 'Please keep this email as your receipt. We look forward to welcoming you.<br><br>Questions? Just reply to this email.',
+  });
 
   return { subject, text, html };
 }
@@ -216,5 +319,13 @@ export function applyPaidSession(booking, session) {
     received,
     amountPaid,
     paymentStatus: total > 0 && amountPaid + 0.005 < total ? 'Deposit paid' : 'Paid',
+    // Money received means the tee time is taken: an open enquiry becomes
+    // Booked. A booking the club has rejected or cancelled is left alone for a
+    // person to sort out (usually a refund), never silently revived.
+    bookingStatus: ADVANCES_ON_PAYMENT.includes(booking.status) ? 'Booked' : booking.status,
+    reference: typeof session.payment_intent === 'string' ? session.payment_intent : session.id,
   };
 }
+
+/** Statuses a payment moves on to Booked. */
+const ADVANCES_ON_PAYMENT = ['Inquiry', 'Requested'];

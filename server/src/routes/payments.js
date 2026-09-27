@@ -3,6 +3,7 @@
  *
  *   GET  /api/payments/config                      what is configured, secrets stripped
  *   POST /api/payments/bookings/:bookingId/link    create a link, email it, mark Pending
+ *   POST /api/payments/bookings/:bookingId/receipt resend the receipt for the last payment
  *
  * The webhook that records the payment lives in `stripe-webhook.js`: it is
  * called by Stripe, not by a signed-in user, and needs the raw request body.
@@ -13,12 +14,14 @@ import { requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { buildAuditSet, getBookingColumns } from '../lib/schema.js';
 import { BRAND } from '../lib/brand.js';
-import { sendHtmlEmail, sendTemplateEmail } from '../lib/sendgrid.js';
+import { sendPaymentEmail } from '../lib/payment-mailer.js';
 import { createPaymentLink, deactivatePaymentLink, prefilledLinkUrl } from '../lib/stripe.js';
 import {
   PENDING_PAYMENT_STATUS,
   buildPaymentEmail,
   buildPaymentEmailData,
+  buildReceiptEmail,
+  buildReceiptEmailData,
   formatMoney,
   linkProblem,
   publicPaymentLinkConfig,
@@ -86,22 +89,12 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
     const url = prefilledLinkUrl(link.url, { email: booking.guestEmail, bookingId: booking.bookingId });
 
     const data = buildPaymentEmailData(booking, { amount, currency: config.currency, url });
-    const outcome = config.templateId
-      ? await sendTemplateEmail({
-          apiKey: config.sendgridKey,
-          fromEmail: config.fromEmail,
-          fromName: config.fromName,
-          toEmail: booking.guestEmail,
-          templateId: config.templateId,
-          data,
-        })
-      : await sendHtmlEmail({
-          apiKey: config.sendgridKey,
-          fromEmail: config.fromEmail,
-          fromName: config.fromName,
-          toEmail: booking.guestEmail,
-          ...buildPaymentEmail(data),
-        });
+    const outcome = await sendPaymentEmail(config, {
+      toEmail: booking.guestEmail,
+      templateId: config.templateId,
+      data,
+      build: buildPaymentEmail,
+    });
 
     if (!outcome.ok) {
       // Nobody has the link, so it must not stay payable.
@@ -148,6 +141,73 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
     });
   } catch (err) {
     if (/^Stripe /.test(err.message)) return res.status(502).json({ error: err.message });
+    next(err);
+  }
+});
+
+/**
+ * Email the guest a receipt for the last Stripe payment on this booking and
+ * stamp when it went. Shared by the webhook, which sends it the moment the
+ * payment lands, and the drawer's resend button.
+ *
+ * Resolves to the SendGrid outcome; never throws for a failed send, because a
+ * receipt that did not go out must not undo a payment that did.
+ */
+export async function sendReceipt(booking, config) {
+  const columns = await getBookingColumns();
+  if (!booking.guestEmail) return { ok: false, message: 'No guest email address' };
+  if (!config.sendgridKey || !config.fromEmail) return { ok: false, message: 'SendGrid is not configured' };
+
+  const data = buildReceiptEmailData(booking, {
+    received: booking.lastPaymentAmount ?? booking.amountPaid,
+    currency: config.currency,
+    paidAt: booking.stripePaidAt,
+    reference: booking.stripePaymentIntentId,
+  });
+  const outcome = await sendPaymentEmail(config, {
+    toEmail: booking.guestEmail,
+    templateId: config.receiptTemplateId,
+    data,
+    build: buildReceiptEmail,
+  });
+
+  if (outcome.ok && columns.has('payment_receipt_sent_at')) {
+    await query(
+      `UPDATE public.bookings SET payment_receipt_sent_at = NOW() WHERE booking_id = $1 AND club = $2`,
+      [booking.bookingId, booking.club],
+    );
+  }
+  return outcome;
+}
+
+router.post('/bookings/:bookingId/receipt', async (req, res, next) => {
+  const config = readPaymentLinkConfig();
+  try {
+    const columns = await getBookingColumns();
+    const club = req.user.customerId;
+    const { rows } = await query(
+      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+      [req.params.bookingId, club],
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
+
+    const booking = serialiseBooking(rows[0]);
+    if (!booking.stripePaidAt) {
+      return res.status(400).json({ error: 'There is no Stripe payment on this booking to send a receipt for' });
+    }
+
+    const outcome = await sendReceipt(booking, config);
+    if (!outcome.ok) return res.status(502).json({ error: `The receipt was not sent: ${outcome.message}` });
+
+    const fresh = await query(
+      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+      [booking.bookingId, club],
+    );
+    res.json({
+      booking: await withAccount(serialiseBooking(fresh.rows[0]), club),
+      message: `Receipt emailed to ${booking.guestEmail}`,
+    });
+  } catch (err) {
     next(err);
   }
 });

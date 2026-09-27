@@ -13,7 +13,7 @@ import { PAYMENT_STATUSES, describeDue, describeStage, statusDisagrees } from '.
  * agreed differently — clearing a field hands it back to the terms rather than
  * leaving a blank.
  */
-export default function PaymentPanel({ booking, operators, onSave, onAssign, onSendLink }) {
+export default function PaymentPanel({ booking, operators, onSave, onAssign, onSendLink, onSendReceipt }) {
   const payment = booking.payment;
   const [form, setForm] = useState(() => toForm(booking));
   const [busy, setBusy] = useState(false);
@@ -84,7 +84,7 @@ export default function PaymentPanel({ booking, operators, onSave, onAssign, onS
         </div>
       )}
 
-      {onSendLink && <PaymentLinkPanel booking={booking} onSend={onSendLink} />}
+      {onSendLink && <PaymentLinkPanel booking={booking} onSend={onSendLink} onSendReceipt={onSendReceipt} />}
 
       {onAssign && (
         <div className="stack" style={{ gap: '0.25rem' }}>

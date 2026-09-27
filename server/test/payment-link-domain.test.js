@@ -6,6 +6,8 @@ import {
   bookingRefFromSession,
   buildPaymentEmail,
   buildPaymentEmailData,
+  buildReceiptEmail,
+  buildReceiptEmailData,
   linkProblem,
   paidSessionFromEvent,
   publicPaymentLinkConfig,
@@ -185,14 +187,21 @@ test('the booking is found from metadata, or the client reference, or the link',
 });
 
 test('a payment covering the total marks the booking Paid', () => {
-  assert.deepEqual(applyPaidSession(booking({ paymentStatus: 'Pending' }), session()), {
-    received: 1440, amountPaid: 1440, paymentStatus: 'Paid',
+  assert.deepEqual(applyPaidSession(booking({ paymentStatus: 'Pending' }), session({ payment_intent: 'pi_1' })), {
+    received: 1440, amountPaid: 1440, paymentStatus: 'Paid', bookingStatus: 'Booked', reference: 'pi_1',
   });
+});
+
+test('payment moves an open enquiry to Booked, and never revives a cancelled one', () => {
+  assert.equal(applyPaidSession(booking({ status: 'Inquiry' }), session()).bookingStatus, 'Booked');
+  assert.equal(applyPaidSession(booking({ status: 'Requested' }), session()).bookingStatus, 'Booked');
+  assert.equal(applyPaidSession(booking({ status: 'Cancelled' }), session()).bookingStatus, 'Cancelled');
+  assert.equal(applyPaidSession(booking({ status: 'Rejected' }), session()).bookingStatus, 'Rejected');
 });
 
 test('a part payment adds to what was paid and reads Deposit paid', () => {
   assert.deepEqual(applyPaidSession(booking(), session({ amount_total: 36000 })), {
-    received: 360, amountPaid: 360, paymentStatus: 'Deposit paid',
+    received: 360, amountPaid: 360, paymentStatus: 'Deposit paid', bookingStatus: 'Booked', reference: 'cs_1',
   });
   assert.equal(applyPaidSession(booking({ amountPaid: 360 }), session({ amount_total: 108000 })).paymentStatus, 'Paid');
 });
@@ -214,6 +223,27 @@ test('the email names the amount, the booking and the link', () => {
   assert.match(email.text, /https:\/\/buy\.stripe\.com\/x\?a=1&b=2/);
   assert.match(email.html, /href="https:\/\/buy\.stripe\.com\/x\?a=1&amp;b=2"/);
   assert.match(email.html, /Pay £1,440\.00/);
+});
+
+test('the receipt states what was paid, the running total and any balance', () => {
+  const part = buildReceiptEmailData(booking({ amountPaid: 360 }), {
+    received: 360, currency: 'GBP', paidAt: '2026-09-27T10:00:00Z', reference: 'pi_1',
+  });
+  assert.equal(part.amount_received, '£360.00');
+  assert.equal(part.total_paid, '£360.00');
+  assert.equal(part.balance_due, '£1,080.00');
+  assert.equal(part.paid_in_full, false);
+  assert.equal(part.paid_on, '27 September 2026');
+  const partEmail = buildReceiptEmail(part);
+  assert.match(partEmail.subject, /Payment received – booking TMG-1/);
+  assert.match(partEmail.text, /A balance of £1,080\.00 remains/);
+  assert.match(partEmail.html, /pi_1/);
+
+  const full = buildReceiptEmailData(booking({ amountPaid: 1440 }), { received: 1080, currency: 'GBP', reference: 'pi_2' });
+  assert.equal(full.paid_in_full, true);
+  const fullEmail = buildReceiptEmail(full);
+  assert.match(fullEmail.text, /paid in full and confirmed/);
+  assert.ok(!fullEmail.text.includes('Balance remaining'));
 });
 
 test('guest-supplied text is escaped in the email', () => {

@@ -142,6 +142,10 @@ export function serialiseBooking(row) {
     paymentLinkSentBy: text(row.payment_link_sent_by),
     stripePaidAt: timestamp(row.stripe_paid_at),
     stripeCheckoutSessionId: text(row.stripe_checkout_session_id),
+    stripePaymentIntentId: text(row.stripe_payment_intent_id),
+    lastPaymentAmount: row.stripe_last_payment_amount == null ? null : number(row.stripe_last_payment_amount),
+    paymentReceiptSentAt: timestamp(row.payment_receipt_sent_at),
+    prePlayClockStartedAt: timestamp(row.pre_play_clock_started_at),
 
     // Where this booking came from. An install without the column has only
     // ever taken enquiries, which is what 'teemail' means.

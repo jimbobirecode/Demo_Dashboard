@@ -23,7 +23,7 @@ import {
   paymentState,
   serialiseOperator,
 } from '../lib/operators-domain.js';
-import { todayInClubZone } from '../lib/email-domain.js';
+import { CLOCK_STARTING_PAYMENTS, todayInClubZone } from '../lib/email-domain.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -207,6 +207,11 @@ router.patch('/:bookingId/payment', async (req, res, next) => {
     const audit = buildAuditSet(columns, names.length + 1, req.user.username);
     const params = names.map((name) => updates[name]);
     const sets = names.map((name, index) => `"${name}" = $${index + 1}`);
+    // Money received by hand starts the pre-play emails the same way a Stripe
+    // payment does; a booking whose clock is already running keeps its start.
+    if (CLOCK_STARTING_PAYMENTS.includes(updates.payment_status) && columns.has('pre_play_clock_started_at')) {
+      sets.push('pre_play_clock_started_at = COALESCE(pre_play_clock_started_at, NOW())');
+    }
 
     params.push(...audit.values);
     params.push(req.params.bookingId, req.user.customerId);

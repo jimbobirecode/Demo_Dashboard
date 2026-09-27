@@ -220,6 +220,11 @@ export default function Bookings() {
             replaceBooking(updated);
             return message;
           }}
+          onSendReceipt={async (booking) => {
+            const { booking: updated, message } = await api.sendReceipt(booking.bookingId);
+            replaceBooking(updated);
+            return message;
+          }}
           onAssignOperator={(booking, operatorId) =>
             mutate(async () => {
               await api.assignOperator([booking.bookingId], operatorId);

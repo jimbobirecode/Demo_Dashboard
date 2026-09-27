@@ -276,8 +276,14 @@ sent from the dashboard rather than a cron job:
 | Pre-arrival welcome | `PRE_ARRIVAL_DAYS` (default 3) before the play date | `SENDGRID_TEMPLATE_PRE_ARRIVAL` |
 | Post-play thank you | `POST_PLAY_DAYS` (default 2) after the play date | `SENDGRID_TEMPLATE_POST_PLAY` |
 
-Only `Booked` bookings are ever listed. The page opens on the
-guests due today and can widen to all upcoming play (welcomes) or the last 30
+Only `Booked` bookings are ever listed, and the welcome only lists bookings
+whose **pre-play clock** has started — that is, money has been received, by a
+Stripe payment or by staff marking the payment Paid or Deposit paid. The
+welcome falls due `PRE_ARRIVAL_DAYS` before play and stays due until it is
+sent, so a guest who pays the day before still gets one. The page says how many
+booked guests are missing only because they have not paid. A club that
+invoices after play can set `PRE_ARRIVAL_REQUIRES_PAYMENT=false` to list every
+Booked booking again. The page opens on the guests due now and can widen to all upcoming play (welcomes) or the last 30
 days (thank yous). Rows are ticked, previewed with a dry run that renders the
 same template data without contacting SendGrid, then sent; a guest who has
 already been written to stays listed with the timestamp, unticked, so a resend
@@ -459,7 +465,22 @@ retries a webhook until it is acknowledged, so each payment is recorded once
 however many times it is delivered. A bank-debit payment completes unpaid and
 is only counted when `checkout.session.async_payment_succeeded` arrives.
 
-Setup: run `migration_add_stripe_payment_links.sql`, set `STRIPE_SECRET_KEY`
+**When the payment lands** the webhook, in one step:
+
+- marks the payment **Paid** (or **Deposit paid**) and moves an Inquiry or
+  Requested booking to **Booked** — a rejected or cancelled booking is left for
+  a person to deal with, never revived;
+- starts the booking's **pre-play clock**;
+- emails the guest a **receipt**: amount, date, Stripe reference, booking
+  details, and any balance still owed. `SENDGRID_TEMPLATE_PAYMENT_RECEIPT` is
+  used if set, otherwise a built-in receipt.
+
+A receipt that fails to send never undoes the payment. The drawer shows
+*receipt not sent* with a **Send receipt** button, and **Resend receipt** once
+one has gone.
+
+Setup: run `migration_add_stripe_payment_links.sql` and then
+`migration_add_payment_receipts.sql`, set `STRIPE_SECRET_KEY`
 and `STRIPE_WEBHOOK_SECRET` (see `.env.example`), and in Stripe → Developers →
 Webhooks add `https://<dashboard>/api/stripe/webhook` for the two events above.
 Until all of that is in place the drawer says what is missing instead of
