@@ -91,6 +91,16 @@ export function replyProblem({ to, body }) {
   return null;
 }
 
+/** When the guest wrote, in the club's own time — as the dashboard shows it. */
+function wroteAt(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(BRAND.locale, {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    timeZone: BRAND.timeZone,
+  }).format(date);
+}
+
 const escape = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -102,7 +112,7 @@ const escape = (value) =>
 export function buildReplyEmail({ body, original = null }) {
   const typed = String(body).trim();
   const quote = original
-    ? `\n\n----\nOn ${new Date(original.createdAt).toUTCString()}, ${original.fromEmail} wrote:\n` +
+    ? `\n\n----\nOn ${wroteAt(original.createdAt)}, ${original.fromEmail} wrote:\n` +
       String(original.body ?? '').split('\n').map((line) => `> ${line}`).join('\n')
     : '';
   const text = typed + quote;
@@ -113,7 +123,7 @@ export function buildReplyEmail({ body, original = null }) {
     .join('');
   const quoted = original
     ? `<div style="margin-top:24px;padding-left:12px;border-left:3px solid #d6dfda;color:#6b7a72;font-size:13px;">` +
-      `<div style="margin-bottom:6px;">On ${escape(new Date(original.createdAt).toUTCString())}, ${escape(original.fromEmail)} wrote:</div>` +
+      `<div style="margin-bottom:6px;">On ${escape(wroteAt(original.createdAt))}, ${escape(original.fromEmail)} wrote:</div>` +
       `${escape(original.body).replace(/\n/g, '<br>')}</div>`
     : '';
   const html = `<!DOCTYPE html><html><body style="margin:0;padding:24px 16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1f2d27;"><div style="max-width:620px;">${paragraphs}${quoted}</div></body></html>`;
