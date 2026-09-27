@@ -1,39 +1,55 @@
 /**
  * POST /api/stripe/webhook — Stripe telling us a payment link was paid.
+ * GET  /api/stripe/webhook — answers so the URL can be checked in a browser.
  *
  * Mounted ahead of the JSON body parser with a raw parser of its own, because
  * the signature is computed over the exact bytes Stripe sent; parsed and
  * re-serialised JSON would never verify.
  *
- * Every verified event is answered 2xx, including ones we ignore: anything
- * else makes Stripe retry for three days. The one exception is a database
- * failure, which is answered 500 on purpose so that Stripe does retry it.
+ * A verified event we have handled, or have no use for, is answered 2xx.
+ * Anything that means the payment could not be recorded yet — the secret or a
+ * migration missing, the database down — is answered 5xx on purpose, so Stripe
+ * keeps retrying (for up to three days) until it can be.
+ *
+ * Every delivery is noted in the webhook log the drawer shows.
  */
 import express, { Router } from 'express';
-import { query } from '../db.js';
-import { serialiseBooking } from '../lib/bookings-domain.js';
-import { getBookingColumns } from '../lib/schema.js';
 import { verifyWebhookSignature } from '../lib/stripe.js';
+import { PAYMENT_EVENTS, paidSessionFromEvent, readPaymentLinkConfig } from '../lib/payment-link-domain.js';
+import { MigrationMissingError, recordStripePayment } from '../lib/record-payment.js';
+import { logWebhook } from '../lib/webhook-log.js';
 import { sendReceipt } from './payments.js';
-import {
-  applyPaidSession,
-  bookingRefFromSession,
-  paidSessionFromEvent,
-  readPaymentLinkConfig,
-} from '../lib/payment-link-domain.js';
 
 const router = Router();
+
+router.get('/', (req, res) => {
+  res.json({
+    ok: true,
+    endpoint: 'Stripe webhook',
+    method: 'Stripe sends POST requests here',
+    signingSecretSet: Boolean(readPaymentLinkConfig().webhookSecret),
+    events: PAYMENT_EVENTS,
+  });
+});
 
 router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const { webhookSecret } = readPaymentLinkConfig();
   if (!webhookSecret) {
     console.error('[stripe] webhook received but STRIPE_WEBHOOK_SECRET is not set');
+    logWebhook({ outcome: 'rejected', detail: 'STRIPE_WEBHOOK_SECRET is not set on the server' });
     return res.status(503).json({ error: 'Webhook not configured' });
   }
 
   const check = verifyWebhookSignature(req.body, req.get('stripe-signature'), webhookSecret);
   if (!check.ok) {
     console.warn('[stripe] rejected webhook:', check.reason);
+    logWebhook({
+      outcome: 'rejected',
+      detail:
+        check.reason === 'Signature mismatch'
+          ? 'Signature mismatch: STRIPE_WEBHOOK_SECRET is not this endpoint\'s signing secret (test and live mode have different ones)'
+          : check.reason,
+    });
     return res.status(400).json({ error: check.reason });
   }
 
@@ -45,15 +61,20 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
   }
 
   const session = paidSessionFromEvent(event);
-  if (!session) return res.json({ received: true, ignored: event.type });
+  if (!session) {
+    logWebhook({ outcome: 'ignored', type: event.type, detail: 'Not a completed payment' });
+    return res.json({ received: true, ignored: event.type });
+  }
 
   let recorded;
   try {
-    recorded = await recordPayment(session);
+    recorded = await recordStripePayment(session);
     console.log(`[stripe] ${event.type} ${session.id}: ${recorded.result}`);
   } catch (err) {
+    const detail = err instanceof MigrationMissingError ? err.message : `Database error: ${err.message}`;
     console.error('[stripe] could not record payment', session.id, err);
-    return res.status(500).json({ error: 'Could not record the payment' });
+    logWebhook({ outcome: 'failed', type: event.type, bookingId: session.metadata?.booking_id ?? null, detail });
+    return res.status(503).json({ error: 'Could not record the payment yet' });
   }
 
   // The payment is safely recorded before the receipt is attempted, and a
@@ -69,81 +90,13 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
     console.log(`[stripe] receipt for ${recorded.booking.bookingId}: ${receipt}`);
   }
 
+  logWebhook({
+    outcome: recorded.booking ? 'recorded' : 'skipped',
+    type: event.type,
+    bookingId: recorded.booking?.bookingId ?? session.metadata?.booking_id ?? null,
+    detail: receipt ? `${recorded.result}; receipt ${receipt}` : recorded.result,
+  });
   res.json({ received: true, result: recorded.result, receipt });
 });
-
-async function recordPayment(session) {
-  const columns = await getBookingColumns();
-  if (!columns.has('stripe_checkout_session_id')) return { result: 'skipped: migration not run' };
-
-  const ref = bookingRefFromSession(session);
-  let rows = [];
-  if (ref.bookingId && ref.club) {
-    ({ rows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
-      [ref.bookingId, ref.club],
-    ));
-  }
-  if (!rows[0] && ref.paymentLinkId) {
-    ({ rows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE stripe_payment_link_id = $1`,
-      [ref.paymentLinkId],
-    ));
-  }
-  if (!rows[0] && ref.bookingId) {
-    ({ rows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1`,
-      [ref.bookingId],
-    ));
-  }
-  // Not ours (another integration on the same Stripe account); nothing to retry.
-  if (rows.length !== 1) {
-    return { result: rows.length ? 'skipped: booking id is ambiguous' : 'skipped: no matching booking' };
-  }
-
-  const booking = serialiseBooking(rows[0]);
-  const change = applyPaidSession(booking, session);
-  if (!change) return { result: 'already recorded' };
-
-  const params = [change.amountPaid, change.paymentStatus, session.id, booking.bookingId, booking.club];
-  const sets = ['amount_paid = $1', 'payment_status = $2', 'stripe_checkout_session_id = $3', 'stripe_paid_at = NOW()'];
-  const add = (column, value) => {
-    if (!columns.has(column)) return;
-    params.push(value);
-    sets.push(`"${column}" = $${params.length}`);
-  };
-
-  add('status', change.bookingStatus);
-  add('stripe_payment_intent_id', change.reference);
-  add('stripe_last_payment_amount', change.received);
-  // A new payment needs a new receipt.
-  if (columns.has('payment_receipt_sent_at')) sets.push('payment_receipt_sent_at = NULL');
-  // Payment starts the pre-play emails; a later payment does not restart them.
-  if (columns.has('pre_play_clock_started_at')) {
-    sets.push('pre_play_clock_started_at = COALESCE(pre_play_clock_started_at, NOW())');
-  }
-  if (columns.has('updated_at')) sets.push('updated_at = NOW()');
-  if (columns.has('updated_by')) {
-    params.push('Stripe');
-    sets.push(`updated_by = $${params.length}`);
-  }
-
-  // The session id is part of the WHERE clause as well, so two deliveries of
-  // the same event racing each other cannot both add the money.
-  const result = await query(
-    `UPDATE public.bookings
-        SET ${sets.join(', ')}
-      WHERE booking_id = $4 AND club = $5
-        AND stripe_checkout_session_id IS DISTINCT FROM $3
-    RETURNING ${columns.selectList}`,
-    params,
-  );
-
-  if (!result.rowCount) return { result: 'already recorded' };
-  return {
-    result: `${booking.bookingId} ${change.paymentStatus} (booking ${change.bookingStatus}), ${change.received} received`,
-    booking: serialiseBooking(result.rows[0]),
-  };
-}
 
 export default router;

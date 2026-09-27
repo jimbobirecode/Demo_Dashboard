@@ -10,6 +10,7 @@ import {
   buildReceiptEmailData,
   linkProblem,
   paidSessionFromEvent,
+  paymentKey,
   publicPaymentLinkConfig,
   readPaymentLinkConfig,
 } from '../src/lib/payment-link-domain.js';
@@ -17,6 +18,7 @@ import {
   createPaymentLink,
   formEncode,
   fromMinorUnits,
+  paidSessionsForLink,
   prefilledLinkUrl,
   toMinorUnits,
   verifyWebhookSignature,
@@ -264,4 +266,49 @@ test('an HTML email posts subject and both bodies to SendGrid', async () => {
   assert.equal(sent.subject, 'S');
   assert.deepEqual(sent.content.map((c) => c.type), ['text/plain', 'text/html']);
   assert.equal(sent.template_id, undefined);
+});
+
+// --- PaymentIntent events, and one payment seen twice -------------------------------
+
+test('a payment_intent.succeeded event is read as the same payment', () => {
+  const payment = paidSessionFromEvent({
+    type: 'payment_intent.succeeded',
+    data: { object: { object: 'payment_intent', id: 'pi_9', amount_received: 72000, currency: 'gbp', metadata: { booking_id: 'TMG-1', club: 'royal_dornoch' } } },
+  });
+  assert.equal(payment.amount_total, 72000);
+  assert.equal(paymentKey(payment), 'pi_9');
+  assert.deepEqual(bookingRefFromSession(payment), { bookingId: 'TMG-1', club: 'royal_dornoch', paymentLinkId: null });
+  assert.equal(paidSessionFromEvent({ type: 'payment_intent.created', data: { object: { object: 'payment_intent', id: 'pi_9' } } }), null);
+});
+
+test('the Checkout and PaymentIntent events for one payment count it once', () => {
+  const fromCheckout = session({ payment_intent: 'pi_9' });
+  assert.equal(paymentKey(fromCheckout), 'pi_9');
+  const fromIntent = paidSessionFromEvent({
+    type: 'payment_intent.succeeded',
+    data: { object: { object: 'payment_intent', id: 'pi_9', amount_received: 144000, currency: 'gbp', metadata: {} } },
+  });
+  // Whichever arrived first stored pi_9; the other is recognised.
+  assert.equal(applyPaidSession(booking({ stripeCheckoutSessionId: 'pi_9' }), fromCheckout), null);
+  assert.equal(applyPaidSession(booking({ stripeCheckoutSessionId: 'pi_9' }), fromIntent), null);
+  // A payment recorded before keys moved to the PaymentIntent is still recognised by its session id.
+  assert.equal(applyPaidSession(booking({ stripeCheckoutSessionId: 'cs_1' }), fromCheckout), null);
+});
+
+test('checking a link asks Stripe for its completed sessions and keeps the paid ones', async () => {
+  let asked;
+  const fetchImpl = async (url, init) => {
+    asked = { url, method: init.method, body: init.body };
+    return {
+      ok: true,
+      json: async () => ({ data: [session({ id: 'cs_paid' }), session({ id: 'cs_unpaid', payment_status: 'unpaid' })] }),
+    };
+  };
+  const paid = await paidSessionsForLink({ secretKey: 'sk_test', linkId: 'plink_1', fetchImpl });
+  assert.deepEqual(paid.map((s) => s.id), ['cs_paid']);
+  assert.equal(asked.method, 'GET');
+  assert.equal(asked.body, undefined);
+  const query = new URL(asked.url).searchParams;
+  assert.equal(query.get('payment_link'), 'plink_1');
+  assert.equal(query.get('status'), 'complete');
 });

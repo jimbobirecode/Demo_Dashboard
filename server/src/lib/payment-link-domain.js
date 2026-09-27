@@ -283,15 +283,55 @@ export function buildReceiptEmail(data) {
 }
 
 /**
- * The Stripe events that mean money has arrived. A card payment completes
- * paid; a bank debit completes unpaid and succeeds later, asynchronously.
+ * The Stripe events that mean money has arrived, as one shape.
+ *
+ * A Checkout Session event and a PaymentIntent event both describe the same
+ * payment, and a Stripe endpoint may be subscribed to either or both. Both
+ * carry the booking in their metadata (the link sets it on each), and both are
+ * reduced to the same fields here — including the PaymentIntent id, which is
+ * what makes the two count as one payment rather than two.
+ *
+ * A card payment completes paid; a bank debit completes unpaid and succeeds
+ * later, asynchronously.
  */
+export const PAYMENT_EVENTS = [
+  'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+  'payment_intent.succeeded',
+];
+
 export function paidSessionFromEvent(event) {
-  const session = event?.data?.object;
-  if (!session || session.object !== 'checkout.session') return null;
-  if (event.type === 'checkout.session.completed' && session.payment_status === 'paid') return session;
-  if (event.type === 'checkout.session.async_payment_succeeded') return session;
+  const object = event?.data?.object;
+  if (!object) return null;
+
+  if (object.object === 'checkout.session') {
+    if (event.type === 'checkout.session.completed' && object.payment_status === 'paid') return object;
+    if (event.type === 'checkout.session.async_payment_succeeded') return object;
+    return null;
+  }
+
+  if (object.object === 'payment_intent' && event.type === 'payment_intent.succeeded') {
+    return {
+      object: 'payment_intent',
+      id: object.id,
+      amount_total: object.amount_received ?? object.amount,
+      currency: object.currency,
+      metadata: object.metadata ?? {},
+      payment_intent: object.id,
+      payment_link: null,
+      client_reference_id: null,
+    };
+  }
   return null;
+}
+
+/**
+ * The id a payment is counted under: its PaymentIntent where there is one, so
+ * the Checkout Session event and the PaymentIntent event for the same payment
+ * are recognised as one.
+ */
+export function paymentKey(session) {
+  return typeof session?.payment_intent === 'string' && session.payment_intent ? session.payment_intent : session.id;
 }
 
 /** Which booking a paid session belongs to, from whatever it carries. */
@@ -309,7 +349,9 @@ export function bookingRefFromSession(session) {
  * delivers twice (it retries until it gets a 2xx) never adds the money twice.
  */
 export function applyPaidSession(booking, session) {
-  if (booking.stripeCheckoutSessionId && booking.stripeCheckoutSessionId === session.id) return null;
+  const key = paymentKey(session);
+  const counted = booking.stripeCheckoutSessionId;
+  if (counted && (counted === key || counted === session.id)) return null;
 
   const received = fromMinorUnits(session.amount_total ?? 0, session.currency ?? BRAND.currency);
   const total = Number(booking.total) || 0;

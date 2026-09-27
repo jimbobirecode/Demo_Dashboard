@@ -220,6 +220,11 @@ export default function Bookings() {
             replaceBooking(updated);
             return message;
           }}
+          onCheckPayment={async (booking) => {
+            const result = await api.checkPayment(booking.bookingId);
+            if (result.found) replaceBooking(result.booking);
+            return result;
+          }}
           onSendReceipt={async (booking) => {
             const { booking: updated, message } = await api.sendReceipt(booking.bookingId);
             replaceBooking(updated);
