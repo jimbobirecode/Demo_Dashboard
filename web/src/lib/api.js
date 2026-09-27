@@ -119,6 +119,14 @@ export const api = {
   setPayment: (bookingId, patch) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/payment`, { method: 'PATCH', body: patch }),
   paymentConfig: () => request('/payments/config'),
+  inbox: (status = 'open') => request(`/inbox?status=${encodeURIComponent(status)}`),
+  inboxMessage: (id) => request(`/inbox/${id}`),
+  inboxReply: (id, body, subject) => request(`/inbox/${id}/reply`, { method: 'POST', body: { body, subject } }),
+  inboxStatus: (id, status) => request(`/inbox/${id}/status`, { method: 'POST', body: { status } }),
+  inboxLink: (id, bookingId) => request(`/inbox/${id}/link`, { method: 'POST', body: { bookingId } }),
+  bookingThread: (bookingId) => request(`/inbox/booking/${encodeURIComponent(bookingId)}`),
+  emailGuest: (bookingId, body, subject) =>
+    request(`/inbox/booking/${encodeURIComponent(bookingId)}/send`, { method: 'POST', body: { body, subject } }),
   checkPayment: (bookingId) =>
     request(`/payments/bookings/${encodeURIComponent(bookingId)}/check`, { method: 'POST' }),
   sendReceipt: (bookingId) =>

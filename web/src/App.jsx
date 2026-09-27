@@ -14,6 +14,8 @@ import Users from './pages/Users.jsx';
 import Waitlist from './pages/Waitlist.jsx';
 import Import from './pages/Import.jsx';
 import Requests from './pages/Requests.jsx';
+import Inbox from './pages/Inbox.jsx';
+import { useInboxCount } from './lib/useInboxCount.js';
 
 // The charting library is only needed on the analytics route — keep it out of
 // the initial bundle so the bookings table loads fast.
@@ -24,6 +26,7 @@ import Wordmark from './components/Wordmark.jsx';
 
 export default function App() {
   const { user, mustChangePassword, loading, login, logout, completePasswordChange } = useSession();
+  const [inboxCount, setInboxCount] = useInboxCount(Boolean(user) && !mustChangePassword);
 
   if (loading) {
     return <div className="empty">Loading dashboard…</div>;
@@ -60,6 +63,25 @@ export default function App() {
         <nav className="stack" style={{ gap: '0.25rem' }}>
           <NavLink to="/bookings" className={navClass}>
             Bookings
+          </NavLink>
+          <NavLink to="/inbox" className={navClass}>
+            Inbox
+            {inboxCount > 0 && (
+              <span
+                aria-label={`${inboxCount} to answer`}
+                style={{
+                  marginLeft: '0.5rem',
+                  background: 'var(--brand-gold)',
+                  color: 'var(--surface-0)',
+                  borderRadius: '999px',
+                  padding: '0 0.45rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                }}
+              >
+                {inboxCount}
+              </span>
+            )}
           </NavLink>
           <NavLink to="/requests" className={navClass}>
             Guest Requests
@@ -115,6 +137,7 @@ export default function App() {
             <Route path="/import" element={<Import />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/requests" element={<Requests />} />
+            <Route path="/inbox" element={<Inbox onCountChange={setInboxCount} />} />
             <Route path="/waitlist" element={<Waitlist />} />
             <Route path="/operators" element={<Operators />} />
             <Route path="/emails" element={<Emails />} />

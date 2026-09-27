@@ -197,6 +197,10 @@ export function serialiseChangeRequest(row) {
     resolvedBy: row.resolved_by ?? null,
     resolutionNote: row.resolution_note ?? '',
     open: row.status === 'Pending',
+    // 'email' when it was read out of a guest's email rather than asked for
+    // on the manage-booking page (migration_add_email_inbox.sql).
+    source: row.source ?? 'link',
+    emailMessageId: row.email_message_id ?? null,
   };
 }
 

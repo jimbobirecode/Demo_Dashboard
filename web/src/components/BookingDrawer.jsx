@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import PipelineProgress from './PipelineProgress.jsx';
 import PaymentPanel from './PaymentPanel.jsx';
+import BookingConversation from './BookingConversation.jsx';
 import StatusPill from './StatusPill.jsx';
 import { ALL_STATUSES } from '../lib/status.js';
 import { BRAND } from '../lib/brand.js';
@@ -148,6 +149,8 @@ export default function BookingDrawer({
             )}
           </div>
         )}
+
+        <BookingConversation booking={booking} />
 
         <div className="stack" style={{ gap: '0.4rem' }}>
           <span className="label">Status</span>
