@@ -478,8 +478,8 @@ The payment panel can email the guest a Stripe payment link. Enter the amount
 
 1. The dashboard creates a single-use Stripe Payment Link for that amount,
    carrying the booking id and club as metadata.
-2. SendGrid emails it to the guest — from `SENDGRID_TEMPLATE_PAYMENT_LINK` if
-   set, otherwise a plain built-in email.
+2. SendGrid emails it to the guest — the built-in branded email, or
+   `SENDGRID_TEMPLATE_PAYMENT_LINK` when `USE_SENDGRID_PAYMENT_TEMPLATES=true`.
 3. The booking's payment status becomes **Pending**.
 4. When the guest pays, Stripe calls `POST /api/stripe/webhook`. The payment
    is added to *amount paid* and the status becomes **Paid**, or
@@ -503,8 +503,10 @@ is only counted when `checkout.session.async_payment_succeeded` arrives.
   a person to deal with, never revived;
 - starts the booking's **pre-play clock**;
 - emails the guest a **receipt**: amount, date, Stripe reference, booking
-  details, and any balance still owed. `SENDGRID_TEMPLATE_PAYMENT_RECEIPT` is
-  used if set, otherwise a built-in receipt.
+  details, and any balance still owed. The built-in branded receipt is
+  sent, or `SENDGRID_TEMPLATE_PAYMENT_RECEIPT` when
+  `USE_SENDGRID_PAYMENT_TEMPLATES=true` (template ids alone are ignored, since a
+  template keeps whatever club name and logo it was written with).
 
 A receipt that fails to send never undoes the payment. The drawer shows
 *receipt not sent* with a **Send receipt** button, and **Resend receipt** once

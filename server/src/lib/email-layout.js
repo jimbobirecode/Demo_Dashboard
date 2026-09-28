@@ -23,8 +23,14 @@ export const LOGO_CID = 'club-logo';
 
 const LOGO_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../assets/email-logo.png');
 let logoBase64 = null;
+let logoHeight = null;
 try {
-  logoBase64 = fs.readFileSync(LOGO_FILE).toString('base64');
+  const bytes = fs.readFileSync(LOGO_FILE);
+  logoBase64 = bytes.toString('base64');
+  // Outlook ignores `height: auto` and draws an image at its file's own height
+  // unless the <img> says otherwise, so the header states the height the logo
+  // has at 240px wide. Read from the PNG header (width, height at bytes 16-24).
+  logoHeight = Math.round((bytes.readUInt32BE(20) * 240) / bytes.readUInt32BE(16));
 } catch (err) {
   console.warn(`[email] ${LOGO_FILE} not readable (${err.message}); emails will link to the logo instead`);
 }
@@ -87,8 +93,10 @@ export function brandedEmail(content, { source = env } = {}) {
   const contactEmail = source.REPLY_TO_EMAIL ?? source.FROM_EMAIL ?? '';
   const contactLine = [source.CLUB_ADDRESS, source.CLUB_PHONE].filter(Boolean).map(escapeHtml).join(' · ');
 
+  // Only the embedded copy's height is known; an override URL keeps its own.
+  const height = logo === `cid:${LOGO_CID}` && logoHeight ? ` height="${logoHeight}"` : '';
   const header = logo
-    ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(BRAND.fullName)}" width="240" style="display:block;max-width:240px;width:100%;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none;">`
+    ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(BRAND.fullName)}" width="240"${height} style="display:block;width:240px;max-width:240px;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none;">`
     : `<div style="font-size:22px;font-weight:700;color:${c.primary};">${escapeHtml(BRAND.fullName)}</div>`;
 
   return `<!DOCTYPE html>

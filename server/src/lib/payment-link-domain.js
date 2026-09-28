@@ -28,6 +28,7 @@ export function readPaymentLinkConfig(env = process.env) {
   if (!env.STRIPE_WEBHOOK_SECRET) missing.push('STRIPE_WEBHOOK_SECRET');
   if (!env.SENDGRID_API_KEY) missing.push('SENDGRID_API_KEY');
   if (!env.FROM_EMAIL) missing.push('FROM_EMAIL');
+  const useTemplates = /^(1|true|yes|on)$/i.test(String(env.USE_SENDGRID_PAYMENT_TEMPLATES ?? ''));
 
   return {
     secretKey: env.STRIPE_SECRET_KEY ?? null,
@@ -35,8 +36,12 @@ export function readPaymentLinkConfig(env = process.env) {
     sendgridKey: env.SENDGRID_API_KEY ?? null,
     fromEmail: env.FROM_EMAIL ?? null,
     fromName: env.FROM_NAME ?? BRAND.fromName,
-    templateId: env.SENDGRID_TEMPLATE_PAYMENT_LINK ?? null,
-    receiptTemplateId: env.SENDGRID_TEMPLATE_PAYMENT_RECEIPT ?? null,
+    // The built-in link and receipt carry the club's current name and logo. A
+    // SendGrid template is a copy of the branding kept in SendGrid, and the
+    // ones set up earlier still carry the previous club's, so a template is
+    // used only when USE_SENDGRID_PAYMENT_TEMPLATES says it has been checked.
+    templateId: useTemplates ? env.SENDGRID_TEMPLATE_PAYMENT_LINK ?? null : null,
+    receiptTemplateId: useTemplates ? env.SENDGRID_TEMPLATE_PAYMENT_RECEIPT ?? null : null,
     currency: (env.STRIPE_CURRENCY ?? BRAND.currency).toUpperCase(),
     testMode: String(env.STRIPE_SECRET_KEY ?? '').startsWith('sk_test_'),
     missing,

@@ -59,6 +59,16 @@ test('payment links need Stripe, its webhook secret, and SendGrid', () => {
   assert.equal(readPaymentLinkConfig(FULL_ENV).testMode, true);
 });
 
+test('the built-in link and receipt are sent unless SendGrid templates are switched on', () => {
+  const ids = { SENDGRID_TEMPLATE_PAYMENT_LINK: 'd-link', SENDGRID_TEMPLATE_PAYMENT_RECEIPT: 'd-receipt' };
+  const off = readPaymentLinkConfig({ ...FULL_ENV, ...ids });
+  assert.equal(off.templateId, null);
+  assert.equal(off.receiptTemplateId, null);
+  const on = readPaymentLinkConfig({ ...FULL_ENV, ...ids, USE_SENDGRID_PAYMENT_TEMPLATES: 'true' });
+  assert.equal(on.templateId, 'd-link');
+  assert.equal(on.receiptTemplateId, 'd-receipt');
+});
+
 test('the browser never sees a secret', () => {
   const shown = JSON.stringify(publicPaymentLinkConfig(readPaymentLinkConfig(FULL_ENV)));
   for (const secret of Object.values(FULL_ENV).filter((v) => !v.includes('@'))) {
