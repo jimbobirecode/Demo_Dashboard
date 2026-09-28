@@ -1,15 +1,22 @@
 /**
- * Seed the dashboard with realistic sample bookings.
+ * Seed the dashboard with realistic sample bookings and tour operators.
  *
- *   npm run seed              -- add sample data, keep anything already there
- *   npm run seed -- --reset   -- remove previously seeded rows first
+ *   npm run seed                  -- add sample data, keep anything already there
+ *   npm run seed -- --reset       -- remove previously seeded rows first
+ *   npm run seed -- --operators   -- only the tour operators and their bookings
+ *                                    (for a database that already has bookings)
  *
- * Safety: every row this writes carries the DEMO_PREFIX booking_id, and
- * --reset only ever deletes rows matching that prefix. Real bookings are
- * never touched.
+ * Safety: every booking this writes carries the DEMO_PREFIX booking_id, every
+ * operator it writes is marked by SAMPLE_OPERATOR_NOTE and books from a
+ * reserved `.example` domain (so no reminder can reach a real company), and
+ * --reset only ever deletes rows carrying those marks. Real bookings and real
+ * operators are never touched.
  */
 import 'dotenv/config';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import bcrypt from 'bcryptjs';
 import { pool } from '../server/src/db.js';
 import { BRAND } from '../server/src/lib/brand.js';
@@ -29,10 +36,14 @@ const LAST_NAMES = [
 ];
 const DOMAINS = ['gmail.com', 'outlook.com', 'btinternet.com', 'yahoo.co.uk', 'me.com'];
 
+/** The TeeMail club's visitor green fee, per player per round (in BRAND.currency). */
+const GREEN_FEE = 430;
+
 const COURSES = [
-  { name: 'Championship Course', fee: 295, weight: 6 },
-  { name: 'Struie Course', fee: 95, weight: 3 },
-  { name: 'Championship Course, Struie Course', fee: 360, weight: 2 },
+  { name: 'Championship Course', fee: GREEN_FEE, weight: 6 },
+  { name: 'Links Course', fee: GREEN_FEE, weight: 3 },
+  // Both courses the same day: the second round is a 50% replay.
+  { name: 'Championship Course, Links Course', fee: GREEN_FEE * 1.5, weight: 2 },
 ];
 
 // The sheet runs in roughly 10-minute intervals.
@@ -293,16 +304,268 @@ function buildBookings(count) {
   return bookings;
 }
 
-export async function seed({ client, reset = false } = {}) {
+// ---------------------------------------------------------------------------
+// Tour operators
+// ---------------------------------------------------------------------------
+
+const OPERATOR_PREFIX = `${DEMO_PREFIX}OP-`;
+const SAMPLE_OPERATOR_NOTE = 'Sample operator (seeded).';
+const MIGRATION_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migration_add_tour_operators.sql');
+
+/**
+ * Six fictional trade partners, one for each situation the Tour Operators page
+ * has to show: a model account, one running late, one near its limit, one on
+ * hold, a deposit-then-balance account and a retired one. Each booking is
+ * { day: tee date relative to today, players, rounds, status, invoiced: days
+ * ago it was invoiced (null = not yet), paid: share of the total received }.
+ */
+const OPERATORS = [
+  {
+    name: 'Fairway & Firth Golf Tours',
+    code: 'FFG',
+    contact: 'Moira Buchanan',
+    phone: '+44 131 496 0101',
+    domain: 'fairwayfirth.example',
+    terms: { days: 30, deposit: 25, depositBefore: 60, balanceBefore: 30, limit: 60000 },
+    notes: 'Long-standing partner. Pays promptly; prefers morning tee times for groups.',
+    bookings: [
+      { day: -35, players: 8, rounds: 1, status: 'Booked', invoiced: 70, paid: 1 },
+      { day: -12, players: 12, rounds: 2, status: 'Booked', invoiced: 50, paid: 1 },
+      { day: 24, players: 8, rounds: 1, status: 'Booked', invoiced: 40, paid: 1 },
+      { day: 45, players: 16, rounds: 2, status: 'Booked', invoiced: 20, paid: 0.25 },
+      { day: 75, players: 8, rounds: 1, status: 'Booked', invoiced: 5, paid: 0 },
+      { day: 110, players: 4, rounds: 1, status: 'Requested', invoiced: null, paid: 0 },
+    ],
+  },
+  {
+    name: 'Links Trail Golf Travel',
+    code: 'LTG',
+    contact: 'Callum Reid',
+    phone: '+44 20 7946 0102',
+    domain: 'linkstrail.example',
+    terms: { days: 30, deposit: 0, depositBefore: null, balanceBefore: null, limit: 20000 },
+    notes: 'High volume. Balances regularly run past 30 days - chase early.',
+    bookings: [
+      { day: -60, players: 12, rounds: 1, status: 'Booked', invoiced: 75, paid: 0 },
+      { day: -40, players: 8, rounds: 1, status: 'Booked', invoiced: 50, paid: 0.5 },
+      { day: -8, players: 8, rounds: 2, status: 'Booked', invoiced: 15, paid: 0 },
+      { day: 18, players: 12, rounds: 1, status: 'Booked', invoiced: 10, paid: 0 },
+      { day: 40, players: 8, rounds: 1, status: 'Inquiry', invoiced: null, paid: 0 },
+    ],
+  },
+  {
+    name: 'Atlantic Tee Holidays',
+    code: 'ATH',
+    contact: 'Brooke Sullivan',
+    phone: '+1 617 555 0103',
+    domain: 'atlantictee.example',
+    terms: { days: 14, deposit: 50, depositBefore: null, balanceBefore: 45, limit: 80000 },
+    notes: 'North American groups. 50% deposit on invoice, balance 45 days before play.',
+    bookings: [
+      { day: 30, players: 16, rounds: 2, status: 'Booked', invoiced: 90, paid: 0.5 },
+      { day: 65, players: 12, rounds: 1, status: 'Booked', invoiced: 30, paid: 0.5 },
+      { day: 95, players: 20, rounds: 2, status: 'Booked', invoiced: 20, paid: 0 },
+      { day: 140, players: 8, rounds: 1, status: 'Requested', invoiced: null, paid: 0 },
+    ],
+  },
+  {
+    name: 'Highland Swing Golf Breaks',
+    code: 'HSG',
+    contact: 'Euan Mackay',
+    phone: '+44 1463 496 0104',
+    domain: 'highlandswing.example',
+    terms: { days: 30, deposit: 0, depositBefore: null, balanceBefore: null, limit: 5000 },
+    onHold: true,
+    notes: 'ON HOLD: two invoices over 90 days and over its credit limit. No new tee times until the account is settled.',
+    bookings: [
+      { day: -130, players: 8, rounds: 1, status: 'Booked', invoiced: 140, paid: 0 },
+      { day: -100, players: 4, rounds: 2, status: 'Booked', invoiced: 110, paid: 0.25 },
+      { day: 20, players: 8, rounds: 1, status: 'Requested', invoiced: null, paid: 0 },
+    ],
+  },
+  {
+    name: 'Clubhouse Corporate Events',
+    code: 'CCE',
+    contact: 'Priya Nair',
+    phone: '+44 161 496 0105',
+    domain: 'clubhouseevents.example',
+    terms: { days: 14, deposit: 0, depositBefore: null, balanceBefore: null, limit: null },
+    notes: 'Corporate days and client golf. Invoiced on booking, 14-day terms.',
+    bookings: [
+      { day: -20, players: 24, rounds: 1, status: 'Booked', invoiced: 45, paid: 1 },
+      { day: 12, players: 16, rounds: 1, status: 'Booked', invoiced: 10, paid: 0 },
+      { day: 55, players: 32, rounds: 1, status: 'Confirmed', invoiced: null, paid: 0 },
+    ],
+  },
+  {
+    name: 'Old Course Connections',
+    code: 'OCC',
+    contact: 'Graham Lister',
+    phone: '+44 1334 496 0106',
+    domain: 'oldcourseconnections.example',
+    terms: { days: 30, deposit: 20, depositBefore: 90, balanceBefore: 30, limit: 15000 },
+    active: false,
+    notes: 'Retired partner - ceased trading with the club. Kept for history.',
+    bookings: [
+      { day: -300, players: 8, rounds: 1, status: 'Booked', invoiced: 330, paid: 1 },
+    ],
+  },
+];
+
+const TEAM_TEE_TIMES = ['08:00 AM', '08:10 AM', '08:20 AM', '08:30 AM', '09:00 AM', '09:10 AM', '10:30 AM', '01:10 PM'];
+
+function daysFromToday(days) {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + days);
+  return isoDate(date);
+}
+
+/** A group's tee times: one per four players, ten minutes apart. */
+function groupTeeTimes(players, start) {
+  const [clock, meridiem] = start.split(' ');
+  const [hours, minutes] = clock.split(':').map(Number);
+  let at = ((hours % 12) + (meridiem === 'PM' ? 12 : 0)) * 60 + minutes;
+  const times = [];
+  for (let i = 0; i < Math.ceil(players / 4); i += 1, at += 10) {
+    const h = Math.floor(at / 60);
+    const label = `${String(((h + 11) % 12) + 1).padStart(2, '0')}:${String(at % 60).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+    times.push(label);
+  }
+  return times;
+}
+
+/** Everything an operator booking needs, derived from its scenario line. */
+function buildOperatorBooking(operator, line, index) {
+  // A second round the same day is a 50% replay.
+  const perPlayer = GREEN_FEE * (line.rounds === 2 ? 1.5 : 1);
+  const total = Math.round(perPlayer * line.players * 100) / 100;
+  const paid = Math.round(total * line.paid * 100) / 100;
+  const paymentStatus = paid <= 0 ? 'Unpaid' : paid >= total ? 'Paid' : 'Deposit paid';
+  const teeTimes = groupTeeTimes(line.players, TEAM_TEE_TIMES[index % TEAM_TEE_TIMES.length]);
+  const courses = line.rounds === 2 ? 'Championship Course, Links Course' : 'Championship Course';
+  const date = daysFromToday(line.day);
+  const requested = daysFromToday(Math.min(line.day, 0) - (line.invoiced ?? 3) - 5);
+  const reference = `${OPERATOR_PREFIX}${operator.code}-${String(index + 1).padStart(2, '0')}`;
+
+  return {
+    bookingId: reference,
+    email: `groups@${operator.domain}`,
+    date,
+    teeTime: teeTimes[0],
+    players: line.players,
+    total: total.toFixed(2),
+    status: line.status,
+    note: [
+      `Group booking from ${operator.name} (account ${operator.code}).`,
+      '',
+      `Contact: ${operator.contact}`,
+      `Players: ${line.players} (${teeTimes.length} tee time${teeTimes.length === 1 ? '' : 's'})`,
+      `Course: ${courses}`,
+      line.rounds === 2 ? 'Playing 36 holes - second round charged at the 50% same-day replay rate.' : '',
+    ].filter(Boolean).join('\n'),
+    timestamp: `${requested}T09:30:00Z`,
+    course: courses,
+    selectedTeeTimes: teeTimes.join(', '),
+    paymentStatus,
+    amountPaid: paid.toFixed(2),
+    invoiceNumber: line.invoiced == null ? null : `INV-${operator.code}-${String(2600 + index)}`,
+    invoicedAt: line.invoiced == null ? null : daysFromToday(-line.invoiced),
+  };
+}
+
+/** The tour_operators table and the bookings' payment columns, if not there yet. */
+async function ensureOperatorSchema(client) {
+  await client.query(fs.readFileSync(MIGRATION_FILE, 'utf8'));
+}
+
+/**
+ * Seed the sample tour operators and their bookings. Operators are upserted
+ * by name, so re-running refreshes their terms instead of duplicating them.
+ */
+export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
+  await ensureOperatorSchema(client);
+
+  if (reset) {
+    const bookings = await client.query('DELETE FROM public.bookings WHERE booking_id LIKE $1', [`${OPERATOR_PREFIX}%`]);
+    const operators = await client.query(
+      'DELETE FROM public.tour_operators WHERE club = $1 AND notes LIKE $2',
+      [CLUB, `${SAMPLE_OPERATOR_NOTE}%`],
+    );
+    console.log(`--reset: removed ${operators.rowCount} sample operator(s) and ${bookings.rowCount} of their booking(s).`);
+  }
+
+  let bookingsInserted = 0;
+  for (const operator of OPERATORS) {
+    const t = operator.terms;
+    const { rows } = await client.query(
+      `INSERT INTO public.tour_operators
+         (club, name, contact_name, contact_email, contact_phone, account_code, email_domains,
+          payment_terms_days, deposit_percent, deposit_due_days_before_play, balance_due_days_before_play,
+          credit_limit, currency, on_hold, active, notes, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'seed')
+       ON CONFLICT (club, (LOWER(name))) DO UPDATE SET
+         contact_name = EXCLUDED.contact_name, contact_email = EXCLUDED.contact_email,
+         contact_phone = EXCLUDED.contact_phone, account_code = EXCLUDED.account_code,
+         email_domains = EXCLUDED.email_domains, payment_terms_days = EXCLUDED.payment_terms_days,
+         deposit_percent = EXCLUDED.deposit_percent,
+         deposit_due_days_before_play = EXCLUDED.deposit_due_days_before_play,
+         balance_due_days_before_play = EXCLUDED.balance_due_days_before_play,
+         credit_limit = EXCLUDED.credit_limit, currency = EXCLUDED.currency,
+         on_hold = EXCLUDED.on_hold, active = EXCLUDED.active, notes = EXCLUDED.notes,
+         updated_at = NOW(), updated_by = 'seed'
+       WHERE public.tour_operators.notes LIKE '${SAMPLE_OPERATOR_NOTE}%'
+       RETURNING id`,
+      [
+        CLUB, operator.name, operator.contact, `accounts@${operator.domain}`, operator.phone, operator.code,
+        [operator.domain], t.days, t.deposit, t.depositBefore, t.balanceBefore, t.limit, BRAND.currency,
+        Boolean(operator.onHold), operator.active !== false, `${SAMPLE_OPERATOR_NOTE} ${operator.notes}`,
+      ],
+    );
+    if (!rows.length) {
+      // A real operator already has this name: leave it and its bookings alone.
+      console.log(`  skipped "${operator.name}" - a real operator already uses that name.`);
+      continue;
+    }
+    const operatorId = rows[0].id;
+
+    for (const [index, line] of operator.bookings.entries()) {
+      const b = buildOperatorBooking(operator, line, index);
+      const { rowCount } = await client.query(
+        `INSERT INTO public.bookings
+           (booking_id, guest_email, date, tee_time, players, total, status, note, club,
+            timestamp, created_at, golf_courses, selected_tee_times,
+            tour_operator_id, payment_status, amount_paid, invoice_number, invoiced_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$16,$17)
+         ON CONFLICT (booking_id) DO NOTHING`,
+        [
+          b.bookingId, b.email, b.date, b.teeTime, b.players, b.total, b.status, b.note, CLUB,
+          b.timestamp, b.course, b.selectedTeeTimes,
+          operatorId, b.paymentStatus, b.amountPaid, b.invoiceNumber, b.invoicedAt,
+        ],
+      );
+      bookingsInserted += rowCount;
+    }
+  }
+
+  console.log(`Seeded ${OPERATORS.length} tour operator(s) and ${bookingsInserted} operator booking(s) for club "${CLUB}".`);
+  return { operators: OPERATORS.length, bookings: bookingsInserted };
+}
+
+export async function seed({ client, reset = false, operatorsOnly = false } = {}) {
   // Schema first: resolveClub reads dashboard_users, which may not exist yet.
   await ensureSchema(client);
   const CLUB = await resolveClub(client);
+  if (operatorsOnly) {
+    const operators = await seedTourOperators(client, CLUB, { reset });
+    return { club: CLUB, inserted: operators.bookings, operators, password: null };
+  }
   {
 
     if (reset) {
       const { rowCount } = await client.query(
-        'DELETE FROM public.bookings WHERE booking_id LIKE $1',
-        [`${DEMO_PREFIX}%`],
+        'DELETE FROM public.bookings WHERE booking_id LIKE $1 AND booking_id NOT LIKE $2',
+        [`${DEMO_PREFIX}%`, `${OPERATOR_PREFIX}%`],
       );
       console.log(`--reset: removed ${rowCount} previously seeded booking(s).`);
     }
@@ -361,7 +624,10 @@ export async function seed({ client, reset = false } = {}) {
       console.log('\nNothing new inserted. Re-run with --reset to rebuild the sample data.');
     }
 
-    return { club: CLUB, inserted, password };
+    console.log('');
+    const operators = await seedTourOperators(client, CLUB, { reset });
+
+    return { club: CLUB, inserted, operators, password };
   }
 }
 
@@ -374,7 +640,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   const client = await pool.connect();
   try {
-    await seed({ client, reset: process.argv.includes('--reset') });
+    await seed({
+      client,
+      reset: process.argv.includes('--reset'),
+      operatorsOnly: process.argv.includes('--operators'),
+    });
   } catch (err) {
     console.error('Seed failed:', err.message);
     process.exitCode = 1;

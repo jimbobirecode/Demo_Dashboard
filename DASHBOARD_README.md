@@ -24,7 +24,7 @@ npm run build && npm start   # production, single origin on :3001
 | Script | Purpose |
 |---|---|
 | `npm run check` | Read-only preflight: can this database run the dashboard as-is? |
-| `npm run seed` | Sample Royal Dornoch bookings (`--reset` to rebuild) |
+| `npm run seed` | Sample bookings and tour operators (`--reset` to rebuild, `--operators` for the tour operators alone) |
 | `npm test` | Unit tests for the booking and analytics arithmetic (no database needed) |
 
 ## Signing in
@@ -727,3 +727,15 @@ skip devDependencies, and `vite` is one of them.
 Set `DATABASE_URL` and a fresh `JWT_SECRET`, plus the SendGrid variables above
 if the Guest Emails page should be able to send. `SEED_ON_START=true` seeds sample
 data at boot for hosts without shell access; it skips when real bookings exist.
+
+**Sample tour operators.** `npm run seed -- --operators` adds six fictional
+trade accounts with 22 bookings between them, one for each state the Tour
+Operators page shows: a model account (Fairway & Firth), one running 45 days
+late and near its limit (Links Trail), a deposit-then-balance account with a
+balance overdue (Atlantic Tee), one on hold and over its limit (Highland
+Swing), a corporate account on 14-day terms (Clubhouse Corporate) and a
+retired one (Old Course Connections). Dates are relative to the day it runs.
+Their addresses are on the reserved `.example` domain, so an operator reminder
+can never reach a real company. It creates the `tour_operators` table if it is
+missing, leaves any real operator with the same name alone, and `--reset`
+removes only the sample operators and their `RD-DEMO-OP-` bookings.
