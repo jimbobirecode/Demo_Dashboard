@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { brandTemplateData, brandedEmail, logoUrl } from '../src/lib/email-layout.js';
 import { buildPaymentEmail, buildPaymentEmailData, buildReceiptEmail, buildReceiptEmailData } from '../src/lib/payment-link-domain.js';
 import { buildReplyEmail } from '../src/lib/inbox-domain.js';
+import { sendHtmlEmail } from '../src/lib/sendgrid.js';
 
 const ENV = { APP_URL: 'https://dash.teemail.io/', FROM_EMAIL: 'bookings@club.teemail.io', CLUB_PHONE: '+44 1234 567890' };
 
@@ -12,20 +13,39 @@ test('the logo comes from EMAIL_LOGO_URL, else the dashboard\'s own /logo.png', 
   assert.equal(logoUrl({}), null);
 });
 
-test('a branded email has the logo header, the teal rule and the club footer', () => {
+test('a branded email carries its logo inside it, whatever APP_URL says', () => {
   const html = brandedEmail('<p>Hello</p>', { source: ENV });
-  assert.match(html, /<img src="https:\/\/dash\.teemail\.io\/logo\.png"/);
+  assert.match(html, /<img src="cid:club-logo"/);
+  assert.ok(!html.includes('dash.teemail.io/logo.png'), 'not a link the reader may not reach');
   assert.match(html, /border-bottom:4px solid #1a5e58/);
   assert.match(html, /Questions\? Email us at <a href="mailto:bookings@club\.teemail\.io"/);
   assert.match(html, /\+44 1234 567890/);
   assert.match(html, /Powered by TeeMail/);
   assert.match(html, /<p>Hello<\/p>/);
+  // With no settings at all, the logo is still there.
+  assert.match(brandedEmail('<p>Hi</p>', { source: {} }), /<img src="cid:club-logo"/);
 });
 
-test('without a logo URL the header is the club name, never a broken image', () => {
-  const html = brandedEmail('<p>Hi</p>', { source: {} });
-  assert.ok(!html.includes('<img'));
-  assert.match(html, /font-weight:700;color:#1a5e58;">TeeMail Golf Club</);
+test('EMAIL_LOGO_URL still overrides, for a logo served from the club\'s own site', () => {
+  assert.match(brandedEmail('<p>Hi</p>', { source: { EMAIL_LOGO_URL: 'https://club.example/logo.png' } }), /<img src="https:\/\/club\.example\/logo\.png"/);
+});
+
+test('an email that shows the logo is sent with the logo attached inline', async () => {
+  let sent;
+  const fetchImpl = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return { status: 202 };
+  };
+  await sendHtmlEmail({ apiKey: 'SG', fromEmail: 'a@b.com', fromName: 'Club', toEmail: 'g@x.com', subject: 'S', text: 'T', html: brandedEmail('<p>x</p>', { source: {} }), fetchImpl });
+  const [logo] = sent.attachments;
+  assert.equal(logo.content_id, 'club-logo');
+  assert.equal(logo.disposition, 'inline');
+  assert.equal(logo.type, 'image/png');
+  assert.ok(Buffer.from(logo.content, 'base64').subarray(1, 4).toString() === 'PNG', 'a real PNG');
+  assert.ok(Buffer.from(logo.content, 'base64').length < 20_000, 'small enough for every email');
+
+  await sendHtmlEmail({ apiKey: 'SG', fromEmail: 'a@b.com', fromName: 'Club', toEmail: 'g@x.com', subject: 'S', text: 'T', html: '<p>no logo</p>', fetchImpl });
+  assert.equal(sent.attachments, undefined, 'nothing attached to an email that does not show it');
 });
 
 test('every email the dashboard builds itself is in the branded frame', () => {
