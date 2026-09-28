@@ -14,6 +14,7 @@
  */
 import { PIPELINE_STAGES, TERMINAL_STATUSES } from './bookings-domain.js';
 import { BRAND } from './brand.js';
+import { toCurrencyCode } from './currency.js';
 
 /** Revenue and exposure only ever count bookings the club has committed to. */
 export const COMMITTED_STATUSES = ['Booked'];
@@ -70,7 +71,8 @@ export function serialiseOperator(row) {
     depositDueDaysBeforePlay: nullableInteger(row.deposit_due_days_before_play),
     balanceDueDaysBeforePlay: nullableInteger(row.balance_due_days_before_play),
     creditLimit: nullableNumber(row.credit_limit),
-    currency: text(row.currency) || BRAND.currency,
+    // A row saved with "€" or a mangled symbol still reads as a real code.
+    currency: toCurrencyCode(row.currency, BRAND.currency),
 
     onHold: Boolean(row.on_hold),
     active: row.active === undefined || row.active === null ? true : Boolean(row.active),
@@ -532,6 +534,10 @@ export function validateOperator(input) {
     if (!Number.isFinite(limit) || limit < 0) return 'Credit limit cannot be negative';
   }
 
+  if (nullableText(input.currency) && !toCurrencyCode(input.currency)) {
+    return `"${input.currency}" is not a currency - use a code such as EUR, GBP or USD`;
+  }
+
   for (const domain of domainList(input.emailDomains)) {
     if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return `"${domain}" is not a domain name`;
   }
@@ -582,7 +588,7 @@ export function toOperatorColumns(input) {
     deposit_due_days_before_play: nullableInteger(input.depositDueDaysBeforePlay),
     balance_due_days_before_play: nullableInteger(input.balanceDueDaysBeforePlay),
     credit_limit: nullableNumber(input.creditLimit),
-    currency: (nullableText(input.currency) ?? BRAND.currency).toUpperCase().slice(0, 3),
+    currency: toCurrencyCode(input.currency, BRAND.currency),
     on_hold: Boolean(input.onHold),
     active: input.active === undefined ? true : Boolean(input.active),
     notes: nullableText(input.notes),
@@ -594,7 +600,7 @@ export function formatAccountMoney(value, currency = BRAND.currency) {
   const amount = Number(value);
   return new Intl.NumberFormat('en-GB', {
     style: 'currency',
-    currency: currency || BRAND.currency,
+    currency: toCurrencyCode(currency, BRAND.currency),
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(Number.isFinite(amount) ? amount : 0);

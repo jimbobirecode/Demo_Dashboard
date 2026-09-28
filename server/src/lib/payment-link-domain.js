@@ -11,6 +11,7 @@
  * Everything here is pure: the routes do the I/O.
  */
 import { BRAND } from './brand.js';
+import { toCurrencyCode } from './currency.js';
 import { fromMinorUnits } from './stripe.js';
 import { EMAIL_COLORS, brandTemplateData, brandedEmail } from './email-layout.js';
 
@@ -42,7 +43,7 @@ export function readPaymentLinkConfig(env = process.env) {
     // used only when USE_SENDGRID_PAYMENT_TEMPLATES says it has been checked.
     templateId: useTemplates ? env.SENDGRID_TEMPLATE_PAYMENT_LINK ?? null : null,
     receiptTemplateId: useTemplates ? env.SENDGRID_TEMPLATE_PAYMENT_RECEIPT ?? null : null,
-    currency: (env.STRIPE_CURRENCY ?? BRAND.currency).toUpperCase(),
+    currency: toCurrencyCode(env.STRIPE_CURRENCY, BRAND.currency),
     testMode: String(env.STRIPE_SECRET_KEY ?? '').startsWith('sk_test_'),
     missing,
     configured: missing.length === 0,
