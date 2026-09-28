@@ -16,7 +16,8 @@ import userRoutes from './routes/users.js';
 import waitlistRoutes from './routes/waitlist.js';
 import importRoutes from './routes/imports.js';
 import changeRoutes from './routes/changes.js';
-import paymentRoutes from './routes/payments.js';
+import paymentRoutes, { sendReceipt } from './routes/payments.js';
+import { startPaymentSync } from './lib/payment-sync.js';
 import inboxRoutes from './routes/inbox.js';
 import stripeWebhookRoutes from './routes/stripe-webhook.js';
 import { pool } from './db.js';
@@ -153,4 +154,6 @@ app.listen(PORT, async () => {
   console.log(`[api] listening on http://localhost:${PORT}`);
   await maybeSeedOnStart();
   await reportContents();
+  // Stripe payments are fetched, not only waited for: see lib/payment-sync.js.
+  startPaymentSync({ sendReceipt });
 });

@@ -127,6 +127,8 @@ export const api = {
   bookingThread: (bookingId) => request(`/inbox/booking/${encodeURIComponent(bookingId)}`),
   emailGuest: (bookingId, body, subject) =>
     request(`/inbox/booking/${encodeURIComponent(bookingId)}/send`, { method: 'POST', body: { body, subject } }),
+  paymentDiagnostics: () => request('/payments/diagnostics'),
+  syncPayments: () => request('/payments/sync', { method: 'POST' }),
   checkPayment: (bookingId) =>
     request(`/payments/bookings/${encodeURIComponent(bookingId)}/check`, { method: 'POST' }),
   sendReceipt: (bookingId) =>

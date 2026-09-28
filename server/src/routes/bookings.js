@@ -24,6 +24,7 @@ import {
   serialiseOperator,
 } from '../lib/operators-domain.js';
 import { CLOCK_STARTING_PAYMENTS, todayInClubZone } from '../lib/email-domain.js';
+import { syncIfStale } from '../lib/payment-sync.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -126,6 +127,13 @@ async function loadBookingsWithAccounts(club) {
 
 router.get('/', async (req, res, next) => {
   try {
+    // Pick up Stripe payments before listing, so a paid booking never shows as
+    // Pending just because a webhook delivery did not arrive. Bounded, so a
+    // slow Stripe never holds the list up for long.
+    await Promise.race([
+      syncIfStale({ reason: 'bookings list', maxAgeMs: 10_000 }),
+      new Promise((resolve) => setTimeout(resolve, 8000)),
+    ]).catch(() => {});
     const { bookings, operators, today } = await loadBookingsWithAccounts(req.user.customerId);
     res.json({
       bookings,

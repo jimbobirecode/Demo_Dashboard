@@ -162,6 +162,7 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
       )}
 
       {awaiting && <WebhookStatus webhooks={config.webhooks} />}
+      {(awaiting || !config.configured) && <SetupCheck />}
 
       {paidViaStripe && (
         <div className="secondary" style={{ fontSize: '0.8125rem' }}>
@@ -268,6 +269,62 @@ function WebhookStatus({ webhooks }) {
       {last.type ? ` (${last.type})` : ''}
       {last.bookingId ? ` for ${last.bookingId}` : ''}
       {last.detail ? ` — ${last.detail}` : ''}
+    </div>
+  );
+}
+
+/**
+ * Every link from "guest pays" to "booking shows Paid", checked for real —
+ * including asking Stripe which webhook endpoints it has. Each failed step
+ * says what to change.
+ */
+function SetupCheck() {
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    try {
+      setResult(await api.paymentDiagnostics());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!result) {
+    return (
+      <div>
+        <button type="button" className="btn-sm" onClick={run} disabled={busy} style={{ padding: '0.1rem 0.6rem' }}>
+          {busy ? 'Checking…' : 'Check payment setup'}
+        </button>
+        {error && <div className="banner error" style={{ marginTop: '0.4rem' }}>{error}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="stack" style={{ gap: '0.35rem', fontSize: '0.8125rem' }}>
+      <div className="between">
+        <span className="label">Payment setup</span>
+        <button type="button" className="btn-sm" onClick={run} disabled={busy} style={{ padding: '0.1rem 0.6rem' }}>
+          {busy ? 'Checking…' : 'Check again'}
+        </button>
+      </div>
+      {result.checks.map((check) => (
+        <div key={check.id} style={{ display: 'grid', gridTemplateColumns: '1.2rem 1fr', gap: '0.4rem' }}>
+          <span aria-hidden="true" style={{ color: check.ok === false ? 'var(--status-rejected, #DB4F7D)' : check.ok ? 'var(--brand-gold-bright)' : 'var(--text-muted)' }}>
+            {check.ok === false ? '✗' : check.ok ? '✓' : '?'}
+          </span>
+          <div>
+            <strong>{check.label}</strong> <span className="secondary">— {check.detail}</span>
+            {check.fix && <div style={{ color: 'var(--text-primary)' }}>→ {check.fix}</div>}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

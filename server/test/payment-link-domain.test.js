@@ -312,3 +312,23 @@ test('checking a link asks Stripe for its completed sessions and keeps the paid 
   assert.equal(query.get('payment_link'), 'plink_1');
   assert.equal(query.get('status'), 'complete');
 });
+
+test('the setup check reads Stripe\'s webhook endpoints as they are registered', async () => {
+  const { listWebhookEndpoints } = await import('../src/lib/stripe.js');
+  let asked;
+  const fetchImpl = async (url, init) => {
+    asked = { url, method: init.method };
+    return {
+      ok: true,
+      json: async () => ({
+        data: [{ id: 'we_1', url: 'https://dash.example.com/api/stripe/webhook', status: 'enabled', enabled_events: ['checkout.session.completed'], livemode: false }],
+      }),
+    };
+  };
+  const endpoints = await listWebhookEndpoints({ secretKey: 'sk_test', fetchImpl });
+  assert.equal(asked.method, 'GET');
+  assert.match(asked.url, /\/v1\/webhook_endpoints\?limit=100$/);
+  assert.deepEqual(endpoints, [
+    { id: 'we_1', url: 'https://dash.example.com/api/stripe/webhook', status: 'enabled', events: ['checkout.session.completed'], livemode: false },
+  ]);
+});
