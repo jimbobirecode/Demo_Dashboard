@@ -5,6 +5,8 @@
  *   POST /api/payments/bookings/:bookingId/link    create a link, email it, mark Pending
  *   POST /api/payments/bookings/:bookingId/receipt resend the receipt for the last payment
  *   POST /api/payments/bookings/:bookingId/check   ask Stripe whether the link has been paid
+ *   POST /api/payments/sync                        check every pending link now
+ *   GET  /api/payments/diagnostics                 is the whole payment path set up?
  *
  * The webhook that records the payment lives in `stripe-webhook.js`: it is
  * called by Stripe, not by a signed-in user, and needs the raw request body.
@@ -16,7 +18,9 @@ import { serialiseBooking } from '../lib/bookings-domain.js';
 import { buildAuditSet, getBookingColumns } from '../lib/schema.js';
 import { BRAND } from '../lib/brand.js';
 import { sendPaymentEmail } from '../lib/payment-mailer.js';
-import { createPaymentLink, deactivatePaymentLink, paidSessionsForLink, prefilledLinkUrl } from '../lib/stripe.js';
+import { createPaymentLink, deactivatePaymentLink, listWebhookEndpoints, paidSessionsForLink, prefilledLinkUrl } from '../lib/stripe.js';
+import { lastSync, syncPendingPayments } from '../lib/payment-sync.js';
+import { PAYMENT_EVENTS } from '../lib/payment-link-domain.js';
 import { recordStripePayment } from '../lib/record-payment.js';
 import { recentWebhooks } from '../lib/webhook-log.js';
 import {
@@ -267,6 +271,100 @@ router.post('/bookings/:bookingId/check', async (req, res, next) => {
     res.json({ booking: await withAccount(serialiseBooking(await load()), club), found, message });
   } catch (err) {
     if (/^Stripe /.test(err.message)) return res.status(502).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.post('/sync', async (req, res, next) => {
+  try {
+    const result = await syncPendingPayments({ reason: `manual (${req.user.username})` });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Every link in the chain from "guest pays" to "booking shows Paid", checked
+ * against the real thing where possible — including asking Stripe which
+ * webhook endpoints it actually has, rather than trusting the setup notes.
+ */
+router.get('/diagnostics', async (req, res, next) => {
+  const config = readPaymentLinkConfig();
+  const checks = [];
+  const add = (id, ok, label, detail, fix = null) => checks.push({ id, ok, label, detail, fix });
+  const appUrl = String(process.env.APP_URL ?? process.env.PUBLIC_URL ?? '').replace(/\/+$/, '');
+  const webhookUrl = appUrl ? `${appUrl}/api/stripe/webhook` : null;
+
+  try {
+    add('secret_key', Boolean(config.secretKey), 'Stripe secret key',
+      config.secretKey ? `Set (${config.testMode ? 'test' : 'live'} mode)` : 'STRIPE_SECRET_KEY is not set',
+      config.secretKey ? null : 'Set STRIPE_SECRET_KEY on the dashboard service in Render.');
+
+    const columns = await getBookingColumns();
+    const migrated = columns.has('stripe_payment_link_id') && columns.has('stripe_checkout_session_id');
+    add('migration_links', migrated, 'Payment-link database columns',
+      migrated ? 'Present' : 'Missing', migrated ? null : 'Run migration_add_stripe_payment_links.sql.');
+    const receipts = columns.has('pre_play_clock_started_at') && columns.has('payment_receipt_sent_at');
+    add('migration_receipts', receipts, 'Receipt database columns',
+      receipts ? 'Present' : 'Missing', receipts ? null : 'Run migration_add_payment_receipts.sql.');
+
+    add('webhook_secret', Boolean(config.webhookSecret), 'Webhook signing secret',
+      config.webhookSecret ? 'Set' : 'STRIPE_WEBHOOK_SECRET is not set',
+      config.webhookSecret ? null : "Copy the endpoint's signing secret (whsec_…) from Stripe into STRIPE_WEBHOOK_SECRET.");
+
+    add('app_url', Boolean(appUrl), 'Dashboard address (APP_URL)',
+      appUrl || 'Not set, so the webhook address cannot be checked',
+      appUrl ? null : 'Set APP_URL to the dashboard\'s public address, e.g. https://your-dashboard.onrender.com');
+
+    if (config.secretKey) {
+      try {
+        const endpoints = await listWebhookEndpoints({ secretKey: config.secretKey });
+        const ours = endpoints.filter((e) => e.url.replace(/\/+$/, '').endsWith('/api/stripe/webhook'));
+        const matching = webhookUrl ? ours.filter((e) => e.url.replace(/\/+$/, '') === webhookUrl) : ours;
+        const endpoint = matching[0] ?? ours[0] ?? null;
+        if (!endpoint) {
+          add('webhook_endpoint', false, `Webhook endpoint in Stripe (${config.testMode ? 'test' : 'live'} mode)`,
+            endpoints.length
+              ? `${endpoints.length} endpoint(s) registered, none pointing at /api/stripe/webhook: ${endpoints.map((e) => e.url).join(', ')}`
+              : 'No webhook endpoints are registered in this mode',
+            `In Stripe (${config.testMode ? 'Test mode on' : 'live mode'}) → Developers → Webhooks → Add endpoint: ${webhookUrl ?? 'https://<dashboard>/api/stripe/webhook'}`);
+        } else {
+          const listens = PAYMENT_EVENTS.filter((e) => endpoint.events.includes(e) || endpoint.events.includes('*'));
+          const urlOk = !webhookUrl || endpoint.url.replace(/\/+$/, '') === webhookUrl;
+          const ok = endpoint.status === 'enabled' && listens.length > 0 && urlOk;
+          add('webhook_endpoint', ok, `Webhook endpoint in Stripe (${config.testMode ? 'test' : 'live'} mode)`,
+            `${endpoint.url} · ${endpoint.status} · events: ${endpoint.events.join(', ') || 'none'}`,
+            ok ? null : [
+              endpoint.status !== 'enabled' ? 'Enable the endpoint in Stripe.' : null,
+              listens.length ? null : `Add the event checkout.session.completed (or payment_intent.succeeded).`,
+              urlOk ? null : `It points at ${endpoint.url}, not ${webhookUrl}.`,
+            ].filter(Boolean).join(' '));
+        }
+      } catch (err) {
+        add('webhook_endpoint', null, 'Webhook endpoint in Stripe', `Could not ask Stripe: ${err.message}`,
+          'A restricted key may not be allowed to read webhook endpoints; check them in the Stripe dashboard.');
+      }
+    }
+
+    const { entries, startedAt } = recentWebhooks();
+    const last = entries[0] ?? null;
+    add('webhook_received', last ? last.outcome !== 'rejected' && last.outcome !== 'failed' : null,
+      'Webhooks received',
+      last ? `Last ${last.at}: ${last.outcome}${last.detail ? ` — ${last.detail}` : ''}` : `None since the server started (${startedAt})`,
+      last && (last.outcome === 'rejected' || last.outcome === 'failed') ? last.detail : null);
+
+    const sync = lastSync();
+    add('sync', sync ? !sync.skipped && !sync.errors.length : null, 'Fetching payments from Stripe',
+      sync
+        ? sync.skipped
+          ? `Not running: ${sync.skipped}`
+          : `Last run ${sync.finishedAt} (${sync.reason}): ${sync.checked} pending link(s) checked, ${sync.recorded.length} payment(s) recorded${sync.errors.length ? `, errors: ${sync.errors.map((e) => e.error).join('; ')}` : ''}`
+        : 'Not run yet (it runs 15 seconds after start-up, then every few minutes)',
+      null);
+
+    res.json({ checks, webhookUrl, testMode: config.testMode });
+  } catch (err) {
     next(err);
   }
 });

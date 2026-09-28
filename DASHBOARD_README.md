@@ -510,6 +510,21 @@ A receipt that fails to send never undoes the payment. The drawer shows
 *receipt not sent* with a **Send receipt** button, and **Resend receipt** once
 one has gone.
 
+**Payments are fetched, not only waited for.** The webhook is the fast path,
+but on a host that sleeps when idle (Render's free plan) Stripe's call can
+time out while the service wakes, and in test mode Stripe barely retries. So
+the dashboard also asks Stripe itself for every booking whose link is out and
+unpaid: 15 seconds after start-up (which is what a wake-up is), every
+`PAYMENT_SYNC_MINUTES` (default 2) while awake, and whenever the bookings list
+loads. A payment is recorded the same way whichever route sees it first, and
+only once.
+
+**Check payment setup** in the drawer tests every link in the chain for real —
+the key and its mode, the migrations, the signing secret, `APP_URL`, whether
+Stripe actually has an enabled webhook endpoint at
+`<APP_URL>/api/stripe/webhook` for the right events (it asks Stripe), the last
+webhook received, and the last fetch from Stripe — and says what to change.
+
 **If a payment does not show up.** Opening a booking that is awaiting payment
 asks Stripe directly whether its link has been paid, and records the payment
 (and sends the receipt) if so; **Check Stripe for payment** does the same on

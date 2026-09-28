@@ -142,6 +142,22 @@ export async function paidSessionsForLink({ secretKey, linkId, fetchImpl = fetch
 }
 
 /**
+ * The webhook endpoints registered on this Stripe account (in the key's mode).
+ * Used by the setup check to see whether Stripe is actually told to call this
+ * dashboard, for the events it listens to.
+ */
+export async function listWebhookEndpoints({ secretKey, fetchImpl = fetch }) {
+  const page = await call(secretKey, '/webhook_endpoints', { limit: 100 }, fetchImpl, 'GET');
+  return (page?.data ?? []).map((endpoint) => ({
+    id: endpoint.id,
+    url: endpoint.url,
+    status: endpoint.status,
+    events: endpoint.enabled_events ?? [],
+    livemode: Boolean(endpoint.livemode),
+  }));
+}
+
+/**
  * The link as it is emailed: the guest's address filled in, and the booking id
  * as the session's client reference — a second way back to the booking should
  * the metadata ever be missing.
