@@ -13,6 +13,7 @@
  *   summarise()  an operator + their bookings → exposure, ageing, credit headroom
  */
 import { PIPELINE_STAGES, TERMINAL_STATUSES } from './bookings-domain.js';
+import { BRAND } from './brand.js';
 
 /** Revenue and exposure only ever count bookings the club has committed to. */
 export const COMMITTED_STATUSES = ['Booked'];
@@ -69,7 +70,7 @@ export function serialiseOperator(row) {
     depositDueDaysBeforePlay: nullableInteger(row.deposit_due_days_before_play),
     balanceDueDaysBeforePlay: nullableInteger(row.balance_due_days_before_play),
     creditLimit: nullableNumber(row.credit_limit),
-    currency: text(row.currency) || 'GBP',
+    currency: text(row.currency) || BRAND.currency,
 
     onHold: Boolean(row.on_hold),
     active: row.active === undefined || row.active === null ? true : Boolean(row.active),
@@ -581,7 +582,7 @@ export function toOperatorColumns(input) {
     deposit_due_days_before_play: nullableInteger(input.depositDueDaysBeforePlay),
     balance_due_days_before_play: nullableInteger(input.balanceDueDaysBeforePlay),
     credit_limit: nullableNumber(input.creditLimit),
-    currency: (nullableText(input.currency) ?? 'GBP').toUpperCase().slice(0, 3),
+    currency: (nullableText(input.currency) ?? BRAND.currency).toUpperCase().slice(0, 3),
     on_hold: Boolean(input.onHold),
     active: input.active === undefined ? true : Boolean(input.active),
     notes: nullableText(input.notes),
@@ -589,11 +590,11 @@ export function toOperatorColumns(input) {
 }
 
 /** Money in the account's own currency — an operator may not be billed in GBP. */
-export function formatAccountMoney(value, currency = 'GBP') {
+export function formatAccountMoney(value, currency = BRAND.currency) {
   const amount = Number(value);
   return new Intl.NumberFormat('en-GB', {
     style: 'currency',
-    currency: currency || 'GBP',
+    currency: currency || BRAND.currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(Number.isFinite(amount) ? amount : 0);

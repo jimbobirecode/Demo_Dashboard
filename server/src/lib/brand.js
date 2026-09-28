@@ -23,6 +23,6 @@ export const BRAND = {
   defaultCourse: env.DEFAULT_COURSE ?? 'Championship Course',
 
   locale: env.CLUB_LOCALE ?? 'en-GB',
-  currency: env.CLUB_CURRENCY ?? 'GBP',
+  currency: env.CLUB_CURRENCY ?? 'EUR',
   timeZone: env.CLUB_TIMEZONE ?? 'Europe/London',
 };
