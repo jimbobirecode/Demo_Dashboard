@@ -1,6 +1,5 @@
 /**
- * Everything club-specific in one place — the JavaScript equivalent of
- * `club_config.py`. The colour tokens live at the top of `theme.css`; this file
+ * Everything club-specific in one place. The colour tokens live at the top of `theme.css`; this file
  * carries the names, the mark and the wording that changes per customer.
  *
  * Each value can be set at build time (`VITE_CLUB_NAME` and friends) because
@@ -23,7 +22,7 @@ export const BRAND = {
    */
   logoOnDark: env.VITE_CLUB_LOGO_ON_DARK === 'true',
 
-  /** 'Accommodation' here; Streamsong calls the same thing 'Lodging'. */
+  /** What the stay is called on screen: 'Accommodation' here, 'Lodging' at a resort with its own rooms. */
   lodgingLabel: 'Accommodation',
 
   locale: 'en-GB',

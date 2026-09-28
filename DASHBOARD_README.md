@@ -1,9 +1,9 @@
 # Royal Dornoch Visitor Bookings — JavaScript dashboard
 
-A React single-page app served by an Express API, reading the same
-`public.bookings` and `public.dashboard_users` tables the Streamlit dashboard
-uses. No schema change and no data migration — this is a front-end and API
-replacement that can run alongside `dashboard.py` against the same database.
+A React single-page app served by an Express API, over the
+`public.bookings` and `public.dashboard_users` tables the core API (the email
+bot) writes to. It replaced the earlier Streamlit dashboard, which has been
+removed from this repository.
 
 ```
 server/   Express API (auth, bookings, analytics, exports, guest emails,
@@ -79,9 +79,8 @@ is a database console: remove their own administrator access, deactivate their
 own account, or demote, deactivate or delete the last active administrator.
 Deleting an account also kills any outstanding link it holds.
 
-The older Streamlit path still works: an account given a temporary password and
-`must_change_password` is forced to set a permanent bcrypt-hashed one on first
-sign-in.
+An account given a temporary password and `must_change_password` is forced
+to set a permanent bcrypt-hashed one on first sign-in.
 
 ### Password reset
 
@@ -112,7 +111,7 @@ The reset itself is deliberately dull to talk to:
 The rules live in `server/src/lib/password-reset-domain.js` and are unit-tested
 without a database or an API key.
 
-## What is ported from the Streamlit dashboard
+## What it covers
 
 Bookings list and filtering, the `Inquiry → Requested → Booked` pipeline
 (the old `Confirmed` stage is retired: rows still carrying it read as
@@ -120,16 +119,13 @@ Bookings list and filtering, the `Inquiry → Requested → Booked` pipeline
 bodies, CSV and Excel export, Reports & Analytics, and the customer-journey
 guest emails.
 
-Beyond the Streamsong-era fields it also surfaces this install's later columns:
+Beyond the original booking fields it also surfaces this install's later columns:
 the hosted booking form's **guest details** (lead guest, phone, caddies,
 special requests, submitted-at) and **accommodation** (nights, rooms, room
 type, preferences, cost, resort fee). Columns are detected at runtime, so an
-un-migrated database still loads — the same tolerance
-`modules/database/bookings.py` has.
+un-migrated database still loads.
 
-**Not ported:** the pro-shop items. Those remain in the Streamlit app.
-
-Beyond the Streamlit dashboard it adds the trade side of the book — tour
+It also covers the trade side of the book — tour
 operator accounts, their credit terms, where the money sits, and the two
 reminder campaigns that chase it. See **Tour Operators** below.
 
@@ -303,7 +299,7 @@ the revenue.
 
 ## Guest Emails
 
-The two customer-journey campaigns from `modules/customer_journey/emails.py`,
+The two customer-journey campaigns,
 sent from the dashboard rather than a cron job:
 
 | Campaign | When | Template |
@@ -339,7 +335,7 @@ written to twice.
 
 The dynamic-template field names — `guest_name`, `booking_date`, `course_name`,
 `tee_time`, `player_count`, `booking_reference` and the older `play_date` /
-`booking_ref` spellings — match the Streamlit implementation exactly, so the
+`booking_ref` spellings — match the earlier dashboard's exactly, so the
 existing SendGrid templates work unchanged.
 
 
@@ -542,8 +538,7 @@ offering the button.
 ## Branding
 
 `web/src/lib/brand.js` plus the token block at the top of `web/src/theme.css`
-carry everything club-specific — the equivalent of `club_config.py` for the
-JavaScript app.
+carry everything club-specific in the JavaScript app.
 
 The dashboard is branded **TeeMail Golf Club** by default. Every name is
 configurable rather than hard-coded, because one deployment serves whichever
@@ -573,9 +568,6 @@ Two names are deliberately **not** branding and were left alone:
 `VERO_PARTNER_SOURCE` defaults to `dornoch` because it must match the key
 registered on the Club Vero side (`PARTNER_INGEST_KEYS=dornoch:…`), and
 changing it here without changing it there breaks the survey integration.
-`club_config.py` still carries the Streamlit-era profile for the old
-dashboard.
-
 Surfaces are green, accent gold, text sand. The palette is still the one
 validated against the `#1D3B2A` chart surface — see **Chart colours** below
 before changing any of it.
@@ -697,15 +689,14 @@ reserved colours outside the brand palette: `Rejected #DB4F7D` and
 
 ### Logo
 
-`assets/royal-dornoch-logo.png` and `assets/royal-dornoch-logo-dark.png` are
-**byte-identical** — both are the dark-green artwork, so there is no
-light-on-dark variant despite `club_config.py` treating them as two assets.
-The mark is therefore shown on a links-sand plate. If a reversed logo is
-supplied, replace `web/public/logo.png` and set `BRAND.logoOnDark = true`.
+The logo is `web/public/logo.png` (the TeeMail mark). It is dark artwork, so
+the sidebar shows it on a light plate. If a reversed (light) logo is supplied,
+replace the file and set `BRAND.logoOnDark = true`. Emails use the same file —
+see **Email branding** in `.env.example`.
 
 ## Deploying
 
-A separate Render service from the Streamlit one, against the same database:
+A Render web service, against the same database as the core API:
 
 | Setting | Value |
 |---|---|
