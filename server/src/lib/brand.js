@@ -9,6 +9,8 @@
  * this dashboard now serves whichever club it is pointed at. The defaults are
  * TeeMail's own, so an install that sets nothing is branded rather than blank.
  */
+import { toCurrencyCode } from './currency.js';
+
 const env = process.env;
 
 export const BRAND = {
@@ -23,6 +25,7 @@ export const BRAND = {
   defaultCourse: env.DEFAULT_COURSE ?? 'Championship Course',
 
   locale: env.CLUB_LOCALE ?? 'en-GB',
-  currency: env.CLUB_CURRENCY ?? 'EUR',
+  // A CLUB_CURRENCY of "€" (or a mangled one) is read as EUR, not left to crash Intl.
+  currency: toCurrencyCode(env.CLUB_CURRENCY, 'EUR'),
   timeZone: env.CLUB_TIMEZONE ?? 'Europe/London',
 };

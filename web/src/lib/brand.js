@@ -9,6 +9,18 @@
  */
 const env = import.meta.env ?? {};
 
+/** A currency setting of "€", "£" or "$" means its ISO code; anything Intl rejects falls back to EUR. */
+function currencyCode(value, fallback) {
+  const text = String(value ?? '').trim();
+  const code = { '€': 'EUR', '£': 'GBP', $: 'USD' }[text] ?? text.toUpperCase();
+  try {
+    new Intl.NumberFormat('en', { style: 'currency', currency: code });
+    return /^[A-Z]{3}$/.test(code) ? code : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export const BRAND = {
   name: env.VITE_CLUB_NAME ?? 'TeeMail',
   fullName: env.VITE_CLUB_FULL_NAME ?? 'TeeMail Golf Club',
@@ -26,6 +38,6 @@ export const BRAND = {
   lodgingLabel: 'Accommodation',
 
   locale: env.VITE_CLUB_LOCALE ?? 'en-GB',
-  currency: env.VITE_CLUB_CURRENCY ?? 'EUR',
+  currency: currencyCode(env.VITE_CLUB_CURRENCY, 'EUR'),
   timeZone: env.VITE_CLUB_TIMEZONE ?? 'Europe/London',
 };
