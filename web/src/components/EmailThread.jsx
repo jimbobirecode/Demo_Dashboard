@@ -19,20 +19,20 @@ const KIND_LABELS = {
  * them — by the bot, by Stripe's receipt, or by a person. Long emails start
  * folded so a thread stays readable.
  */
-export default function EmailThread({ thread, highlightId = null }) {
+export default function EmailThread({ thread, highlightId = null, actions = null }) {
   if (!thread?.length) {
     return <div className="muted" style={{ fontSize: '0.8125rem' }}>No emails recorded yet.</div>;
   }
   return (
     <div className="stack" style={{ gap: '0.5rem' }}>
       {thread.map((message) => (
-        <ThreadMessage key={message.id} message={message} highlighted={message.id === highlightId} />
+        <ThreadMessage key={message.id} message={message} highlighted={message.id === highlightId} actions={actions} />
       ))}
     </div>
   );
 }
 
-function ThreadMessage({ message, highlighted }) {
+function ThreadMessage({ message, highlighted, actions }) {
   const inbound = message.direction === 'inbound';
   const long = message.body.length > 600;
   const [open, setOpen] = useState(!long || highlighted);
@@ -81,6 +81,7 @@ function ThreadMessage({ message, highlighted }) {
           {open ? 'Fold' : 'Show email'}
         </button>
       )}
+      {actions && <div style={{ marginTop: '0.4rem' }}>{actions(message)}</div>}
     </div>
   );
 }

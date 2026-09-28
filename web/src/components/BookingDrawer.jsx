@@ -81,6 +81,8 @@ export default function BookingDrawer({
           <Field label="Total" value={formatCurrency(booking.total)} accent />
         </div>
 
+        <BookingConversation booking={booking} />
+
         {onPaymentSave && (
           <PaymentPanel
             booking={booking}
@@ -149,8 +151,6 @@ export default function BookingDrawer({
             )}
           </div>
         )}
-
-        <BookingConversation booking={booking} />
 
         <div className="stack" style={{ gap: '0.4rem' }}>
           <span className="label">Status</span>

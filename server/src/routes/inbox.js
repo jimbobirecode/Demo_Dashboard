@@ -5,7 +5,7 @@
  *   GET  /api/inbox/booking/:bookingId                  a booking's whole conversation
  *   POST /api/inbox/booking/:bookingId/send             email the guest from the drawer
  *   GET  /api/inbox/:id                                 one email and its thread
- *   POST /api/inbox/:id/reply                           send a reply, close it
+ *   POST /api/inbox/:id/reply                           reply to any guest email (closes it if in the Inbox)
  *   POST /api/inbox/:id/status                          dismiss or reopen
  *   POST /api/inbox/:id/link                            attach it to a booking
  *
@@ -251,10 +251,13 @@ router.post('/:id/reply', async (req, res, next) => {
     });
     if (!result.ok) return res.status(result.status).json({ error: result.error });
 
+    // Answering an Inbox email closes it. A reply from the booking drawer to
+    // an email the bot already answered (an ordinary tee-time request) is
+    // just part of the conversation, and does not turn up in the Inbox.
     await query(
       `UPDATE public.email_messages
           SET review_status = 'replied', handled_at = NOW(), handled_by = $1
-        WHERE id = $2 AND club = $3`,
+        WHERE id = $2 AND club = $3 AND review_status IN ('open', 'dismissed')`,
       [req.user.username, message.id, req.user.customerId],
     );
     const updated = await loadMessage(req, res);

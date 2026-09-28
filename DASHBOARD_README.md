@@ -195,10 +195,18 @@ Changes and cancellations that quote a booking reference skip the Inbox: they
 become **Guest Requests**, marked *read from an email*, and are approved or
 declined there as usual.
 
-**Conversation on every booking.** Every email to and from the guest — the
-enquiry, the bot's availability reply, the payment link, the receipt, the
-journey emails, staff replies — is recorded and shown in the booking drawer
-under *Emails with the guest*, with **Email the guest** to write a new one.
+**The guest's email on every booking.** The drawer opens with the **Original
+email** — the first thing the guest sent, in full — and a **Reply** button
+that answers it directly: the reply quotes their email and carries the booking
+reference in the subject, so their answer threads back onto the booking.
+Replying to an ordinary tee-time request does not put it in the Inbox.
+
+Below it is the rest of the conversation — the bot's availability reply, the
+payment link, the receipt, the journey emails, staff replies, and anything
+else the guest wrote (each with its own **Reply**) — and **Email the guest**
+for a fresh email. Bookings from before the email log was switched on, from
+the booking form or from an uploaded tee sheet have no original email; the
+drawer says so.
 
 Needs `migration_add_email_inbox.sql`. Without it the Inbox page says so and
 the core API answers everything automatically, as before.

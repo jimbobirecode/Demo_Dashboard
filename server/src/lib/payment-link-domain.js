@@ -12,6 +12,7 @@
  */
 import { BRAND } from './brand.js';
 import { fromMinorUnits } from './stripe.js';
+import { EMAIL_COLORS, brandTemplateData, brandedEmail } from './email-layout.js';
 
 /** The payment status a booking carries while a link is out and unpaid. */
 export const PENDING_PAYMENT_STATUS = 'Pending';
@@ -102,6 +103,7 @@ function firstName(booking) {
 /** What a dynamic template is given, and what the built-in email is written from. */
 export function buildPaymentEmailData(booking, { amount, currency, url }) {
   return {
+    ...brandTemplateData(),
     first_name: firstName(booking),
     guest_name: booking.guestName ?? '',
     booking_id: booking.bookingId,
@@ -170,33 +172,26 @@ export function buildPaymentEmail(data) {
  * caller has already escaped; `details` and the button are escaped here.
  */
 function emailShell({ clubName, paragraphs, button = null, details = [], footer = '' }) {
+  const c = EMAIL_COLORS;
   const rows = details
     .map(
       ([label, value]) =>
-        `<tr><td style="padding:6px 0;color:#5b6b63;">${escape(label)}</td>` +
-        `<td style="padding:6px 0;text-align:right;font-weight:600;color:#1f2d27;">${escape(value)}</td></tr>`,
+        `<tr><td style="padding:6px 0;color:${c.muted};">${escape(label)}</td>` +
+        `<td style="padding:6px 0;text-align:right;font-weight:600;color:${c.text};">${escape(value)}</td></tr>`,
     )
     .join('');
 
-  return `<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#f3f6f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f4;padding:24px 12px;"><tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;">
-<tr><td style="padding:28px 32px 8px;font-size:20px;font-weight:700;color:#1a5e58;">${escape(clubName)}</td></tr>
-<tr><td style="padding:8px 32px;font-size:15px;line-height:1.6;color:#1f2d27;">
-${paragraphs.map((p, i) => `<p style="margin:0 0 ${i === paragraphs.length - 1 ? 20 : 12}px;">${p}</p>`).join('\n')}
-</td></tr>
-${
-  button
-    ? `<tr><td align="center" style="padding:4px 32px 24px;">
-<a href="${escape(button.href)}" style="display:inline-block;background:#1a5e58;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">${escape(button.label)}</a>
-</td></tr>`
-    : ''
-}
-<tr><td style="padding:0 32px 8px;"><table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e3ebe6;font-size:14px;">${rows}</table></td></tr>
-<tr><td style="padding:16px 32px 28px;font-size:13px;line-height:1.6;color:#5b6b63;">${footer}</td></tr>
-</table></td></tr></table>
-</body></html>`;
+  const content =
+    paragraphs.map((p, i) => `<p style="margin:0 0 ${i === paragraphs.length - 1 ? 20 : 12}px;">${p}</p>`).join('\n') +
+    (button
+      ? `<div style="text-align:center;padding:4px 0 24px;"><a href="${escape(button.href)}" style="display:inline-block;background:${c.primary};color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">${escape(button.label)}</a></div>`
+      : '') +
+    (rows ? `<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${c.rule};font-size:14px;">${rows}</table>` : '') +
+    (footer ? `<div style="padding-top:16px;font-size:13px;line-height:1.6;color:${c.muted};">${footer}</div>` : '');
+
+  // clubName is carried by the shared header and footer.
+  void clubName;
+  return brandedEmail(content);
 }
 
 /**
@@ -210,6 +205,7 @@ export function buildReceiptEmailData(booking, { received, currency, paidAt, ref
   const balance = Math.max(Math.round((total - paid) * 100) / 100, 0);
 
   return {
+    ...brandTemplateData(),
     first_name: firstName(booking),
     guest_name: booking.guestName ?? '',
     booking_id: booking.bookingId,

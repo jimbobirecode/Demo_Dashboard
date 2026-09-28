@@ -15,6 +15,7 @@
  * so the rules are tested without a database or an API key.
  */
 import { BRAND } from './brand.js';
+import { brandTemplateData } from './email-layout.js';
 import {
   COMMITTED_STATUSES,
   buildOperatorIndex,
@@ -273,6 +274,9 @@ export function buildReminderTemplateData(reminder, { campaign, fromEmail, days,
   const lines = reminder.bookings;
 
   return {
+    // Logo, colours and contact details, so the SendGrid template can carry
+    // the same branding as the emails the dashboard builds itself.
+    ...brandTemplateData(),
     operator_name: reminder.operatorName,
     contact_name: reminder.contactName || reminder.operatorName,
     account_reference: reminder.operatorId ? `OP-${reminder.operatorId}` : '',
