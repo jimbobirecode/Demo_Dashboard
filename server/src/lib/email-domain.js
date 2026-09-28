@@ -14,6 +14,7 @@
  * and lib/vero-domain.js holds the rules about when there should be one.
  */
 import { BRAND } from './brand.js';
+import { brandTemplateData } from './email-layout.js';
 import { surveyTemplateData } from './vero-domain.js';
 
 /** Bookings only enter a campaign once the club has committed to them. */
@@ -206,6 +207,9 @@ export function buildTemplateData(booking, { fromEmail, now = new Date(), survey
   const players = String(booking.players ?? 0);
 
   return {
+    // Logo, colours and contact details, so the SendGrid template can carry
+    // the same branding as the emails the dashboard builds itself.
+    ...brandTemplateData(),
     guest_name: guestName,
     booking_date: playDate,
     course_name: course,

@@ -15,6 +15,7 @@
  *     stored, so a leaked table cannot be replayed into an account takeover.
  */
 import crypto from 'node:crypto';
+import { brandTemplateData } from './email-layout.js';
 import { BRAND } from './brand.js';
 
 /** How long an emailed link stays usable, unless the environment says otherwise. */
@@ -191,6 +192,9 @@ export function buildResetTemplateData({
   const inviting = purpose === 'invite';
 
   return {
+    // Logo, colours and contact details, so the SendGrid template can carry
+    // the same branding as the emails the dashboard builds itself.
+    ...brandTemplateData(),
     purpose,
     subject: inviting
       ? `You have been given access to the ${club} dashboard`

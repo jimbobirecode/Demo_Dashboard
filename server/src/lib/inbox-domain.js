@@ -7,6 +7,7 @@
  * database or SendGrid.
  */
 import { BRAND } from './brand.js';
+import { brandedEmail } from './email-layout.js';
 
 export const REVIEW_STATUSES = ['open', 'replied', 'dismissed'];
 
@@ -126,7 +127,7 @@ export function buildReplyEmail({ body, original = null }) {
       `<div style="margin-bottom:6px;">On ${escape(wroteAt(original.createdAt))}, ${escape(original.fromEmail)} wrote:</div>` +
       `${escape(original.body).replace(/\n/g, '<br>')}</div>`
     : '';
-  const html = `<!DOCTYPE html><html><body style="margin:0;padding:24px 16px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1f2d27;"><div style="max-width:620px;">${paragraphs}${quoted}</div></body></html>`;
+  const html = brandedEmail(`${paragraphs}${quoted}`);
 
   return { text, html };
 }
