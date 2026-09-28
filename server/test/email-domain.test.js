@@ -205,7 +205,7 @@ test('template data matches the field names the SendGrid templates use', () => {
   assert.equal(data.player_count, '4');
   assert.equal(data.booking_reference, 'RD-1');
   assert.equal(data.current_year, '2026');
-  assert.match(data.total, /^£1,292/, 'money is spelled in the club currency');
+  assert.match(data.total, /^€1,292/, 'money is spelled in the club currency');
   assert.equal(data.hotel_required, 'Yes');
   assert.equal(data.hotel_checkin, 'Tuesday 17 March 2026');
   assert.equal(data.lodging_nights, '2');

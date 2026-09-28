@@ -266,10 +266,10 @@ test('the template data carries the account, the totals and every line twice', (
   assert.equal(data.account_reference, 'OP-1');
   assert.equal(data.booking_count, '2');
   assert.equal(data.player_count, '8');
-  assert.equal(data.total_outstanding, '£1,500.00');
+  assert.equal(data.total_outstanding, '€1,500.00');
   assert.equal(data.has_overdue, true);
   assert.equal(data.days_overdue, '31');
-  assert.equal(data.credit_limit, '£5,000.00');
+  assert.equal(data.credit_limit, '€5,000.00');
   assert.equal(data.club_name, BRAND.fullName, 'the club this install is branded as');
   assert.match(data.credit_terms, /Balance due 14 days before play/);
 
@@ -277,12 +277,12 @@ test('the template data carries the account, the totals and every line twice', (
   assert.equal(data.bookings.length, 2);
   assert.equal(data.bookings[0].booking_reference, 'RD-1');
   assert.equal(data.bookings[0].booking_date, 'Friday 10 April 2026');
-  assert.equal(data.bookings[0].outstanding, '£1,000.00');
+  assert.equal(data.bookings[0].outstanding, '€1,000.00');
   assert.equal(data.bookings[0].note, '31 days overdue');
 
   // …and the same content as a preformatted block, for a plain-text part.
   assert.equal(data.booking_lines.split('\n').length, 2);
-  assert.match(data.booking_lines, /RD-1 · Friday 10 April 2026 10:04 AM · 4 players · £1,000.00 outstanding · 31 days overdue/);
+  assert.match(data.booking_lines, /RD-1 · Friday 10 April 2026 10:04 AM · 4 players · €1,000.00 outstanding · 31 days overdue/);
 });
 
 test('a deposit still outstanding is chased on the deposit date, not the balance date', () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { formatCurrency, formatDate, formatNumber } from '../lib/format.js';
+import { BRAND } from '../lib/brand.js';
 
 const BLANK = {
   name: '',
@@ -13,7 +14,7 @@ const BLANK = {
   depositDueDaysBeforePlay: '',
   balanceDueDaysBeforePlay: '',
   creditLimit: '',
-  currency: 'GBP',
+  currency: BRAND.currency,
   onHold: false,
   active: true,
   notes: '',
@@ -260,7 +261,7 @@ function toForm(operator) {
     depositDueDaysBeforePlay: operator.depositDueDaysBeforePlay ?? '',
     balanceDueDaysBeforePlay: operator.balanceDueDaysBeforePlay ?? '',
     creditLimit: operator.creditLimit ?? '',
-    currency: operator.currency ?? 'GBP',
+    currency: operator.currency ?? BRAND.currency,
     onHold: Boolean(operator.onHold),
     active: operator.active !== false,
     notes: operator.notes ?? '',

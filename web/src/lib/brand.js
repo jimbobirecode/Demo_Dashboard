@@ -25,7 +25,7 @@ export const BRAND = {
   /** What the stay is called on screen: 'Accommodation' here, 'Lodging' at a resort with its own rooms. */
   lodgingLabel: 'Accommodation',
 
-  locale: 'en-GB',
-  currency: 'GBP',
-  timeZone: 'Europe/London',
+  locale: env.VITE_CLUB_LOCALE ?? 'en-GB',
+  currency: env.VITE_CLUB_CURRENCY ?? 'EUR',
+  timeZone: env.VITE_CLUB_TIMEZONE ?? 'Europe/London',
 };
