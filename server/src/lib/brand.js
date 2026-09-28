@@ -1,6 +1,6 @@
 /**
- * The club profile, API side — the server's half of what `club_config.py`
- * holds for the Streamlit dashboard and `web/src/lib/brand.js` for the SPA.
+ * The club profile, API side — the server's half of what `web/src/lib/brand.js`
+ * holds for the SPA.
  *
  * Only the values the API itself needs live here: how money and dates are
  * spelled in outgoing email, and the names a guest sees on it.

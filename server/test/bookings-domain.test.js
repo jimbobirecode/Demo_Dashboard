@@ -63,7 +63,6 @@ test('club ids are spelled for display', () => {
 
   // A club with a name of its own keeps it, and an unknown id is title-cased
   // rather than guessed at.
-  assert.equal(clubDisplayName('streamsong'), 'Streamsong Resort');
   assert.equal(clubDisplayName('pebble_beach'), 'Pebble Beach');
 });
 

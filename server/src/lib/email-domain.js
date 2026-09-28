@@ -1,6 +1,5 @@
 /**
- * Customer-journey email vocabulary, ported from
- * `modules/customer_journey/emails.py`.
+ * Customer-journey email vocabulary.
  *
  * Two campaigns run off the tee sheet: a pre-arrival welcome a few days before
  * play, and a post-play thank you a couple of days after. Everything here is
@@ -196,9 +195,9 @@ function compare(a, b) {
 /**
  * The dynamic-template data the SendGrid templates expect.
  *
- * The field names — and the duplicated legacy spellings below them — match
- * `modules/customer_journey/emails.py` exactly, so the same SendGrid templates
- * keep working against this dashboard.
+ * The field names — and the duplicated legacy spellings below them — are the
+ * ones the existing SendGrid templates were written against, so they keep
+ * working unchanged.
  */
 export function buildTemplateData(booking, { fromEmail, now = new Date(), survey = null } = {}) {
   const guestName = booking.guestName?.trim() || nameFromEmail(booking.guestEmail);

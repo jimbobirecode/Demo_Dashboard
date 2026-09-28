@@ -1,7 +1,7 @@
 /**
  * Booking vocabulary shared by the API routes, the export and the seed check —
  * the pipeline statuses, the row-to-JSON shape the SPA consumes, and the
- * tee-time extraction ported from `modules/utils/helpers.py`.
+ * tee-time extraction from stored enquiry text.
  */
 import { BRAND } from './brand.js';
 
@@ -45,7 +45,6 @@ const CLUB_NAMES = {
   royaldornoch: BRAND.fullName,
   dornoch: BRAND.fullName,
   demo_club: BRAND.fullName,
-  streamsong: 'Streamsong Resort',
 };
 
 /** The club a user is scoped to, spelled for display. */

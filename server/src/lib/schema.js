@@ -4,7 +4,7 @@
  * This dashboard runs against installs at different migration levels, so a
  * column the code knows about may simply not exist yet. Every query is built
  * from the columns the database actually has, and missing ones are selected as
- * NULL — the same tolerance `modules/database/bookings.py` has.
+ * NULL.
  */
 import { query } from '../db.js';
 
