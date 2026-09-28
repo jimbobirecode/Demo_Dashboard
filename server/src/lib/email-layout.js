@@ -7,12 +7,33 @@
  * and the club's footer — so a guest sees one brand whichever service sent
  * the email.
  *
- * The logo must be a public URL: mail clients do not load images from the
- * email itself reliably. It comes from EMAIL_LOGO_URL, or else the dashboard's
- * own /logo.png under APP_URL. With neither set, the header falls back to the
- * club's name in the brand colour rather than a broken image.
+ * The logo travels inside the email as an inline attachment (cid:club-logo),
+ * read from server/assets/email-logo.png — the TeeMail logo at email size. A
+ * linked image only shows if the reader's mail client can reach the address it
+ * was given; an embedded one always shows, whatever APP_URL or the host is.
+ * sendgrid.js attaches it to any email that references it. EMAIL_LOGO_URL
+ * still overrides, for a club that wants its logo served from its own site.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { BRAND } from './brand.js';
+
+export const LOGO_CID = 'club-logo';
+
+const LOGO_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../assets/email-logo.png');
+let logoBase64 = null;
+try {
+  logoBase64 = fs.readFileSync(LOGO_FILE).toString('base64');
+} catch (err) {
+  console.warn(`[email] ${LOGO_FILE} not readable (${err.message}); emails will link to the logo instead`);
+}
+
+/** The inline attachment for an email whose HTML uses cid:club-logo, or null. */
+export function inlineLogoAttachment(html) {
+  if (!logoBase64 || !String(html ?? '').includes(`cid:${LOGO_CID}`)) return null;
+  return { content: logoBase64, filename: 'logo.png', type: 'image/png', disposition: 'inline', content_id: LOGO_CID };
+}
 
 const env = process.env;
 
@@ -26,10 +47,18 @@ export const EMAIL_COLORS = {
   muted: '#5b6b63',
 };
 
+/** A public address for the logo — used by SendGrid templates, which cannot use the embedded copy. */
 export function logoUrl(source = env) {
   if (source.EMAIL_LOGO_URL) return source.EMAIL_LOGO_URL;
   const app = String(source.APP_URL ?? source.PUBLIC_URL ?? '').replace(/\/+$/, '');
   return app ? `${app}/logo.png` : null;
+}
+
+/** What an email's <img> points at: an override URL, else the embedded copy, else a public URL. */
+function headerLogoSrc(source) {
+  if (source.EMAIL_LOGO_URL) return source.EMAIL_LOGO_URL;
+  if (logoBase64) return `cid:${LOGO_CID}`;
+  return logoUrl(source);
 }
 
 export const escapeHtml = (value) =>
@@ -54,7 +83,7 @@ export function brandTemplateData(source = env) {
  */
 export function brandedEmail(content, { source = env } = {}) {
   const c = EMAIL_COLORS;
-  const logo = logoUrl(source);
+  const logo = headerLogoSrc(source);
   const contactEmail = source.REPLY_TO_EMAIL ?? source.FROM_EMAIL ?? '';
   const contactLine = [source.CLUB_ADDRESS, source.CLUB_PHONE].filter(Boolean).map(escapeHtml).join(' · ');
 

@@ -6,6 +6,8 @@
  * for a single POST, and Node 20 (the floor in `package.json`) has fetch built
  * in.
  */
+import { inlineLogoAttachment } from './email-layout.js';
+
 const ENDPOINT = 'https://api.sendgrid.com/v3/mail/send';
 const TIMEOUT_MS = 15_000;
 
@@ -43,6 +45,7 @@ export async function sendHtmlEmail({
   html,
   fetchImpl = fetch,
 }) {
+  const logo = inlineLogoAttachment(html);
   return post(apiKey, toEmail, fetchImpl, {
     from: { email: fromEmail, name: fromName },
     ...(replyTo ? { reply_to: { email: replyTo } } : {}),
@@ -52,6 +55,8 @@ export async function sendHtmlEmail({
       { type: 'text/plain', value: text },
       { type: 'text/html', value: html },
     ],
+    // The logo the HTML shows as cid:club-logo, carried inside the email.
+    ...(logo ? { attachments: [logo] } : {}),
   });
 }
 
