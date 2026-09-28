@@ -26,6 +26,12 @@ test('a branded email carries its logo inside it, whatever APP_URL says', () => 
   assert.match(brandedEmail('<p>Hi</p>', { source: {} }), /<img src="cid:club-logo"/);
 });
 
+test('the logo is sized in the tag, so Outlook cannot stretch it', () => {
+  const html = brandedEmail('<p>Hello</p>', { source: ENV });
+  // email-logo.png is 480x108: 240 wide is 54 high.
+  assert.match(html, /<img src="cid:club-logo"[^>]* width="240" height="54"/);
+});
+
 test('EMAIL_LOGO_URL still overrides, for a logo served from the club\'s own site', () => {
   assert.match(brandedEmail('<p>Hi</p>', { source: { EMAIL_LOGO_URL: 'https://club.example/logo.png' } }), /<img src="https:\/\/club\.example\/logo\.png"/);
 });
