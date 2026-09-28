@@ -1,17 +1,16 @@
 /**
  * Fetching payments from Stripe, rather than waiting to be told.
  *
- * The webhook is the fast path, but it cannot be the only one. The dashboard
- * runs on a host that sleeps when idle (Render's free plan): Stripe's call to
- * a sleeping service times out while it wakes, and in test mode Stripe barely
- * retries — so a paid booking could sit at Pending indefinitely.
+ * The webhook is the fast path, but it cannot be the only one: if a delivery
+ * does not arrive or is refused — no endpoint registered in the right Stripe
+ * mode, a wrong signing secret, a deploy or outage at the moment Stripe calls
+ * — a paid booking would otherwise sit at Pending.
  *
  * So the dashboard also asks Stripe itself, for every booking whose link is
  * out and unpaid:
- *   - shortly after the server starts (which is also what happens when
- *     Stripe's own call wakes it),
- *   - every PAYMENT_SYNC_MINUTES while it is awake (default 2),
- *   - when the bookings list is loaded (at most once a minute).
+ *   - shortly after the server starts,
+ *   - every PAYMENT_SYNC_MINUTES while it runs (default 2),
+ *   - when the bookings list is loaded (at most every 10 seconds).
  *
  * It records a payment exactly as the webhook would (recordStripePayment is
  * idempotent, so whichever sees a payment first counts it) and sends the

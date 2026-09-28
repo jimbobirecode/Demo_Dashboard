@@ -229,7 +229,7 @@ router.post('/bookings/:bookingId/receipt', async (req, res, next) => {
  *
  * The drawer calls this when it opens on a booking still awaiting payment, so
  * a payment whose webhook never arrived (endpoint not set up, wrong secret,
- * server asleep) still lands the moment somebody looks.
+ * a delivery that failed) still lands the moment somebody looks.
  */
 router.post('/bookings/:bookingId/check', async (req, res, next) => {
   const config = readPaymentLinkConfig();

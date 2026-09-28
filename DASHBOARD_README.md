@@ -511,11 +511,11 @@ A receipt that fails to send never undoes the payment. The drawer shows
 one has gone.
 
 **Payments are fetched, not only waited for.** The webhook is the fast path,
-but on a host that sleeps when idle (Render's free plan) Stripe's call can
-time out while the service wakes, and in test mode Stripe barely retries. So
-the dashboard also asks Stripe itself for every booking whose link is out and
-unpaid: 15 seconds after start-up (which is what a wake-up is), every
-`PAYMENT_SYNC_MINUTES` (default 2) while awake, and whenever the bookings list
+but if a delivery does not arrive or is refused (no endpoint in the right
+Stripe mode, a wrong signing secret, a deploy at the moment Stripe calls), the
+payment would otherwise be missed. So the dashboard also asks Stripe itself
+for every booking whose link is out and unpaid: 15 seconds after start-up,
+every `PAYMENT_SYNC_MINUTES` (default 2), and whenever the bookings list
 loads. A payment is recorded the same way whichever route sees it first, and
 only once.
 

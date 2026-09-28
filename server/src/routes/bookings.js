@@ -128,7 +128,7 @@ async function loadBookingsWithAccounts(club) {
 router.get('/', async (req, res, next) => {
   try {
     // Pick up Stripe payments before listing, so a paid booking never shows as
-    // Pending just because the webhook missed a sleeping server. Bounded, so a
+    // Pending just because a webhook delivery did not arrive. Bounded, so a
     // slow Stripe never holds the list up for long.
     await Promise.race([
       syncIfStale({ reason: 'bookings list', maxAgeMs: 10_000 }),
