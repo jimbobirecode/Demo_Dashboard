@@ -106,7 +106,11 @@ router.get('/', async (req, res, next) => {
       totals: portfolioTotals(summaries),
     });
   } catch (err) {
-    next(err);
+    // Say what went wrong on the page itself: a bare "Internal server error"
+    // leaves the club unable to tell a data problem from a schema one without
+    // digging through the host's logs. Only signed-in staff reach this route.
+    console.error('[api] loading tour operators failed:', err);
+    res.status(500).json({ error: `Could not load the tour operators: ${err.message}` });
   }
 });
 
