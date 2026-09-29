@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BRAND } from './brand.js';
+import { BRAND, appBaseUrl } from './brand.js';
 
 export const LOGO_CID = 'club-logo';
 
@@ -56,8 +56,7 @@ export const EMAIL_COLORS = {
 /** A public address for the logo — used by SendGrid templates, which cannot use the embedded copy. */
 export function logoUrl(source = env) {
   if (source.EMAIL_LOGO_URL) return source.EMAIL_LOGO_URL;
-  const app = String(source.APP_URL ?? source.PUBLIC_URL ?? '').replace(/\/+$/, '');
-  return app ? `${app}/logo.png` : null;
+  return `${appBaseUrl(source)}/logo.png`;
 }
 
 /** What an email's <img> points at: an override URL, else the embedded copy, else a public URL. */

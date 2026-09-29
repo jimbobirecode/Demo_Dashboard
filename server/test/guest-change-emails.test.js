@@ -12,7 +12,11 @@ test('a manage link is issued only when the install can sign one, and the manage
   assert.match(url, /^https:\/\/democlub\.teemail\.io\/manage-booking\?ref=TMG-20261018-AB12&token=/);
   const token = new URL(url).searchParams.get('token');
   assert.ok(verifyBookingToken(booking.bookingId, token, 'secret', booking.club), 'the page verifies what the email carries');
-  assert.equal(manageUrlFor(booking, { BOOKING_LINK_SECRET: 'secret' }), null, 'no APP_URL');
+  assert.match(
+    manageUrlFor(booking, { BOOKING_LINK_SECRET: 'secret' }),
+    /^https:\/\/democlub\.teemail\.io\/manage-booking\?/,
+    'no APP_URL: the TeeMail dashboard',
+  );
   assert.equal(manageUrlFor(booking, { APP_URL: 'https://x' }), null, 'no secret');
 });
 

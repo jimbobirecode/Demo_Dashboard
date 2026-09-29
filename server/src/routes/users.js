@@ -53,6 +53,8 @@ router.get('/config', async (req, res, next) => {
       invitePurpose: await hasInvitePurpose(),
       canInvite: config.hasApiKey && Boolean(config.fromEmail) && invite.configured && Boolean(config.appUrl),
       inviteTtlMinutes: invite.ttlMinutes,
+      // Shown on the page, so a wrong address is obvious before anyone is invited.
+      linkBase: config.appUrl,
       missing: [
         ...(config.hasApiKey ? [] : ['SENDGRID_API_KEY']),
         ...(config.fromEmail ? [] : ['FROM_EMAIL']),

@@ -17,7 +17,7 @@
  * cancellations outside that window apply themselves.
  */
 import crypto from 'node:crypto';
-import { BRAND } from './brand.js';
+import { BRAND, appBaseUrl } from './brand.js';
 import { brandedEmail, escapeHtml } from './email-layout.js';
 
 export const REQUEST_KINDS = ['cancel', 'amend'];
@@ -82,14 +82,13 @@ export function manageLink(appUrl, bookingId, token) {
 
 /**
  * The "manage your booking" link for a booking, ready to put in an email - or
- * null when this install cannot issue one (no APP_URL, or no secret to sign
- * with). Guests reach the change/cancel page only through these links.
+ * null when this install cannot issue one (no secret to sign with). Built on
+ * appBaseUrl(): APP_URL, or the TeeMail dashboard. Guests reach the change/cancel page only through these links.
  */
 export function manageUrlFor(booking, env = process.env) {
   const secret = linkSecret(env);
-  const appUrl = env.APP_URL ?? env.PUBLIC_URL ?? '';
-  if (!secret || !appUrl || !booking?.bookingId) return null;
-  return manageLink(appUrl, booking.bookingId, signBooking(booking.bookingId, secret, booking.club ?? ''));
+  if (!secret || !booking?.bookingId) return null;
+  return manageLink(appBaseUrl(env), booking.bookingId, signBooking(booking.bookingId, secret, booking.club ?? ''));
 }
 
 function describeRound(booking) {

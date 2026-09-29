@@ -16,7 +16,7 @@ import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { buildAuditSet, getBookingColumns } from '../lib/schema.js';
-import { BRAND } from '../lib/brand.js';
+import { BRAND, appBaseUrl } from '../lib/brand.js';
 import { sendPaymentEmail } from '../lib/payment-mailer.js';
 import { createPaymentLink, deactivatePaymentLink, listWebhookEndpoints, paidSessionsForLink, prefilledLinkUrl } from '../lib/stripe.js';
 import { lastSync, syncPendingPayments } from '../lib/payment-sync.js';
@@ -293,7 +293,7 @@ router.get('/diagnostics', async (req, res, next) => {
   const config = readPaymentLinkConfig();
   const checks = [];
   const add = (id, ok, label, detail, fix = null) => checks.push({ id, ok, label, detail, fix });
-  const appUrl = String(process.env.APP_URL ?? process.env.PUBLIC_URL ?? '').replace(/\/+$/, '');
+  const appUrl = appBaseUrl();
   const webhookUrl = appUrl ? `${appUrl}/api/stripe/webhook` : null;
 
   try {
