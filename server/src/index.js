@@ -19,6 +19,7 @@ import changeRoutes from './routes/changes.js';
 import paymentRoutes, { sendReceipt } from './routes/payments.js';
 import { startPaymentSync } from './lib/payment-sync.js';
 import inboxRoutes from './routes/inbox.js';
+import portalRoutes from './routes/portal.js';
 import stripeWebhookRoutes from './routes/stripe-webhook.js';
 import { pool } from './db.js';
 
@@ -62,6 +63,7 @@ app.use('/api/imports', importRoutes);
 app.use('/api/changes', changeRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/inbox', inboxRoutes);
+app.use('/api/portal', portalRoutes);
 
 const distDir = path.resolve(__dirname, '../../web/dist');
 if (fs.existsSync(distDir)) {

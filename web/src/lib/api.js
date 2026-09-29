@@ -157,7 +157,21 @@ export const api = {
     request(`/emails/pending${queryString({ campaign, scope })}`),
   sendCampaign: (campaign, bookingIds, { dryRun = false } = {}) =>
     request('/emails/send', { method: 'POST', body: { campaign, bookingIds, dryRun } }),
+
+  // The tour operator portal (its own session, separate from staff sign-in).
+  portalLogin: (email) => request('/portal/login', { method: 'POST', body: { email } }),
+  portalRedeem: (token) => request('/portal/session', { method: 'POST', body: { token } }),
+  portalLogout: () => request('/portal/logout', { method: 'POST', body: {} }),
+  portalMe: () => request('/portal/me'),
+  portalBookings: () => request('/portal/bookings'),
+  portalRequest: (bookingId, body) =>
+    request(`/portal/bookings/${encodeURIComponent(bookingId)}/request`, { method: 'POST', body }),
+  portalPay: (bookingId) => request(`/portal/bookings/${encodeURIComponent(bookingId)}/pay`, { method: 'POST', body: {} }),
+  portalEnquiry: (body) => request('/portal/enquiries', { method: 'POST', body }),
 };
+
+/** The operator's statement, downloaded by the browser with the portal cookie. */
+export const portalStatementUrl = `${BASE}/portal/statement.csv`;
 
 /**
  * Exports are plain links rather than fetches, so the browser handles the
