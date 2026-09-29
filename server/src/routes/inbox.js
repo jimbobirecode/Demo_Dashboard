@@ -19,6 +19,8 @@ import { requireAuth } from '../auth.js';
 import { BRAND } from '../lib/brand.js';
 import { sendHtmlEmail } from '../lib/sendgrid.js';
 import { hasEmailLog, logEmail } from '../lib/email-log.js';
+import { getBookingColumns } from '../lib/schema.js';
+import { LOGO_CID, inlineLogoAttachment } from '../lib/email-layout.js';
 import {
   REVIEW_STATUSES,
   buildReplyEmail,
@@ -106,15 +108,21 @@ router.get('/', async (req, res, next) => {
 
     const where =
       status === 'all'
-        ? `direction = 'inbound'`
+        ? `m.direction = 'inbound'`
         : REVIEW_STATUSES.includes(status)
-          ? `direction = 'inbound' AND review_status = '${status}'`
-          : `direction = 'inbound' AND review_status = 'open'`;
+          ? `m.direction = 'inbound' AND m.review_status = '${status}'`
+          : `m.direction = 'inbound' AND m.review_status = 'open'`;
+    // The guest's name from their booking, so the list reads as people rather
+    // than addresses. Installs without the column simply show the address.
+    const guestName = (await getBookingColumns()).has('guest_name') ? 'b.guest_name' : 'NULL';
 
     const [list, counts] = await Promise.all([
       query(
-        `SELECT * FROM public.email_messages WHERE club = $1 AND ${where}
-          ORDER BY created_at DESC LIMIT 200`,
+        `SELECT m.*, ${guestName} AS booking_guest_name
+           FROM public.email_messages m
+           LEFT JOIN public.bookings b ON b.booking_id = m.booking_id AND b.club = m.club
+          WHERE m.club = $1 AND ${where}
+          ORDER BY m.created_at DESC LIMIT 200`,
         [club],
       ),
       query(
@@ -224,6 +232,35 @@ async function withThread(req, message) {
   }
   return { message, thread, booking };
 }
+
+/**
+ * The email exactly as it would go out, for the composer's Preview: the same
+ * branded frame and, for a reply, the same quoted original. Nothing is sent.
+ */
+router.post('/preview', async (req, res, next) => {
+  try {
+    const body = String(req.body?.body ?? '');
+    let original = null;
+    const replyToId = Number.parseInt(req.body?.replyToId, 10);
+    if (Number.isFinite(replyToId) && (await hasEmailLog())) {
+      const { rows } = await query('SELECT * FROM public.email_messages WHERE id = $1 AND club = $2', [
+        replyToId,
+        req.user.customerId,
+      ]);
+      if (rows[0] && rows[0].direction === 'inbound') original = serialiseMessage(rows[0]);
+    }
+    const email = buildReplyEmail({ body: body.trim() ? body : ' ', original });
+    // The sent email carries its logo as an attachment (cid:club-logo), which a
+    // browser cannot resolve, so the preview carries it inline instead.
+    const logo = inlineLogoAttachment(email.html);
+    const html = logo
+      ? email.html.replaceAll(`cid:${LOGO_CID}`, `data:${logo.type};base64,${logo.content}`)
+      : email.html;
+    res.json({ html, text: email.text });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/:id', async (req, res, next) => {
   try {

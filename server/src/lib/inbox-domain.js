@@ -48,6 +48,8 @@ export function serialiseMessage(row) {
     direction: row.direction,
     bookingId: row.booking_id ?? null,
     fromEmail: row.from_email ?? '',
+    // Only the Inbox list query supplies it (from the linked booking).
+    guestName: row.booking_guest_name ?? null,
     toEmail: row.to_email ?? '',
     subject: row.subject ?? '',
     body: row.body_text ?? '',
