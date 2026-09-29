@@ -477,6 +477,7 @@ table.data tbody tr.selected { background: var(--surface-3); }
   background: var(--surface-1); border: 1px solid var(--border); color: var(--text-secondary); cursor: pointer;
 }
 .quick-replies .chip:hover:not(:disabled) { border-color: var(--brand-gold); color: var(--text-primary); }
+.quick-replies .chip[aria-pressed='true'] { background: var(--brand-gold); border-color: var(--brand-gold); color: #1B1A12; font-weight: 600; }
 
 .inbox-item-snippet { color: var(--text-secondary); font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .context-strip {

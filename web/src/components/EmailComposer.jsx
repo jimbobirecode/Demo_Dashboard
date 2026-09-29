@@ -121,7 +121,8 @@ export default function EmailComposer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [preview, setPreview] = useState(null); // { html } | { loading } | null
-  const [replaced, setReplaced] = useState(null); // what a quick reply replaced, to put back
+  const [replaced, setReplaced] = useState(null); // the person's own text a quick reply replaced, to put back
+  const [template, setTemplate] = useState(null); // { id, text } of the quick reply in the box
   const timer = useRef(null);
   const latest = useRef({});
   latest.current = { body, subjectText, send, onSent };
@@ -186,13 +187,26 @@ export default function EmailComposer({
     deliver();
   }
 
-  // A quick reply replaces what is in the box - the usual intent - and what
-  // it replaced can be put back with one click.
+  // Choosing a ready-made reply swaps it in for whatever is in the box -
+  // switching from one to another replaces it, never stacks them. Text the
+  // person wrote or changed themselves is kept aside so it can be put back.
+  const edited = Boolean(template) && body !== template.text;
+
   function applyQuickReply(id) {
     const reply = quickReplies(context).find((entry) => entry.id === id);
     if (!reply) return;
-    setReplaced(body.trim() ? body : null);
+    if (template?.id === id && !edited) return;
+    const untouchedTemplate = template && !edited;
+    if (body.trim() && !untouchedTemplate) setReplaced(body);
     setBody(reply.body);
+    setTemplate({ id, text: reply.body });
+    setPreview(null);
+  }
+
+  function clearBox() {
+    if (body.trim() && (!template || edited)) setReplaced(body);
+    setBody('');
+    setTemplate(null);
     setPreview(null);
   }
 
@@ -222,10 +236,24 @@ export default function EmailComposer({
         <div className="quick-replies" aria-label="Start from a ready-made reply">
           <span className="muted" style={{ fontSize: '0.8125rem' }}>Start with:</span>
           {quickReplies(context).map((entry) => (
-            <button key={entry.id} type="button" className="chip" disabled={locked} onClick={() => applyQuickReply(entry.id)}>
+            <button
+              key={entry.id}
+              type="button"
+              className="chip"
+              aria-pressed={template?.id === entry.id}
+              disabled={locked}
+              onClick={() => applyQuickReply(entry.id)}
+              title={template && template.id !== entry.id ? `Replace the text with “${entry.label}”` : undefined}
+            >
               {entry.label}
+              {template?.id === entry.id && edited ? ' (edited)' : ''}
             </button>
           ))}
+          {body.trim() && (
+            <button type="button" className="link-button" disabled={locked} onClick={clearBox}>
+              Clear
+            </button>
+          )}
           {replaced && (
             <button
               type="button"
@@ -233,6 +261,7 @@ export default function EmailComposer({
               onClick={() => {
                 setBody(replaced);
                 setReplaced(null);
+                setTemplate(null);
               }}
             >
               Put back what I had written
