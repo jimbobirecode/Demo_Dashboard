@@ -10,7 +10,7 @@ const ENV = { APP_URL: 'https://dash.teemail.io/', FROM_EMAIL: 'bookings@club.te
 test('the logo comes from EMAIL_LOGO_URL, else the dashboard\'s own /logo.png', () => {
   assert.equal(logoUrl({ EMAIL_LOGO_URL: 'https://cdn.example/logo.png', APP_URL: 'https://x' }), 'https://cdn.example/logo.png');
   assert.equal(logoUrl({ APP_URL: 'https://dash.teemail.io/' }), 'https://dash.teemail.io/logo.png');
-  assert.equal(logoUrl({}), null);
+  assert.equal(logoUrl({}), 'https://democlub.teemail.io/logo.png', 'the TeeMail dashboard when APP_URL is unset');
 });
 
 test('a branded email carries its logo inside it, whatever APP_URL says', () => {

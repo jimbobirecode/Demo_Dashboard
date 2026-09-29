@@ -14,6 +14,7 @@ import { BRAND } from './brand.js';
 import { toCurrencyCode } from './currency.js';
 import { fromMinorUnits } from './stripe.js';
 import { EMAIL_COLORS, brandTemplateData, brandedEmail } from './email-layout.js';
+import { manageUrlFor } from './change-request-domain.js';
 
 /** The payment status a booking carries while a link is out and unpaid. */
 export const PENDING_PAYMENT_STATUS = 'Pending';
@@ -121,7 +122,15 @@ export function buildPaymentEmailData(booking, { amount, currency, url }) {
     amount: formatMoney(amount, currency),
     booking_total: formatMoney(booking.total, currency),
     payment_url: url,
+    manage_url: manageUrlFor(booking) ?? '',
   };
+}
+
+/** The "change or cancel" line both built-in emails end with, where a link can be issued. */
+function manageLine(url) {
+  return url
+    ? `<br><br>Need to change or cancel? <a href="${escape(url)}" style="color:#1a5e58;font-weight:600;">Manage your booking</a>.`
+    : '';
 }
 
 const escape = (value) =>
@@ -152,6 +161,7 @@ export function buildPaymentEmail(data) {
     ...details.map(([label, value]) => `${label}: ${value}`),
     '',
     'If you have any questions, just reply to this email.',
+    ...(data.manage_url ? ['', `Need to change or cancel? ${data.manage_url}`] : []),
     '',
     data.club_name,
   ].join('\n');
@@ -167,7 +177,8 @@ export function buildPaymentEmail(data) {
     footer:
       'Payments are processed securely by Stripe. If the button does not work, copy this link into your browser:<br>' +
       `<a href="${escape(data.payment_url)}" style="color:#1a5e58;word-break:break-all;">${escape(data.payment_url)}</a><br><br>` +
-      'Questions? Just reply to this email.',
+      'Questions? Just reply to this email.' +
+      manageLine(data.manage_url),
   });
 
   return { subject, text, html };
@@ -227,6 +238,7 @@ export function buildReceiptEmailData(booking, { received, currency, paidAt, ref
     total_paid: formatMoney(paid, currency),
     balance_due: formatMoney(balance, currency),
     paid_in_full: balance === 0,
+    manage_url: manageUrlFor(booking) ?? '',
   };
 }
 
@@ -267,6 +279,7 @@ export function buildReceiptEmail(data) {
     ...details.map(([label, value]) => `${label}: ${value}`),
     '',
     'Please keep this email as your receipt. We look forward to welcoming you.',
+    ...(data.manage_url ? ['', `Need to change or cancel? ${data.manage_url}`] : []),
     '',
     data.club_name,
   ].join('\n');
@@ -278,7 +291,9 @@ export function buildReceiptEmail(data) {
       `Thank you — we have received your payment of <strong>${escape(data.amount_received)}</strong>. ${escape(status)}`,
     ],
     details,
-    footer: 'Please keep this email as your receipt. We look forward to welcoming you.<br><br>Questions? Just reply to this email.',
+    footer:
+      'Please keep this email as your receipt. We look forward to welcoming you.<br><br>Questions? Just reply to this email.' +
+      manageLine(data.manage_url),
   });
 
   return { subject, text, html };

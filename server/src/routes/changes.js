@@ -15,9 +15,14 @@ import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { getBookingColumns, hasChangeRequests } from '../lib/schema.js';
+import { BRAND } from '../lib/brand.js';
+import { sendHtmlEmail } from '../lib/sendgrid.js';
+import { logEmail } from '../lib/email-log.js';
 import {
+  buildChangeEmail,
   describeOptions,
   linkSecret,
+  manageUrlFor,
   readChangePolicy,
   serialiseChangeRequest,
   validateChangeRequest,
@@ -26,6 +31,58 @@ import {
 import { createThrottle } from '../lib/password-reset-domain.js';
 
 const router = Router();
+
+/**
+ * Tell the guest what happened to their request, and file the email on the
+ * booking's conversation. Resolves true only when the email really went, so
+ * nobody is told "a confirmation is on its way" when it is not.
+ */
+async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request = null } = {}) {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL;
+  if (!apiKey || !fromEmail || !booking?.guestEmail) return false;
+  try {
+    const email = buildChangeEmail({ outcome, booking, request, note, manageUrl: manageUrlFor(booking) });
+    const outcomeOf = await sendHtmlEmail({
+      apiKey,
+      fromEmail,
+      fromName: process.env.FROM_NAME ?? BRAND.fromName,
+      replyTo: process.env.REPLY_TO_EMAIL ?? fromEmail,
+      toEmail: booking.guestEmail,
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
+    });
+    if (!outcomeOf.ok) {
+      console.error('[changes] guest email failed:', outcomeOf.message);
+      return false;
+    }
+    await logEmail({
+      club: booking.club,
+      direction: 'outbound',
+      booking_id: booking.bookingId,
+      from_email: fromEmail,
+      to_email: booking.guestEmail,
+      subject: email.subject,
+      body_text: email.text,
+      sent_by: sentBy,
+      kind: 'change_decision',
+    });
+    return true;
+  } catch (err) {
+    console.error('[changes] guest email failed:', err.message);
+    return false;
+  }
+}
+
+async function loadBooking(bookingId, club) {
+  const columns = await getBookingColumns();
+  const { rows } = await query(
+    `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+    [bookingId, club],
+  );
+  return rows[0] ? serialiseBooking(rows[0]) : null;
+}
 
 /** An unauthenticated surface; one client should not be able to hammer it. */
 const lookupThrottle = createThrottle({ limit: 30, windowMs: 15 * 60_000 });
@@ -105,40 +162,32 @@ router.post('/request', async (req, res, next) => {
       });
     }
 
-    const auto = check.value.kind === 'cancel' && options.autoCancel;
-
+    // A guest only ever asks. The request waits for the club; the booking
+    // itself is not touched until somebody approves it.
     const { rows } = await query(
       `INSERT INTO public.booking_change_requests
          (booking_id, club, kind, message, requested_date, requested_time, requested_players,
           status, auto_applied, days_before_play, guest_email, requested_ip)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'Pending',FALSE,$8,$9,$10)
        RETURNING *`,
       [
         booking.bookingId, booking.club, check.value.kind, check.value.message,
         check.value.requestedDate, check.value.requestedTime, check.value.requestedPlayers,
-        auto ? 'Applied' : 'Pending', auto, options.daysUntilPlay,
-        booking.guestEmail, clientIp(req),
+        options.daysUntilPlay, booking.guestEmail, clientIp(req),
       ],
     );
 
-    if (auto) {
-      const columns = await getBookingColumns();
-      const note = `Cancelled by the guest online${booking.note ? `. ${booking.note}` : ''}`;
-      await query(
-        `UPDATE public.bookings SET status = 'Cancelled', note = $1
-           ${columns.has('updated_at') ? ', updated_at = NOW()' : ''}
-           ${columns.has('updated_by') ? ", updated_by = 'guest'" : ''}
-         WHERE booking_id = $2 AND club = $3`,
-        [note, booking.bookingId, booking.club],
-      );
-    }
+    const emailed = await emailGuest(booking, 'received', { request: { kind: check.value.kind } });
 
     res.status(201).json({
       ok: true,
-      applied: auto,
-      message: auto
-        ? 'Your booking has been cancelled. A confirmation is on its way.'
-        : 'Thank you — the club has your request and will be in touch.',
+      applied: false,
+      emailed,
+      message:
+        check.value.kind === 'cancel'
+          ? 'Thank you — your cancellation request is with the club. Your booking stays in place until they confirm it'
+            + (emailed ? ', and we have emailed you a copy of your request.' : '.')
+          : 'Thank you — the club has your request and will be in touch.',
       request: serialiseChangeRequest(rows[0]),
     });
   } catch (err) {
@@ -236,9 +285,20 @@ router.post('/:id/:decision', requireAuth, async (req, res, next) => {
       ],
     );
 
+    const booking = await loadBooking(request.booking_id, req.user.customerId);
+    const note = String(req.body?.note ?? '').trim();
+    const guestEmailed = booking
+      ? await emailGuest(booking, cancelling ? 'cancelled' : approving ? 'approved' : 'declined', {
+          note,
+          sentBy: req.user.username,
+        })
+      : false;
+
     res.json({
       request: serialiseChangeRequest(rows[0]),
       bookingCancelled: cancelling,
+      guestEmailed,
+      guestEmail: booking?.guestEmail ?? null,
       // An approved amendment is an instruction to a person, not a state change.
       needsEditing: approving && request.kind === 'amend',
     });
@@ -285,7 +345,7 @@ async function findByToken(ref, token) {
 }
 
 function today() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+  return new Intl.DateTimeFormat('en-CA', { timeZone: BRAND.timeZone }).format(new Date());
 }
 
 function clientIp(req) {

@@ -17,6 +17,8 @@
  * cancellations outside that window apply themselves.
  */
 import crypto from 'node:crypto';
+import { BRAND, appBaseUrl } from './brand.js';
+import { brandedEmail, escapeHtml } from './email-layout.js';
 
 export const REQUEST_KINDS = ['cancel', 'amend'];
 export const REQUEST_STATUSES = ['Pending', 'Approved', 'Declined', 'Applied'];
@@ -27,20 +29,16 @@ export const MANAGEABLE_STATUSES = ['Inquiry', 'Requested', 'Booked'];
 /**
  * Read the self-service policy.
  *
- * `BOOKING_SELF_CANCEL_DAYS` unset means every request goes to the club, which
- * is the safe default: a club that has not thought about this should not
- * discover its policy by having a tee time vanish.
+ * A guest can only ever *ask*: a cancellation, like an amendment, changes
+ * nothing until somebody at the club approves it. A tee time is scarce and
+ * often inside a charging window, so the club - not the guest, and not the
+ * software - decides when a booking is cancelled. (There used to be a
+ * BOOKING_SELF_CANCEL_DAYS setting that let cancellations apply themselves;
+ * it is gone, and is ignored if still set.)
  */
 export function readChangePolicy(env = process.env) {
-  const raw = env.BOOKING_SELF_CANCEL_DAYS;
-  const days = Number.parseInt(raw, 10);
-
   return {
-    // Cancellations this many days or more before play apply immediately.
-    selfCancelDays: Number.isFinite(days) && days >= 0 ? days : null,
-    selfCancelEnabled: Number.isFinite(days) && days >= 0,
-    // Amendments are never automatic: "could we move to Sunday" is a
-    // conversation about availability, not a state change.
+    cancelNeedsApproval: true,
     amendNeedsApproval: true,
     secretConfigured: Boolean(env.JWT_SECRET || env.BOOKING_LINK_SECRET),
   };
@@ -80,6 +78,102 @@ export function verifyBookingToken(bookingId, token, secret, club = '') {
 export function manageLink(appUrl, bookingId, token) {
   const base = String(appUrl ?? '').replace(/\/+$/, '');
   return `${base}/manage-booking?ref=${encodeURIComponent(bookingId)}&token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * The "manage your booking" link for a booking, ready to put in an email - or
+ * null when this install cannot issue one (no secret to sign with). Built on
+ * appBaseUrl(): APP_URL, or the TeeMail dashboard. Guests reach the change/cancel page only through these links.
+ */
+export function manageUrlFor(booking, env = process.env) {
+  const secret = linkSecret(env);
+  if (!secret || !booking?.bookingId) return null;
+  return manageLink(appBaseUrl(env), booking.bookingId, signBooking(booking.bookingId, secret, booking.club ?? ''));
+}
+
+function describeRound(booking) {
+  const when = booking?.date
+    ? new Intl.DateTimeFormat(BRAND.locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+        .format(new Date(`${booking.date}T00:00:00Z`))
+        .replace(',', '')
+    : '';
+  const time = booking?.teeTime && booking.teeTime !== 'Not Specified' ? ` at ${booking.teeTime}` : '';
+  return when ? `${when}${time}` : '';
+}
+
+/**
+ * The email that tells a guest what happened to their change request.
+ *
+ * outcome: 'received' (their request is in; nothing has changed yet),
+ * 'cancelled' (the club approved their cancellation), 'approved' (an
+ * amendment the club will make) or 'declined'. `note` is what staff wrote, if anything; `manageUrl` is added
+ * where the booking is still live.
+ */
+export function buildChangeEmail({ outcome, booking, request = null, note = '', manageUrl = null }) {
+  const ref = booking.bookingId;
+  const first = String(booking.guestName ?? '').trim().split(/\s+/)[0] || 'there';
+  const round = describeRound(booking);
+  const said = String(note ?? '').trim();
+
+  const content = {
+    received: {
+      subject: `Your ${request?.kind === 'cancel' ? 'cancellation' : 'change'} request for ${ref} – ${BRAND.fullName}`,
+      lines: [
+        request?.kind === 'cancel'
+          ? `We have received your request to cancel booking ${ref}${round ? ` for ${round}` : ''}.`
+          : `We have received your request to change booking ${ref}${round ? ` (${round})` : ''}.`,
+        request?.kind === 'cancel'
+          ? 'Your booking is not cancelled yet - it stays in place until our team confirms the cancellation. We will email you as soon as they have.'
+          : 'Nothing changes yet - our team will check what is possible and email you.',
+      ],
+    },
+    cancelled: {
+      subject: `Your booking ${ref} is cancelled – ${BRAND.fullName}`,
+      lines: [
+        `Your cancellation has been confirmed: we have cancelled booking ${ref}${round ? ` for ${round}` : ''}.`,
+        said,
+        'We are sorry you cannot make it, and we hope to welcome you another time.',
+      ],
+    },
+    approved: {
+      subject: `Your change to booking ${ref} – ${BRAND.fullName}`,
+      lines: [
+        `Thank you - we can make the change you asked for to booking ${ref}${round ? ` (currently ${round})` : ''}.`,
+        said || 'We will confirm the new details to you shortly.',
+      ],
+    },
+    declined: {
+      subject: `About your change to booking ${ref} – ${BRAND.fullName}`,
+      lines: [
+        `We are sorry, but we are not able to make the change you asked for to booking ${ref}.`,
+        said,
+        `Your booking${round ? ` for ${round}` : ''} stays as it is. If you would like to talk it through, just reply to this email.`,
+      ],
+    },
+  }[outcome];
+  if (!content) throw new Error(`Unknown change outcome: ${outcome}`);
+
+  const lines = content.lines.filter(Boolean);
+  const link = outcome === 'approved' || outcome === 'declined' ? manageUrl : null;
+  const text = [
+    `Hi ${first},`,
+    '',
+    ...lines.flatMap((line) => [line, '']),
+    ...(link ? [`Manage your booking: ${link}`, ''] : []),
+    'Kind regards,',
+    BRAND.fullName,
+  ].join('\n');
+
+  const html = brandedEmail(
+    `<p style="margin:0 0 14px;">Hi ${escapeHtml(first)},</p>` +
+      lines.map((line) => `<p style="margin:0 0 14px;">${escapeHtml(line)}</p>`).join('') +
+      (link
+        ? `<p style="margin:0 0 14px;"><a href="${escapeHtml(link)}" style="color:#1a5e58;font-weight:600;">Manage your booking</a></p>`
+        : '') +
+      `<p style="margin:0;">Kind regards,<br>${escapeHtml(BRAND.fullName)}</p>`,
+  );
+
+  return { subject: content.subject, text, html };
 }
 
 /** Whole days from today to the round. Negative once it has been played. */
@@ -122,17 +216,15 @@ export function describeOptions(booking, policy, today) {
     };
   }
 
-  const autoCancel = policy.selfCancelEnabled && days !== null && days >= policy.selfCancelDays;
-
+  void policy;
   return {
     canCancel: true,
     canAmend: true,
-    autoCancel,
+    // Never: every request waits for the club (see readChangePolicy).
+    autoCancel: false,
     daysUntilPlay: days,
-    // Said plainly, so nobody is surprised by what the button did.
-    reason: autoCancel
-      ? 'Cancelling now takes effect immediately.'
-      : 'The club will confirm your request — nothing changes until they do.',
+    // Said plainly, so nobody thinks asking is the same as cancelling.
+    reason: 'The club will confirm your request — nothing changes until they do.',
   };
 }
 

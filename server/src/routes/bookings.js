@@ -25,6 +25,7 @@ import {
 } from '../lib/operators-domain.js';
 import { CLOCK_STARTING_PAYMENTS, todayInClubZone } from '../lib/email-domain.js';
 import { syncIfStale } from '../lib/payment-sync.js';
+import { BRAND } from '../lib/brand.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -343,8 +344,8 @@ router.post('/fix-tee-times', async (req, res, next) => {
       await query(
         `UPDATE public.bookings SET tee_time = $1${
           columns.has('updated_at') ? ', updated_at = NOW()' : ''
-        } WHERE booking_id = $2`,
-        [teeTime, row.booking_id],
+        } WHERE booking_id = $2 AND club = $3`,
+        [teeTime, row.booking_id, req.user.customerId],
       );
       updated += 1;
     }
@@ -363,7 +364,7 @@ const EXPORT_COLUMNS = [
   ['date', 'Tee Date'],
   ['teeTime', 'Tee Time'],
   ['players', 'Players'],
-  ['total', 'Total (GBP)'],
+  ['total', `Total (${BRAND.currency})`],
   ['status', 'Status'],
   ['golfCourses', 'Golf Courses'],
   ['selectedTeeTimes', 'Selected Tee Times'],

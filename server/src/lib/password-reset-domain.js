@@ -16,7 +16,7 @@
  */
 import crypto from 'node:crypto';
 import { brandTemplateData } from './email-layout.js';
-import { BRAND } from './brand.js';
+import { BRAND, appBaseUrl } from './brand.js';
 
 /** How long an emailed link stays usable, unless the environment says otherwise. */
 export const DEFAULT_TTL_MINUTES = 60;
@@ -64,9 +64,7 @@ export function readResetConfig(env = process.env) {
   if (!env.SENDGRID_API_KEY) missing.push('SENDGRID_API_KEY');
   if (!env.FROM_EMAIL) missing.push('FROM_EMAIL');
   if (!env.SENDGRID_TEMPLATE_PASSWORD_RESET) missing.push('SENDGRID_TEMPLATE_PASSWORD_RESET');
-  // Without a public URL the emailed link would be a relative path and useless,
-  // so it counts as missing configuration rather than something to guess at.
-  if (!env.APP_URL && !env.PUBLIC_URL) missing.push('APP_URL');
+  // Links are built on appBaseUrl(): APP_URL, or the TeeMail dashboard.
   const complete = missing;
 
   // Each purpose has its own template and its own life. The invitation
@@ -90,9 +88,8 @@ export function readResetConfig(env = process.env) {
     fromName: env.FROM_NAME ?? BRAND.fromName,
     purposes,
     templateId: env.SENDGRID_TEMPLATE_PASSWORD_RESET ?? null,
-    // Where the link points. Without it the email would carry a relative path
-    // and be useless, so it is required rather than guessed.
-    appUrl: trimSlash(env.APP_URL ?? env.PUBLIC_URL ?? ''),
+    // Where the link points: APP_URL, or https://democlub.teemail.io.
+    appUrl: appBaseUrl(env),
     ttlMinutes: positiveInt(env.PASSWORD_RESET_TTL_MINUTES, DEFAULT_TTL_MINUTES),
     missing: complete,
     configured: complete.length === 0,

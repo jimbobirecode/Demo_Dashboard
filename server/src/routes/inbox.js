@@ -21,6 +21,7 @@ import { sendHtmlEmail } from '../lib/sendgrid.js';
 import { hasEmailLog, logEmail } from '../lib/email-log.js';
 import { getBookingColumns } from '../lib/schema.js';
 import { LOGO_CID, inlineLogoAttachment } from '../lib/email-layout.js';
+import { manageUrlFor } from '../lib/change-request-domain.js';
 import {
   REVIEW_STATUSES,
   buildReplyEmail,
@@ -72,7 +73,9 @@ async function sendAndRecord(req, { to, subject, body, bookingId = null, origina
   const problem = replyProblem({ to, body });
   if (problem) return { ok: false, status: 400, error: problem };
 
-  const email = buildReplyEmail({ body, original });
+  // A reply about a booking tells the guest where to change or cancel it.
+  const manageUrl = bookingId ? manageUrlFor({ bookingId, club: req.user.customerId }) : null;
+  const email = buildReplyEmail({ body, original, manageUrl });
   const outcome = await sendHtmlEmail({
     apiKey: config.apiKey,
     fromEmail: config.fromEmail,

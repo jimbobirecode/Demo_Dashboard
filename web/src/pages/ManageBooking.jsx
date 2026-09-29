@@ -115,7 +115,7 @@ export default function ManageBooking() {
               )}
               {options.canCancel && (
                 <button type="button" onClick={() => setKind('cancel')}>
-                  {options.autoCancel ? 'Cancel this booking' : 'Request a cancellation'}
+                  Request a cancellation
                 </button>
               )}
             </div>
@@ -123,10 +123,9 @@ export default function ManageBooking() {
         ) : (
           <form className="stack" style={{ gap: '0.75rem' }} onSubmit={submit}>
             {kind === 'cancel' ? (
-              <div className={options.autoCancel ? 'banner error' : 'banner'}>
-                {options.autoCancel
-                  ? 'This will cancel your booking straight away. It cannot be undone here.'
-                  : 'The club will confirm your cancellation — your tee time is held until they do.'}
+              <div className="banner">
+                This sends a cancellation request to the club. Your booking is not cancelled until the club confirms
+                it — your tee time is held until then, and you will get an email either way.
               </div>
             ) : (
               <div className="toolbar">
@@ -177,7 +176,7 @@ export default function ManageBooking() {
             <div className="row">
               <button type="submit" className="btn-primary" disabled={busy}>
                 {busy ? 'Sending…' : kind === 'cancel'
-                  ? (options.autoCancel ? 'Yes, cancel it' : 'Send cancellation request')
+                  ? 'Send cancellation request'
                   : 'Send request'}
               </button>
               <button type="button" onClick={() => { setKind(null); setError(null); }}>

@@ -28,9 +28,11 @@ test('configuration names every missing piece', () => {
     'SENDGRID_API_KEY',
     'FROM_EMAIL',
     'SENDGRID_TEMPLATE_PASSWORD_RESET',
-    'APP_URL',
   ]);
   assert.equal(readResetConfig({}).configured, false);
+  // Links are never relative: without APP_URL they open the TeeMail dashboard.
+  assert.equal(readResetConfig({}).appUrl, 'https://democlub.teemail.io');
+  assert.equal(readResetConfig({ PUBLIC_URL: 'https://x.example/' }).appUrl, 'https://x.example');
 
   const config = readResetConfig(ENV);
   assert.equal(config.configured, true);

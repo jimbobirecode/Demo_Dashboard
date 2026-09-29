@@ -77,6 +77,12 @@ export default function Users() {
           nobody can be emailed a link until you set {state.config.missing.join(', ')}.
         </div>
       )}
+      {state.config?.linkBase && (
+        <p className="muted" style={{ fontSize: '0.8125rem', margin: 0 }}>
+          Invitation and password links open <strong className="secondary">{state.config.linkBase}</strong>
+          {' '}(the dashboard&rsquo;s APP_URL setting).
+        </p>
+      )}
 
       <NewUserForm
         disabled={!state.config?.migrated || busy !== null}

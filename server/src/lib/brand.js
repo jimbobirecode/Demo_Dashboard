@@ -13,6 +13,20 @@ import { toCurrencyCode } from './currency.js';
 
 const env = process.env;
 
+/** Where the dashboard lives when APP_URL / PUBLIC_URL say nothing. */
+export const DEFAULT_APP_URL = 'https://democlub.teemail.io';
+
+/**
+ * The dashboard's public address: what every emailed link - invitations,
+ * password resets, manage-booking links, the logo - is built on. APP_URL
+ * (or PUBLIC_URL) wins; without either it is the TeeMail dashboard, never a
+ * blank that would put a relative, useless link in an email.
+ */
+export function appBaseUrl(source = env) {
+  const configured = String(source.APP_URL || source.PUBLIC_URL || '').trim();
+  return (configured || DEFAULT_APP_URL).replace(/\/+$/, '');
+}
+
 export const BRAND = {
   clubId: env.CLUB_ID ?? 'teemail',
   name: env.CLUB_NAME ?? 'TeeMail',

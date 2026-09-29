@@ -112,18 +112,21 @@ const escape = (value) =>
  * simple HTML, with the guest's original quoted underneath so the guest (and
  * whoever reads the reply next) sees what is being answered.
  */
-export function buildReplyEmail({ body, original = null }) {
-  const typed = String(body).trim();
+export function buildReplyEmail({ body, original = null, manageUrl = null }) {
+  const typed = String(body).trim() + (manageUrl ? `\n\nNeed to change or cancel? Manage your booking: ${manageUrl}` : '');
   const quote = original
     ? `\n\n----\nOn ${wroteAt(original.createdAt)}, ${original.fromEmail} wrote:\n` +
       String(original.body ?? '').split('\n').map((line) => `> ${line}`).join('\n')
     : '';
   const text = typed + quote;
 
-  const paragraphs = typed
+  const paragraphs = String(body).trim()
     .split(/\n{2,}/)
     .map((para) => `<p style="margin:0 0 14px;">${escape(para).replace(/\n/g, '<br>')}</p>`)
-    .join('');
+    .join('') +
+    (manageUrl
+      ? `<p style="margin:0 0 14px;font-size:13px;color:#5b6b63;">Need to change or cancel? <a href="${escape(manageUrl)}" style="color:#1a5e58;font-weight:600;">Manage your booking</a></p>`
+      : '');
   const quoted = original
     ? `<div style="margin-top:24px;padding-left:12px;border-left:3px solid #d6dfda;color:#6b7a72;font-size:13px;">` +
       `<div style="margin-bottom:6px;">On ${escape(wroteAt(original.createdAt))}, ${escape(original.fromEmail)} wrote:</div>` +
