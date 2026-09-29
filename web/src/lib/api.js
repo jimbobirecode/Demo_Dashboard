@@ -125,6 +125,7 @@ export const api = {
   inboxStatus: (id, status) => request(`/inbox/${id}/status`, { method: 'POST', body: { status } }),
   inboxLink: (id, bookingId) => request(`/inbox/${id}/link`, { method: 'POST', body: { bookingId } }),
   bookingThread: (bookingId) => request(`/inbox/booking/${encodeURIComponent(bookingId)}`),
+  emailPreview: (body, replyToId = null) => request('/inbox/preview', { method: 'POST', body: { body, replyToId } }),
   emailGuest: (bookingId, body, subject) =>
     request(`/inbox/booking/${encodeURIComponent(bookingId)}/send`, { method: 'POST', body: { body, subject } }),
   paymentDiagnostics: () => request('/payments/diagnostics'),
