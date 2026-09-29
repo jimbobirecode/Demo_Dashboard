@@ -52,6 +52,9 @@ export function requireAuth(req, res, next) {
 
   try {
     req.user = jwt.verify(token, JWT_SECRET);
+    // A tour operator portal session is signed with the same key but is never
+    // a staff session, whatever cookie it arrives in.
+    if (req.user.kind === 'operator' || !req.user.customerId) throw new Error('not a staff session');
     next();
   } catch {
     res.status(401).json({ error: 'Session expired' });

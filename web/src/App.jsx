@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useSession } from './lib/useSession.js';
 import Login from './pages/Login.jsx';
 import ChangePassword from './pages/ChangePassword.jsx';
@@ -15,6 +15,7 @@ import Waitlist from './pages/Waitlist.jsx';
 import Import from './pages/Import.jsx';
 import Requests from './pages/Requests.jsx';
 import Inbox from './pages/Inbox.jsx';
+import Portal from './pages/Portal.jsx';
 import { useInboxCount } from './lib/useInboxCount.js';
 
 // The charting library is only needed on the analytics route — keep it out of
@@ -25,6 +26,14 @@ import { BRAND } from './lib/brand.js';
 import Wordmark from './components/Wordmark.jsx';
 
 export default function App() {
+  // The tour operator portal has its own sign-in and session; staff sign-in
+  // never comes into it.
+  const { pathname } = useLocation();
+  if (pathname === '/portal' || pathname.startsWith('/portal/')) return <Portal />;
+  return <StaffApp />;
+}
+
+function StaffApp() {
   const { user, mustChangePassword, loading, login, logout, completePasswordChange } = useSession();
   const [inboxCount, setInboxCount] = useInboxCount(Boolean(user) && !mustChangePassword);
 
