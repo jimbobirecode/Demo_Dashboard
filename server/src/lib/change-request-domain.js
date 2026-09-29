@@ -29,20 +29,16 @@ export const MANAGEABLE_STATUSES = ['Inquiry', 'Requested', 'Booked'];
 /**
  * Read the self-service policy.
  *
- * `BOOKING_SELF_CANCEL_DAYS` unset means every request goes to the club, which
- * is the safe default: a club that has not thought about this should not
- * discover its policy by having a tee time vanish.
+ * A guest can only ever *ask*: a cancellation, like an amendment, changes
+ * nothing until somebody at the club approves it. A tee time is scarce and
+ * often inside a charging window, so the club - not the guest, and not the
+ * software - decides when a booking is cancelled. (There used to be a
+ * BOOKING_SELF_CANCEL_DAYS setting that let cancellations apply themselves;
+ * it is gone, and is ignored if still set.)
  */
 export function readChangePolicy(env = process.env) {
-  const raw = env.BOOKING_SELF_CANCEL_DAYS;
-  const days = Number.parseInt(raw, 10);
-
   return {
-    // Cancellations this many days or more before play apply immediately.
-    selfCancelDays: Number.isFinite(days) && days >= 0 ? days : null,
-    selfCancelEnabled: Number.isFinite(days) && days >= 0,
-    // Amendments are never automatic: "could we move to Sunday" is a
-    // conversation about availability, not a state change.
+    cancelNeedsApproval: true,
     amendNeedsApproval: true,
     secretConfigured: Boolean(env.JWT_SECRET || env.BOOKING_LINK_SECRET),
   };
@@ -109,9 +105,9 @@ function describeRound(booking) {
 /**
  * The email that tells a guest what happened to their change request.
  *
- * outcome: 'cancelled' (their booking is cancelled - by them online, or by
- * the club approving it), 'approved' (an amendment the club will make) or
- * 'declined'. `note` is what staff wrote, if anything; `manageUrl` is added
+ * outcome: 'received' (their request is in; nothing has changed yet),
+ * 'cancelled' (the club approved their cancellation), 'approved' (an
+ * amendment the club will make) or 'declined'. `note` is what staff wrote, if anything; `manageUrl` is added
  * where the booking is still live.
  */
 export function buildChangeEmail({ outcome, booking, request = null, note = '', manageUrl = null }) {
@@ -121,10 +117,21 @@ export function buildChangeEmail({ outcome, booking, request = null, note = '', 
   const said = String(note ?? '').trim();
 
   const content = {
+    received: {
+      subject: `Your ${request?.kind === 'cancel' ? 'cancellation' : 'change'} request for ${ref} – ${BRAND.fullName}`,
+      lines: [
+        request?.kind === 'cancel'
+          ? `We have received your request to cancel booking ${ref}${round ? ` for ${round}` : ''}.`
+          : `We have received your request to change booking ${ref}${round ? ` (${round})` : ''}.`,
+        request?.kind === 'cancel'
+          ? 'Your booking is not cancelled yet - it stays in place until our team confirms the cancellation. We will email you as soon as they have.'
+          : 'Nothing changes yet - our team will check what is possible and email you.',
+      ],
+    },
     cancelled: {
       subject: `Your booking ${ref} is cancelled – ${BRAND.fullName}`,
       lines: [
-        `As you asked, we have cancelled your booking ${ref}${round ? ` for ${round}` : ''}.`,
+        `Your cancellation has been confirmed: we have cancelled booking ${ref}${round ? ` for ${round}` : ''}.`,
         said,
         'We are sorry you cannot make it, and we hope to welcome you another time.',
       ],
@@ -148,7 +155,7 @@ export function buildChangeEmail({ outcome, booking, request = null, note = '', 
   if (!content) throw new Error(`Unknown change outcome: ${outcome}`);
 
   const lines = content.lines.filter(Boolean);
-  const link = outcome !== 'cancelled' ? manageUrl : null;
+  const link = outcome === 'approved' || outcome === 'declined' ? manageUrl : null;
   const text = [
     `Hi ${first},`,
     '',
@@ -167,7 +174,6 @@ export function buildChangeEmail({ outcome, booking, request = null, note = '', 
       `<p style="margin:0;">Kind regards,<br>${escapeHtml(BRAND.fullName)}</p>`,
   );
 
-  void request;
   return { subject: content.subject, text, html };
 }
 
@@ -211,17 +217,15 @@ export function describeOptions(booking, policy, today) {
     };
   }
 
-  const autoCancel = policy.selfCancelEnabled && days !== null && days >= policy.selfCancelDays;
-
+  void policy;
   return {
     canCancel: true,
     canAmend: true,
-    autoCancel,
+    // Never: every request waits for the club (see readChangePolicy).
+    autoCancel: false,
     daysUntilPlay: days,
-    // Said plainly, so nobody is surprised by what the button did.
-    reason: autoCancel
-      ? 'Cancelling now takes effect immediately.'
-      : 'The club will confirm your request — nothing changes until they do.',
+    // Said plainly, so nobody thinks asking is the same as cancelling.
+    reason: 'The club will confirm your request — nothing changes until they do.',
   };
 }
 

@@ -71,9 +71,8 @@ export default function Requests() {
         <div>
           <h1>Guest requests</h1>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            {data.policy.selfCancelEnabled
-              ? `Guests can cancel themselves ${data.policy.selfCancelDays}+ days before play; everything else waits for you`
-              : 'Nothing changes until you approve it'}
+            Guests can only ask. Nothing is cancelled or changed until you approve it, and the guest is emailed
+            either way.
           </p>
         </div>
         <button type="button" className="btn-sm" onClick={() => setShowAll(!showAll)}>
@@ -134,7 +133,7 @@ export default function Requests() {
                   <td>
                     {request.status}
                     {request.autoApplied && (
-                      <div className="muted" style={{ fontSize: '0.75rem' }}>By the guest</div>
+                      <div className="muted" style={{ fontSize: '0.75rem' }}>Applied automatically (old setting)</div>
                     )}
                     {request.resolvedBy && (
                       <div className="muted" style={{ fontSize: '0.75rem' }}>{request.resolvedBy}</div>

@@ -3,8 +3,9 @@
 -- ============================================================================
 -- Ten guest bookings and the change requests their guests sent: amendments
 -- (a new date, a new time, more or fewer players) and cancellations, six
--- waiting for a decision and four already dealt with - approved, declined, and
--- applied automatically under the club's change policy.
+-- waiting for a decision and four already dealt with by staff - approved,
+-- declined, and a cancellation confirmed. Nothing is ever cancelled or changed
+-- without staff approving it.
 --
 -- Paste the whole file into the SQL console and run it. Safe to run more than
 -- once: it replaces its own sample requests each time. Dates are relative to
@@ -133,7 +134,7 @@ BEGIN
            r.new_time, r.new_players, r.status, r.auto_applied,
            b.day - r.asked_days_ago,
            CASE WHEN r.status = 'Pending' THEN NULL ELSE NOW() - ((r.asked_days_ago - 1) || ' days')::INTERVAL END,
-           CASE WHEN r.status = 'Pending' THEN NULL WHEN r.auto_applied THEN 'policy' ELSE 'Jamie Kenny' END,
+           CASE WHEN r.status = 'Pending' THEN NULL ELSE 'Jamie Kenny' END,
            r.note, b.email, NOW() - (r.asked_days_ago || ' days')::INTERVAL - INTERVAL '3 hours'
       FROM (VALUES
         -- Waiting for a decision
@@ -153,11 +154,11 @@ BEGIN
         ('1007', 'amend', 'Could we push back to the afternoon of the next day?',
                  27, '03:10 PM', NULL, 'Approved', FALSE, 5, 'Moved to 3:10 PM the following day; guest confirmed by email.'),
         ('1008', 'cancel', 'Family emergency - we need to cancel, apologies.',
-                 NULL, NULL, NULL, 'Applied', TRUE, 8, 'Cancelled automatically: more than the policy''s notice period before play.'),
+                 NULL, NULL, NULL, 'Applied', FALSE, 8, 'Cancellation approved; booking cancelled and the guest emailed.'),
         ('1009', 'amend', 'Is there any chance of a Sunday tee time instead?',
                  20, '10:00 AM', NULL, 'Declined', FALSE, 4, 'No visitor tee times on Sundays that month - offered Saturday instead.'),
         ('1010', 'amend', 'We are now a group of four rather than two.',
-                 NULL, NULL, 4, 'Applied', TRUE, 6, 'Players updated automatically under the club''s change policy.')
+                 NULL, NULL, 4, 'Approved', FALSE, 6, 'Two more players added to the booking; guest confirmed by email.')
       ) AS r(n, kind, message, move_to, new_time, new_players, status, auto_applied, asked_days_ago, note)
       JOIN (VALUES
         ('1001', 12, 'sarah.whitfield@example.com'), ('1002', 19, 'm.donnelly@example.com'),

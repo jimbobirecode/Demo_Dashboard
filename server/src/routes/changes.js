@@ -37,12 +37,12 @@ const router = Router();
  * booking's conversation. Resolves true only when the email really went, so
  * nobody is told "a confirmation is on its way" when it is not.
  */
-async function emailGuest(booking, outcome, { note = '', sentBy = 'bot' } = {}) {
+async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request = null } = {}) {
   const apiKey = process.env.SENDGRID_API_KEY;
   const fromEmail = process.env.FROM_EMAIL;
   if (!apiKey || !fromEmail || !booking?.guestEmail) return false;
   try {
-    const email = buildChangeEmail({ outcome, booking, note, manageUrl: manageUrlFor(booking) });
+    const email = buildChangeEmail({ outcome, booking, request, note, manageUrl: manageUrlFor(booking) });
     const outcomeOf = await sendHtmlEmail({
       apiKey,
       fromEmail,
@@ -162,43 +162,32 @@ router.post('/request', async (req, res, next) => {
       });
     }
 
-    const auto = check.value.kind === 'cancel' && options.autoCancel;
-
+    // A guest only ever asks. The request waits for the club; the booking
+    // itself is not touched until somebody approves it.
     const { rows } = await query(
       `INSERT INTO public.booking_change_requests
          (booking_id, club, kind, message, requested_date, requested_time, requested_players,
           status, auto_applied, days_before_play, guest_email, requested_ip)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'Pending',FALSE,$8,$9,$10)
        RETURNING *`,
       [
         booking.bookingId, booking.club, check.value.kind, check.value.message,
         check.value.requestedDate, check.value.requestedTime, check.value.requestedPlayers,
-        auto ? 'Applied' : 'Pending', auto, options.daysUntilPlay,
-        booking.guestEmail, clientIp(req),
+        options.daysUntilPlay, booking.guestEmail, clientIp(req),
       ],
     );
 
-    if (auto) {
-      const columns = await getBookingColumns();
-      const note = `Cancelled by the guest online${booking.note ? `. ${booking.note}` : ''}`;
-      await query(
-        `UPDATE public.bookings SET status = 'Cancelled', note = $1
-           ${columns.has('updated_at') ? ', updated_at = NOW()' : ''}
-           ${columns.has('updated_by') ? ", updated_by = 'guest'" : ''}
-         WHERE booking_id = $2 AND club = $3`,
-        [note, booking.bookingId, booking.club],
-      );
-    }
-
-    const emailed = auto ? await emailGuest(booking, 'cancelled') : false;
+    const emailed = await emailGuest(booking, 'received', { request: { kind: check.value.kind } });
 
     res.status(201).json({
       ok: true,
-      applied: auto,
+      applied: false,
       emailed,
-      message: auto
-        ? `Your booking has been cancelled.${emailed ? ' A confirmation email is on its way.' : ''}`
-        : 'Thank you — the club has your request and will be in touch.',
+      message:
+        check.value.kind === 'cancel'
+          ? 'Thank you — your cancellation request is with the club. Your booking stays in place until they confirm it'
+            + (emailed ? ', and we have emailed you a copy of your request.' : '.')
+          : 'Thank you — the club has your request and will be in touch.',
       request: serialiseChangeRequest(rows[0]),
     });
   } catch (err) {

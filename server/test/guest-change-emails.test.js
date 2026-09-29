@@ -17,9 +17,14 @@ test('a manage link is issued only when the install can sign one, and the manage
 });
 
 test('the guest is told plainly what happened to their request', () => {
+  const received = buildChangeEmail({ outcome: 'received', booking, request: { kind: 'cancel' }, manageUrl: 'https://m' });
+  assert.match(received.subject, /cancellation request/);
+  assert.match(received.text, /Your booking is not cancelled yet/);
+  assert.ok(!received.text.includes('https://m'));
+
   const cancelled = buildChangeEmail({ outcome: 'cancelled', booking, manageUrl: 'https://m' });
   assert.match(cancelled.subject, /cancelled/);
-  assert.match(cancelled.text, /we have cancelled your booking TMG-20261018-AB12 for Sunday 18 October 2026 at 10:30 AM/);
+  assert.match(cancelled.text, /Your cancellation has been confirmed: we have cancelled booking TMG-20261018-AB12 for Sunday 18 October 2026 at 10:30 AM/);
   assert.ok(!cancelled.text.includes('https://m'), 'no manage link on a cancelled booking');
 
   const declined = buildChangeEmail({ outcome: 'declined', booking, note: 'No Sunday times that month.', manageUrl: 'https://m' });

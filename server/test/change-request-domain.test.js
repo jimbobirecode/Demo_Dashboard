@@ -40,37 +40,24 @@ test('the link is absolute and escapes what it carries', () => {
   );
 });
 
-test('the default policy sends everything to the club', () => {
+test('a guest can only ever ask: every cancellation and change waits for the club', () => {
   const policy = readChangePolicy({});
-  assert.equal(policy.selfCancelEnabled, false);
-  assert.equal(policy.selfCancelDays, null);
+  assert.equal(policy.cancelNeedsApproval, true);
   assert.equal(policy.amendNeedsApproval, true, 'an amendment is a conversation about availability');
 
-  assert.equal(readChangePolicy({ BOOKING_SELF_CANCEL_DAYS: '7' }).selfCancelDays, 7);
-  assert.equal(readChangePolicy({ BOOKING_SELF_CANCEL_DAYS: '0' }).selfCancelDays, 0, 'zero means always');
-  assert.equal(readChangePolicy({ BOOKING_SELF_CANCEL_DAYS: '-3' }).selfCancelEnabled, false);
-  assert.equal(readChangePolicy({ BOOKING_SELF_CANCEL_DAYS: 'soon' }).selfCancelEnabled, false);
-});
-
-test('what a guest may do depends on the policy and the date', () => {
-  const strict = readChangePolicy({});
-  const lenient = readChangePolicy({ BOOKING_SELF_CANCEL_DAYS: '7' });
+  // The old self-cancel setting no longer does anything.
+  const oldSetting = readChangePolicy({ BOOKING_SELF_CANCEL_DAYS: '0' });
   const booking = { status: 'Booked', date: '2026-06-01' };
-
-  assert.equal(describeOptions(booking, strict, '2026-05-01').autoCancel, false);
-  assert.equal(describeOptions(booking, lenient, '2026-05-01').autoCancel, true, '31 days out');
-  assert.equal(describeOptions(booking, lenient, '2026-05-28').autoCancel, false, '4 days out');
-  assert.equal(
-    describeOptions(booking, lenient, '2026-05-25').autoCancel,
-    true,
-    'exactly 7 days out is still outside the window',
-  );
-  assert.match(describeOptions(booking, lenient, '2026-05-01').reason, /takes effect immediately/);
-  assert.match(describeOptions(booking, strict, '2026-05-01').reason, /nothing changes until/);
+  for (const today of ['2026-01-01', '2026-05-01', '2026-05-31']) {
+    const options = describeOptions(booking, oldSetting, today);
+    assert.equal(options.canCancel, true);
+    assert.equal(options.autoCancel, false, today);
+    assert.match(options.reason, /nothing changes until/);
+  }
 });
 
 test('a finished booking offers nothing, and says why', () => {
-  const policy = readChangePolicy({ BOOKING_SELF_CANCEL_DAYS: '7' });
+  const policy = readChangePolicy({});
 
   const cancelled = describeOptions({ status: 'Cancelled', date: '2026-06-01' }, policy, '2026-05-01');
   assert.equal(cancelled.canCancel, false);

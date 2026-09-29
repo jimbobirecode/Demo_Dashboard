@@ -216,11 +216,11 @@ asks to change or cancel it.
 psql "$DATABASE_URL" -f migration_add_change_requests.sql
 ```
 
-**The club decides, not the software.** By default nothing moves until somebody
-approves it, because a tee time is scarce and usually inside a charging window.
-Set `BOOKING_SELF_CANCEL_DAYS=7` and a guest cancelling a week or more out
-takes effect immediately, while anything closer still waits. Amendments *never*
-apply themselves — "could we move to Sunday" is a question about availability,
+**The club decides, not the software.** A guest can only ask: nothing is
+cancelled or changed until somebody at the club approves it, because a tee time
+is scarce and usually inside a charging window. The guest is emailed when the
+request arrives ("your booking is not cancelled yet") and again when it is
+approved or declined. Amendments *never* apply themselves either — "could we move to Sunday" is a question about availability,
 not a state change — so approving one marks the request answered and leaves the
 booking to be edited where the tee sheet is.
 
