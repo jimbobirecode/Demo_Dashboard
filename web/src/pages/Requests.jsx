@@ -34,12 +34,15 @@ export default function Requests() {
     setNotice(null);
     try {
       const result = await api.resolveChangeRequest(request.id, decision, '');
+      const told = result.guestEmailed
+        ? ` The guest has been emailed${result.guestEmail ? ` at ${result.guestEmail}` : ''}.`
+        : ' No email went to the guest (email sending is not set up, or the booking has no address) - let them know yourself.';
       setNotice(
-        result.bookingCancelled
-          ? `${request.bookingId} cancelled`
+        (result.bookingCancelled
+          ? `${request.bookingId} cancelled.`
           : result.needsEditing
-            ? `Request approved — now edit ${request.bookingId} on the Bookings page to make the change`
-            : `Request ${decision}d`,
+            ? `Request approved - now edit ${request.bookingId} on the Bookings page to make the change.`
+            : `Request ${decision}d.`) + told,
       );
       await load();
     } catch (err) {

@@ -17,6 +17,8 @@
  * cancellations outside that window apply themselves.
  */
 import crypto from 'node:crypto';
+import { BRAND } from './brand.js';
+import { brandedEmail, escapeHtml } from './email-layout.js';
 
 export const REQUEST_KINDS = ['cancel', 'amend'];
 export const REQUEST_STATUSES = ['Pending', 'Approved', 'Declined', 'Applied'];
@@ -80,6 +82,93 @@ export function verifyBookingToken(bookingId, token, secret, club = '') {
 export function manageLink(appUrl, bookingId, token) {
   const base = String(appUrl ?? '').replace(/\/+$/, '');
   return `${base}/manage-booking?ref=${encodeURIComponent(bookingId)}&token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * The "manage your booking" link for a booking, ready to put in an email - or
+ * null when this install cannot issue one (no APP_URL, or no secret to sign
+ * with). Guests reach the change/cancel page only through these links.
+ */
+export function manageUrlFor(booking, env = process.env) {
+  const secret = linkSecret(env);
+  const appUrl = env.APP_URL ?? env.PUBLIC_URL ?? '';
+  if (!secret || !appUrl || !booking?.bookingId) return null;
+  return manageLink(appUrl, booking.bookingId, signBooking(booking.bookingId, secret, booking.club ?? ''));
+}
+
+function describeRound(booking) {
+  const when = booking?.date
+    ? new Intl.DateTimeFormat(BRAND.locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+        .format(new Date(`${booking.date}T00:00:00Z`))
+        .replace(',', '')
+    : '';
+  const time = booking?.teeTime && booking.teeTime !== 'Not Specified' ? ` at ${booking.teeTime}` : '';
+  return when ? `${when}${time}` : '';
+}
+
+/**
+ * The email that tells a guest what happened to their change request.
+ *
+ * outcome: 'cancelled' (their booking is cancelled - by them online, or by
+ * the club approving it), 'approved' (an amendment the club will make) or
+ * 'declined'. `note` is what staff wrote, if anything; `manageUrl` is added
+ * where the booking is still live.
+ */
+export function buildChangeEmail({ outcome, booking, request = null, note = '', manageUrl = null }) {
+  const ref = booking.bookingId;
+  const first = String(booking.guestName ?? '').trim().split(/\s+/)[0] || 'there';
+  const round = describeRound(booking);
+  const said = String(note ?? '').trim();
+
+  const content = {
+    cancelled: {
+      subject: `Your booking ${ref} is cancelled – ${BRAND.fullName}`,
+      lines: [
+        `As you asked, we have cancelled your booking ${ref}${round ? ` for ${round}` : ''}.`,
+        said,
+        'We are sorry you cannot make it, and we hope to welcome you another time.',
+      ],
+    },
+    approved: {
+      subject: `Your change to booking ${ref} – ${BRAND.fullName}`,
+      lines: [
+        `Thank you - we can make the change you asked for to booking ${ref}${round ? ` (currently ${round})` : ''}.`,
+        said || 'We will confirm the new details to you shortly.',
+      ],
+    },
+    declined: {
+      subject: `About your change to booking ${ref} – ${BRAND.fullName}`,
+      lines: [
+        `We are sorry, but we are not able to make the change you asked for to booking ${ref}.`,
+        said,
+        `Your booking${round ? ` for ${round}` : ''} stays as it is. If you would like to talk it through, just reply to this email.`,
+      ],
+    },
+  }[outcome];
+  if (!content) throw new Error(`Unknown change outcome: ${outcome}`);
+
+  const lines = content.lines.filter(Boolean);
+  const link = outcome !== 'cancelled' ? manageUrl : null;
+  const text = [
+    `Hi ${first},`,
+    '',
+    ...lines.flatMap((line) => [line, '']),
+    ...(link ? [`Manage your booking: ${link}`, ''] : []),
+    'Kind regards,',
+    BRAND.fullName,
+  ].join('\n');
+
+  const html = brandedEmail(
+    `<p style="margin:0 0 14px;">Hi ${escapeHtml(first)},</p>` +
+      lines.map((line) => `<p style="margin:0 0 14px;">${escapeHtml(line)}</p>`).join('') +
+      (link
+        ? `<p style="margin:0 0 14px;"><a href="${escapeHtml(link)}" style="color:#1a5e58;font-weight:600;">Manage your booking</a></p>`
+        : '') +
+      `<p style="margin:0;">Kind regards,<br>${escapeHtml(BRAND.fullName)}</p>`,
+  );
+
+  void request;
+  return { subject: content.subject, text, html };
 }
 
 /** Whole days from today to the round. Negative once it has been played. */

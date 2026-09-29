@@ -6,6 +6,7 @@
  * one question the golf office actually asks; `buildAnalytics` composes them.
  */
 import { PIPELINE_STAGES, TERMINAL_STATUSES, normaliseStatus } from './bookings-domain.js';
+import { BRAND } from './brand.js';
 import {
   AGEING_BANDS,
   CLOSED_PAYMENT_STATUSES,
@@ -1015,7 +1016,7 @@ function medianOf(values) {
 
 /** Today in the club's own calendar, so "overdue" means overdue here. */
 function todayIso(now = new Date()) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(now);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: BRAND.timeZone }).format(now);
 }
 
 function daysBetweenDates(from, to) {

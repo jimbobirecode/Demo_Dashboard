@@ -15,6 +15,7 @@
 import { BRAND } from './brand.js';
 import { brandTemplateData } from './email-layout.js';
 import { surveyTemplateData } from './vero-domain.js';
+import { manageUrlFor } from './change-request-domain.js';
 
 /** Bookings only enter a campaign once the club has committed to them. */
 export const SENDABLE_STATUSES = ['Booked'];
@@ -241,6 +242,10 @@ export function buildTemplateData(booking, { fromEmail, now = new Date(), survey
     // the integration is off, which is why the template has to render without
     // it — see lib/vero-domain.js.
     ...surveyTemplateData(survey ?? {}),
+
+    // Where the guest can ask to change or cancel. Empty when this install
+    // cannot issue manage links (no APP_URL or link secret).
+    manage_url: manageUrlFor(booking) ?? '',
   };
 }
 
