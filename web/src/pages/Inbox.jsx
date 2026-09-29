@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../lib/format.js';
-import EmailThread from '../components/EmailThread.jsx';
+import ChatThread from '../components/ChatThread.jsx';
 import EmailComposer, { composerContext } from '../components/EmailComposer.jsx';
 import StatusPill from '../components/StatusPill.jsx';
 
@@ -17,8 +17,8 @@ function waiting(since) {
 const FILTERS = [
   { id: 'open', label: 'To answer' },
   { id: 'replied', label: 'Replied' },
-  { id: 'dismissed', label: 'Dismissed' },
-  { id: 'all', label: 'All received' },
+  { id: 'dismissed', label: 'Closed without reply' },
+  { id: 'all', label: 'Everything' },
 ];
 
 /**
@@ -103,8 +103,8 @@ export default function Inbox({ onCountChange }) {
         <div>
           <h1>Inbox</h1>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            Emails the bot held for a person: questions, complaints, tour operators, anything unclear. The guest has
-            been told the team will reply.
+            Emails the bot could not answer on its own. Each guest has been told the team will reply - pick one, check
+            the reply and send.
           </p>
         </div>
         <button type="button" onClick={load}>Refresh</button>
@@ -164,14 +164,14 @@ export default function Inbox({ onCountChange }) {
                   title={formatDateTime(message.createdAt)}
                   style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
                 >
-                  {message.reviewStatus === 'open' ? `waiting ${waiting(message.createdAt)}` : formatDateTime(message.createdAt)}
+                  {`${waiting(message.createdAt)} ago`}
                 </span>
               </div>
-              <div style={{ fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: '0.8125rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {message.subject || '(no subject)'}
               </div>
-              <div className="muted" style={{ fontSize: '0.75rem' }}>
-                {[message.bookingId, message.intentLabel, message.reviewReason || message.routeLabel].filter(Boolean).join(' · ')}
+              <div className="inbox-item-snippet">
+                {(message.summary || message.body || '').replace(/\s+/g, ' ').trim() || '—'}
               </div>
             </button>
           ))}
@@ -181,7 +181,7 @@ export default function Inbox({ onCountChange }) {
           {selected ? (
             <InboxDetail key={selected.id} id={selected.id} onChanged={load} onHandled={handled} />
           ) : (
-            messages.length > 0 && <div className="empty">Choose an email to read it and reply.</div>
+            messages.length > 0 && <div className="empty">Pick an email on the left to read it and reply.</div>
           )}
         </div>
       </div>
@@ -223,115 +223,125 @@ function InboxDetail({ id, onChanged, onHandled }) {
 
   if (!detail) return <div className="empty">{notice?.text ?? 'Loading…'}</div>;
   const { message, thread, booking } = detail;
-  const extraction = message.extraction ?? {};
   const open = message.reviewStatus === 'open';
 
   async function dismiss() {
     setBusy(true);
     try {
       await api.inboxStatus(message.id, 'dismissed');
-      onHandled(message.id, 'Dismissed - no reply sent.');
+      onHandled(message.id, 'Closed without a reply.');
     } catch (err) {
       setNotice({ kind: 'error', text: err.message });
       setBusy(false);
     }
   }
 
+  const guestName = booking?.guestName || message.guestName || '';
+  const firstName = guestName.trim().split(/\s+/)[0] || '';
+  const why = message.reviewReason || message.routeLabel || '';
+  const status =
+    message.reviewStatus === 'replied'
+      ? `Replied by ${message.handledBy} · ${formatDateTime(message.handledAt)}`
+      : message.reviewStatus === 'dismissed'
+        ? `Dismissed by ${message.handledBy}`
+        : 'Needs a reply';
+
   return (
-    <div className="card stack" style={{ gap: '0.9rem' }}>
+    <div className="card stack" style={{ gap: '1rem' }}>
+      {/* Who, about what, and why it needs a person - in one glance. */}
       <div className="between" style={{ alignItems: 'flex-start', gap: '1rem' }}>
         <div>
-          <div style={{ fontWeight: 700 }}>{message.subject || '(no subject)'}</div>
+          <div style={{ fontSize: '1.15rem', fontWeight: 700 }}>{guestName || message.fromEmail}</div>
           <div className="muted" style={{ fontSize: '0.8125rem' }}>
-            From {message.fromEmail} · {formatDateTime(message.createdAt)}
+            {guestName ? `${message.fromEmail} · ` : ''}wrote {formatDateTime(message.createdAt)}
           </div>
         </div>
-        <span className="muted" style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
-          {message.reviewStatus === 'replied'
-            ? `Replied by ${message.handledBy} ${formatDateTime(message.handledAt)}`
-            : message.reviewStatus === 'dismissed'
-              ? `Dismissed by ${message.handledBy}`
-              : 'Waiting for a reply'}
+        <span
+          className="chip"
+          style={{
+            padding: '0.25rem 0.7rem',
+            borderRadius: '999px',
+            fontSize: '0.8125rem',
+            whiteSpace: 'nowrap',
+            border: `1px solid ${open ? 'var(--brand-gold)' : 'var(--border)'}`,
+            color: open ? 'var(--brand-gold-bright)' : 'var(--text-secondary)',
+          }}
+        >
+          {status}
         </span>
       </div>
 
-      {notice && <div className={`banner ${notice.kind}`}>{notice.text}</div>}
-
-      <div className="detail-grid">
-        <div>
-          <div className="label">Understood as</div>
-          <div>{message.intentLabel ?? '—'}{extraction.source === 'keywords' ? ' (keyword match — Claude unavailable)' : ''}</div>
-        </div>
-        <div>
-          <div className="label">Why it is here</div>
-          <div>{message.reviewReason || message.routeLabel || '—'}</div>
-        </div>
-        <div>
-          <div className="label">Booking</div>
-          {booking ? (
-            <div className="row" style={{ gap: '0.4rem', alignItems: 'center' }}>
-              <span className="mono">{booking.bookingId}</span>
-              <StatusPill status={booking.status} />
-            </div>
-          ) : (
-            <div className="row" style={{ gap: '0.4rem' }}>
-              <input
-                placeholder="Attach to booking ref"
-                value={linkRef}
-                onChange={(e) => setLinkRef(e.target.value)}
-                style={{ width: '12rem' }}
-              />
-              <button
-                type="button"
-                className="btn-sm"
-                disabled={busy || !linkRef.trim()}
-                onClick={() => act(() => api.inboxLink(message.id, linkRef), 'Attached to the booking')}
-              >
-                Attach
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-      {booking && (
-        <div className="secondary" style={{ fontSize: '0.8125rem' }}>
-          {booking.guestName || 'Guest'} · {booking.date ? formatDate(booking.date) : 'no date'}
-          {booking.teeTime ? `, ${booking.teeTime}` : ''} · {booking.players} players · {formatCurrency(booking.total)}
+      {(why || message.summary) && (
+        <div className="secondary" style={{ fontSize: '0.9rem' }}>
+          {message.summary ? <strong>{message.summary.replace(/\.$/, '')}.</strong> : null}
+          {why ? <span className="muted"> {message.summary ? 'Here because: ' : ''}{why.charAt(0).toLowerCase() + why.slice(1)}.</span> : null}
         </div>
       )}
-      {message.summary && (
-        <div className="secondary" style={{ fontStyle: 'italic' }}>{message.summary}</div>
+
+      {notice && <div className={`banner ${notice.kind}`}>{notice.text}</div>}
+
+      {booking ? (
+        <div className="context-strip">
+          <span className="muted">Booking</span>
+          <span className="mono">{booking.bookingId}</span>
+          <StatusPill status={booking.status} />
+          <span>
+            {booking.date ? formatDate(booking.date) : 'No date'}
+            {booking.teeTime ? ` at ${booking.teeTime}` : ''} · {booking.players} players · {formatCurrency(booking.total)}
+          </span>
+        </div>
+      ) : (
+        <div className="context-strip">
+          <span className="muted">Not linked to a booking.</span>
+          <input
+            placeholder="Booking ref, e.g. TMG-20261012-AB12"
+            value={linkRef}
+            onChange={(e) => setLinkRef(e.target.value)}
+            style={{ width: '16rem' }}
+            aria-label="Booking reference to link this email to"
+          />
+          <button
+            type="button"
+            className="btn-sm"
+            disabled={busy || !linkRef.trim()}
+            onClick={() => act(() => api.inboxLink(message.id, linkRef), 'Linked to the booking')}
+          >
+            Link
+          </button>
+        </div>
       )}
 
       <div>
-        <div className="label" style={{ marginBottom: '0.4rem' }}>Conversation</div>
-        <EmailThread thread={thread} highlightId={message.id} />
+        <div className="label" style={{ marginBottom: '0.5rem' }}>The conversation</div>
+        <ChatThread thread={thread} guestName={guestName} activeId={message.id} />
       </div>
 
-      <div className="stack" style={{ gap: '0.4rem' }}>
-        <div className="between">
-          <span className="label">Your reply</span>
-          {message.draftReply && (
-            <span className="muted" style={{ fontSize: '0.75rem' }}>Drafted by Claude from the club&rsquo;s own information — check it before sending</span>
-          )}
-        </div>
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+        {message.draftReply && open && (
+          <div className="muted" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem' }}>
+            Claude has written a draft from the club&rsquo;s own information. Read it, change anything you like, then send.
+          </div>
+        )}
         <EmailComposer
+          title={`Reply to ${firstName || message.fromEmail}`}
           to={message.fromEmail}
           subject={`Re: ${(message.subject || '').replace(/^re:\s*/i, '')}`}
           initialBody={message.draftReply || ''}
           draftKey={`inbox-${message.id}`}
-          context={composerContext(booking, message.guestName)}
+          context={composerContext(booking, guestName)}
           replyToId={message.id}
           sendLabel="Send reply"
           disabled={busy}
           send={(body) => api.inboxReply(message.id, body)}
-          onSent={() => onHandled(message.id, `Reply sent to ${message.fromEmail}.`)}
+          onSent={() => onHandled(message.id, `Reply sent to ${guestName || message.fromEmail}.`)}
           note={
             open ? (
-              <button type="button" disabled={busy} onClick={dismiss}>Dismiss without replying</button>
+              <button type="button" disabled={busy} onClick={dismiss} title="Close this without emailing the guest">
+                No reply needed
+              </button>
             ) : (
               <button type="button" disabled={busy} onClick={() => act(() => api.inboxStatus(message.id, 'open'), 'Back in the inbox')}>
-                Reopen
+                Move back to “To answer”
               </button>
             )
           }

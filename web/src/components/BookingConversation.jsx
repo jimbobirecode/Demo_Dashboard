@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import EmailThread from './EmailThread.jsx';
+import ChatThread from './ChatThread.jsx';
 import EmailComposer, { composerContext } from './EmailComposer.jsx';
 
 /**
@@ -47,6 +47,7 @@ export default function BookingConversation({ booking }) {
     target === 'new' ? null : thread.find((message) => message.id === target) ?? (target === null ? latestInbound : null);
   const to = replyingTo?.fromEmail || booking.guestEmail;
   const context = composerContext(booking);
+  const firstName = context.firstName;
 
   function sent(result) {
     setState({ loading: false, available: true, thread: result.thread });
@@ -54,25 +55,10 @@ export default function BookingConversation({ booking }) {
     setTarget(null);
   }
 
-  const replyActions = (message) =>
-    message.direction !== 'inbound' || message.id === replyingTo?.id ? null : (
-      <button
-        type="button"
-        className="btn-sm"
-        onClick={() => {
-          setTarget(message.id);
-          setNotice(null);
-        }}
-        style={{ padding: '0.1rem 0.6rem' }}
-      >
-        Reply to this
-      </button>
-    );
-
   return (
     <div className="card stack" style={{ background: 'var(--surface-0)', gap: '0.75rem' }}>
       <div className="between">
-        <div className="label">Emails with the guest</div>
+        <div className="label">Emails with {firstName || 'the guest'}</div>
         {thread.length > 0 && (
           <span className="muted" style={{ fontSize: '0.75rem' }}>
             {thread.length} email{thread.length === 1 ? '' : 's'}
@@ -87,7 +73,15 @@ export default function BookingConversation({ booking }) {
         <div className="muted" style={{ fontSize: '0.8125rem' }}>Loading…</div>
       ) : thread.length ? (
         <div ref={scroller} style={{ maxHeight: '30rem', overflowY: 'auto', paddingRight: '0.25rem' }}>
-          <EmailThread thread={thread} highlightId={replyingTo?.id ?? null} actions={replyActions} />
+          <ChatThread
+            thread={thread}
+            guestName={booking.guestName}
+            activeId={replyingTo?.id ?? null}
+            onReplyTo={(message) => {
+              setTarget(message.id);
+              setNotice(null);
+            }}
+          />
         </div>
       ) : (
         <div className="muted" style={{ fontSize: '0.8125rem' }}>
@@ -98,19 +92,8 @@ export default function BookingConversation({ booking }) {
 
       {!state.loading && (to ? (
         <div className="stack" style={{ gap: '0.4rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
-          <div className="between" style={{ gap: '0.5rem' }}>
-            <span className="label">
-              {replyingTo ? `Reply to ${replyingTo.subject ? `“${replyingTo.subject.replace(/^re:\s*/i, '')}”` : 'the guest'}` : 'New email to the guest'}
-            </span>
-            {latestInbound && (
-              replyingTo ? (
-                <button type="button" className="btn-sm" onClick={() => setTarget('new')}>Write a new email instead</button>
-              ) : (
-                <button type="button" className="btn-sm" onClick={() => setTarget(null)}>Reply to their latest email</button>
-              )
-            )}
-          </div>
           <EmailComposer
+            title={replyingTo ? `Reply to ${firstName || 'the guest'}` : `New email to ${firstName || 'the guest'}`}
             key={replyingTo ? `reply-${replyingTo.id}` : 'new'}
             to={to}
             subject={replyingTo ? `Re: ${(replyingTo.subject || '').replace(/^re:\s*/i, '')}` : ''}
@@ -125,6 +108,19 @@ export default function BookingConversation({ booking }) {
             }
             onSent={sent}
           />
+          {latestInbound && (
+            <div style={{ fontSize: '0.8125rem' }}>
+              {replyingTo ? (
+                <button type="button" className="link-button" onClick={() => setTarget('new')}>
+                  Start a new email instead of replying
+                </button>
+              ) : (
+                <button type="button" className="link-button" onClick={() => setTarget(null)}>
+                  Reply to their latest email instead
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="muted" style={{ fontSize: '0.8125rem' }}>There is no email address on this booking to write to.</div>

@@ -98,6 +98,7 @@ export function composerContext(booking, fallbackName = '') {
  *   no "are you sure?" dialog on every email.
  */
 export default function EmailComposer({
+  title = null,
   to,
   subject = '',
   editableSubject = false,
@@ -120,6 +121,7 @@ export default function EmailComposer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [preview, setPreview] = useState(null); // { html } | { loading } | null
+  const [replaced, setReplaced] = useState(null); // what a quick reply replaced, to put back
   const timer = useRef(null);
   const latest = useRef({});
   latest.current = { body, subjectText, send, onSent };
@@ -184,10 +186,13 @@ export default function EmailComposer({
     deliver();
   }
 
+  // A quick reply replaces what is in the box - the usual intent - and what
+  // it replaced can be put back with one click.
   function applyQuickReply(id) {
     const reply = quickReplies(context).find((entry) => entry.id === id);
     if (!reply) return;
-    setBody((current) => (current.trim() ? `${current.trimEnd()}\n\n${reply.body}` : reply.body));
+    setReplaced(body.trim() ? body : null);
+    setBody(reply.body);
     setPreview(null);
   }
 
@@ -207,24 +212,34 @@ export default function EmailComposer({
 
   return (
     <div className="stack composer" style={{ gap: '0.5rem' }}>
-      <div className="between" style={{ gap: '0.5rem' }}>
-        <div className="muted" style={{ fontSize: '0.8125rem' }}>
-          To <strong className="secondary">{to}</strong>
-          {!editableSubject && subject ? <> · {subject}</> : null}
-        </div>
-        <select
-          aria-label="Start from a quick reply"
-          value=""
-          onChange={(event) => applyQuickReply(event.target.value)}
-          disabled={locked}
-          style={{ width: 'auto', fontSize: '0.8125rem', padding: '0.3rem 0.5rem' }}
-        >
-          <option value="">Quick reply…</option>
-          {quickReplies(context).map((entry) => (
-            <option key={entry.id} value={entry.id}>{entry.label}</option>
-          ))}
-        </select>
+      {title && <div className="composer-title">{title}</div>}
+      <div className="muted" style={{ fontSize: '0.8125rem', marginTop: title ? '-0.35rem' : 0 }}>
+        To <strong className="secondary">{to}</strong>
+        {!editableSubject && subject ? <> · {subject}</> : null}
       </div>
+
+      {!preview && (
+        <div className="quick-replies" aria-label="Start from a ready-made reply">
+          <span className="muted" style={{ fontSize: '0.8125rem' }}>Start with:</span>
+          {quickReplies(context).map((entry) => (
+            <button key={entry.id} type="button" className="chip" disabled={locked} onClick={() => applyQuickReply(entry.id)}>
+              {entry.label}
+            </button>
+          ))}
+          {replaced && (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setBody(replaced);
+                setReplaced(null);
+              }}
+            >
+              Put back what I had written
+            </button>
+          )}
+        </div>
+      )}
 
       {editableSubject && (
         <input
@@ -256,7 +271,7 @@ export default function EmailComposer({
             }
           }}
           disabled={locked}
-          placeholder="Write your email, or start from a quick reply…"
+          placeholder="Type your email here, or pick one of the ready-made replies above."
           aria-label={`Email to ${to}`}
         />
       )}
