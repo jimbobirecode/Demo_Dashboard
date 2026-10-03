@@ -5,7 +5,6 @@
  */
 import { BRAND } from './brand.js';
 
-
 /** The funnel, in order. A booking only ever moves forward through these. */
 export const PIPELINE_STAGES = ['Inquiry', 'Requested', 'Booked'];
 

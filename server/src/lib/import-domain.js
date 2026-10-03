@@ -36,7 +36,10 @@ export const COLUMN_ALIASES = {
 /** The two a row is useless without. */
 export const REQUIRED_FIELDS = ['date'];
 
-const normaliseHeader = (header) => String(header ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const normaliseHeader = (header) =>
+  String(header ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 
 /**
  * Work out which spreadsheet column holds which field.
@@ -101,8 +104,9 @@ export function parseDate(value, { dayFirst = true } = {}) {
   }
 
   // 3 April 2026 / April 3 2026 / 3 Apr 26
-  const named = text.match(/^(\d{1,2})\s+([A-Za-z]{3,})\.?,?\s+(\d{2,4})$/)
-    ?? text.match(/^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{2,4})$/);
+  const named =
+    text.match(/^(\d{1,2})\s+([A-Za-z]{3,})\.?,?\s+(\d{2,4})$/) ??
+    text.match(/^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{2,4})$/);
   if (named) {
     const monthName = /^\d/.test(named[1]) ? named[2] : named[1];
     const day = Number(/^\d/.test(named[1]) ? named[1] : named[2]);
@@ -179,9 +183,7 @@ export function parseMoney(value) {
 
   // 1.440,00 is European; 1,440.00 is not.
   const european = /,\d{2}$/.test(cleaned) && /\./.test(cleaned);
-  const normalised = european
-    ? cleaned.replace(/\./g, '').replace(',', '.')
-    : cleaned.replace(/,/g, '');
+  const normalised = european ? cleaned.replace(/\./g, '').replace(',', '.') : cleaned.replace(/,/g, '');
 
   const parsed = Number(normalised);
   if (!Number.isFinite(parsed)) return null;
@@ -229,7 +231,9 @@ export function parseTeeSheet(rows, { dayFirst = true, defaultStatus = 'Booked' 
     bookings.push({
       bookingId: String(value(row, 'bookingId') ?? '').trim() || null,
       guestName: String(value(row, 'guestName') ?? '').trim(),
-      guestEmail: String(value(row, 'guestEmail') ?? '').trim().toLowerCase(),
+      guestEmail: String(value(row, 'guestEmail') ?? '')
+        .trim()
+        .toLowerCase(),
       contactPhone: String(value(row, 'contactPhone') ?? '').trim(),
       date,
       teeTime: parseTeeTime(value(row, 'teeTime')),
@@ -266,8 +270,7 @@ export function markDuplicates(parsed, existing) {
   const duplicates = [];
 
   for (const booking of parsed) {
-    const seen =
-      (booking.bookingId && byReference.has(booking.bookingId)) || bySlot.has(slotKey(booking));
+    const seen = (booking.bookingId && byReference.has(booking.bookingId)) || bySlot.has(slotKey(booking));
     if (seen) duplicates.push(booking);
     else {
       fresh.push(booking);
@@ -283,16 +286,23 @@ export function markDuplicates(parsed, existing) {
 /** The same party, on the same day, at the same time is the same booking. */
 function slotKey(booking) {
   return [
-    String(booking.guestEmail ?? '').trim().toLowerCase(),
+    String(booking.guestEmail ?? '')
+      .trim()
+      .toLowerCase(),
     booking.date ?? '',
-    String(booking.teeTime ?? '').trim().toUpperCase(),
+    String(booking.teeTime ?? '')
+      .trim()
+      .toUpperCase(),
   ].join('|');
 }
 
 /** `IMP-20260923-8F2A` — one per upload, so a batch can be found again. */
 export function mintBatchId(now = new Date(), random = Math.random) {
   const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const suffix = Math.floor(random() * 0xffff).toString(16).toUpperCase().padStart(4, '0');
+  const suffix = Math.floor(random() * 0xffff)
+    .toString(16)
+    .toUpperCase()
+    .padStart(4, '0');
   return `IMP-${stamp}-${suffix}`;
 }
 
@@ -303,7 +313,15 @@ export function mintImportedBookingId(batchId, line) {
 
 function empty(error, extra = {}) {
   return {
-    ok: false, error, headers: [], mapped: [], unmapped: [],
-    bookings: [], rejected: [], sample: [], dayFirst: true, ...extra,
+    ok: false,
+    error,
+    headers: [],
+    mapped: [],
+    unmapped: [],
+    bookings: [],
+    rejected: [],
+    sample: [],
+    dayFirst: true,
+    ...extra,
   };
 }

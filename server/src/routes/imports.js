@@ -19,12 +19,7 @@ import { pool, query } from '../db.js';
 import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { BOOKING_SELECT } from '../lib/schema.js';
-import {
-  markDuplicates,
-  mintBatchId,
-  mintImportedBookingId,
-  parseTeeSheet,
-} from '../lib/import-domain.js';
+import { markDuplicates, mintBatchId, mintImportedBookingId, parseTeeSheet } from '../lib/import-domain.js';
 import { SheetTooLargeError, checkRowCount, readXlsxRows } from '../lib/sheet-reader.js';
 
 const router = Router();
@@ -98,10 +93,7 @@ router.post('/commit', async (req, res, next) => {
 
     for (const booking of wanted) {
       const bookingId = booking.bookingId || mintImportedBookingId(batchId, booking.line);
-      const note = [
-        `Imported from the club tee sheet (${batchId}).`,
-        booking.notes,
-      ].filter(Boolean).join(' ');
+      const note = [`Imported from the club tee sheet (${batchId}).`, booking.notes].filter(Boolean).join(' ');
 
       const { rowCount } = await client.query(
         `INSERT INTO public.bookings
@@ -110,9 +102,19 @@ router.post('/commit', async (req, res, next) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'imported',$13,NOW(),NOW())
          ON CONFLICT (booking_id) DO NOTHING`,
         [
-          bookingId, booking.guestEmail, booking.guestName, booking.contactPhone,
-          booking.date, booking.teeTime ?? 'Not Specified', booking.players, booking.total,
-          booking.status, note, req.user.customerId, booking.golfCourses, batchId,
+          bookingId,
+          booking.guestEmail,
+          booking.guestName,
+          booking.contactPhone,
+          booking.date,
+          booking.teeTime ?? 'Not Specified',
+          booking.players,
+          booking.total,
+          booking.status,
+          note,
+          req.user.customerId,
+          booking.golfCourses,
+          batchId,
         ],
       );
       inserted += rowCount;
@@ -218,25 +220,39 @@ export function parseCsv(text) {
 
     if (quoted) {
       if (char === '"') {
-        if (body[i + 1] === '"') { field += '"'; i += 1; }
-        else quoted = false;
+        if (body[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else quoted = false;
       } else field += char;
       continue;
     }
 
     if (char === '"') quoted = true;
-    else if (char === ',') { row.push(field); field = ''; }
-    else if (char === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
-    else if (char !== '\r') field += char;
+    else if (char === ',') {
+      row.push(field);
+      field = '';
+    } else if (char === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else if (char !== '\r') field += char;
   }
 
-  if (field || row.length) { row.push(field); rows.push(row); }
+  if (field || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
   return rows.filter((line) => line.length);
 }
 
 /** Only bookings that could collide: this club's, on the dates in the file. */
 async function loadComparableBookings(parsed, club) {
-  const dates = parsed.map((booking) => booking.date).filter(Boolean).sort();
+  const dates = parsed
+    .map((booking) => booking.date)
+    .filter(Boolean)
+    .sort();
   if (!dates.length) return [];
 
   const { rows } = await query(

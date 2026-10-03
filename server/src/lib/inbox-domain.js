@@ -54,11 +54,11 @@ export function serialiseMessage(row) {
     subject: row.subject ?? '',
     body: row.body_text ?? '',
     intent: row.intent ?? null,
-    intentLabel: row.intent ? INTENT_LABELS[row.intent] ?? row.intent : null,
+    intentLabel: row.intent ? (INTENT_LABELS[row.intent] ?? row.intent) : null,
     summary: row.summary ?? '',
     extraction,
     routedTo: row.routed_to ?? null,
-    routeLabel: row.routed_to ? ROUTE_LABELS[row.routed_to] ?? row.routed_to : null,
+    routeLabel: row.routed_to ? (ROUTE_LABELS[row.routed_to] ?? row.routed_to) : null,
     changeRequestId: row.change_request_id ?? null,
     reviewStatus: row.review_status ?? 'none',
     reviewReason: row.review_reason ?? '',
@@ -99,13 +99,21 @@ function wroteAt(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat(BRAND.locale, {
-    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
     timeZone: BRAND.timeZone,
   }).format(date);
 }
 
 const escape = (value) =>
-  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
 
 /**
  * A staff reply as it is sent: the text they typed, as plain text and as
@@ -113,17 +121,23 @@ const escape = (value) =>
  * whoever reads the reply next) sees what is being answered.
  */
 export function buildReplyEmail({ body, original = null, manageUrl = null }) {
-  const typed = String(body).trim() + (manageUrl ? `\n\nNeed to change or cancel? Manage your booking: ${manageUrl}` : '');
+  const typed =
+    String(body).trim() + (manageUrl ? `\n\nNeed to change or cancel? Manage your booking: ${manageUrl}` : '');
   const quote = original
     ? `\n\n----\nOn ${wroteAt(original.createdAt)}, ${original.fromEmail} wrote:\n` +
-      String(original.body ?? '').split('\n').map((line) => `> ${line}`).join('\n')
+      String(original.body ?? '')
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n')
     : '';
   const text = typed + quote;
 
-  const paragraphs = String(body).trim()
-    .split(/\n{2,}/)
-    .map((para) => `<p style="margin:0 0 14px;">${escape(para).replace(/\n/g, '<br>')}</p>`)
-    .join('') +
+  const paragraphs =
+    String(body)
+      .trim()
+      .split(/\n{2,}/)
+      .map((para) => `<p style="margin:0 0 14px;">${escape(para).replace(/\n/g, '<br>')}</p>`)
+      .join('') +
     (manageUrl
       ? `<p style="margin:0 0 14px;font-size:13px;color:#5b6b63;">Need to change or cancel? <a href="${escape(manageUrl)}" style="color:#1a5e58;font-weight:600;">Manage your booking</a></p>`
       : '');

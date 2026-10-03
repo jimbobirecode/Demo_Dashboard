@@ -119,18 +119,17 @@ test('a status reminder lists what is unconfirmed inside the window, and nothing
 
   const [reminder] = selectReminders([operator()], bookings, opts(STATUS));
 
-  assert.deepEqual(reminder.bookings.map((line) => line.bookingId), ['OPEN', 'ASKD']);
+  assert.deepEqual(
+    reminder.bookings.map((line) => line.bookingId),
+    ['OPEN', 'ASKD'],
+  );
   assert.equal(reminder.bookings[0].reason, 'Awaiting confirmation');
   assert.equal(reminder.bookings[1].reason, 'Awaiting confirmation');
   assert.equal(reminder.bookings[0].daysToPlay, 9);
 });
 
 test('an operator with nothing due does not get an empty email', () => {
-  const reminders = selectReminders(
-    [operator()],
-    [booking({ status: 'Booked', date: '2026-04-10' })],
-    opts(STATUS),
-  );
+  const reminders = selectReminders([operator()], [booking({ status: 'Booked', date: '2026-04-10' })], opts(STATUS));
   assert.deepEqual(reminders, []);
 });
 
@@ -148,7 +147,10 @@ test('a payment reminder takes what is late and what falls due inside the window
 
   const [reminder] = selectReminders([operator()], bookings, opts(PAYMENT));
 
-  assert.deepEqual(reminder.bookings.map((line) => line.bookingId), ['LATE', 'TODAY', 'SOON']);
+  assert.deepEqual(
+    reminder.bookings.map((line) => line.bookingId),
+    ['LATE', 'TODAY', 'SOON'],
+  );
   assert.equal(reminder.bookings[0].reason, '76 days overdue');
   assert.equal(reminder.bookings[1].reason, 'Due today');
   assert.equal(reminder.bookings[2].reason, 'Due in 4 days');
@@ -169,7 +171,10 @@ test('the loudest account is listed first: how late, then how much', () => {
   ];
 
   const reminders = selectReminders(accounts, bookings, opts(PAYMENT));
-  assert.deepEqual(reminders.map((r) => r.operatorName), ['Bbb', 'Aaa']);
+  assert.deepEqual(
+    reminders.map((r) => r.operatorName),
+    ['Bbb', 'Aaa'],
+  );
 });
 
 // --- who is in the list, and who is not -------------------------------------
@@ -187,11 +192,7 @@ test('only assignment and a registered domain put a booking on an account', () =
 });
 
 test('a retired account is never chased', () => {
-  const reminders = selectReminders(
-    [operator({ active: false })],
-    [booking({ status: 'Requested' })],
-    opts(STATUS),
-  );
+  const reminders = selectReminders([operator({ active: false })], [booking({ status: 'Requested' })], opts(STATUS));
   assert.deepEqual(reminders, []);
 });
 
@@ -282,7 +283,10 @@ test('the template data carries the account, the totals and every line twice', (
 
   // …and the same content as a preformatted block, for a plain-text part.
   assert.equal(data.booking_lines.split('\n').length, 2);
-  assert.match(data.booking_lines, /RD-1 · Friday 10 April 2026 10:04 AM · 4 players · €1,000.00 outstanding · 31 days overdue/);
+  assert.match(
+    data.booking_lines,
+    /RD-1 · Friday 10 April 2026 10:04 AM · 4 players · €1,000.00 outstanding · 31 days overdue/,
+  );
 });
 
 test('a deposit still outstanding is chased on the deposit date, not the balance date', () => {
@@ -304,14 +308,13 @@ test('a deposit still outstanding is chased on the deposit date, not the balance
 });
 
 test('a status reminder writes the stage, not the money, on each line', () => {
-  const [reminder] = selectReminders(
-    [operator()],
-    [booking({ bookingId: 'RD-9', status: 'Requested' })],
-    opts(STATUS),
-  );
+  const [reminder] = selectReminders([operator()], [booking({ bookingId: 'RD-9', status: 'Requested' })], opts(STATUS));
   const data = buildReminderTemplateData(reminder, { campaign: STATUS, days: 21, today: TODAY });
 
-  assert.match(data.booking_lines, /RD-9 · Friday 10 April 2026 10:04 AM · 4 players · Requested · Awaiting confirmation/);
+  assert.match(
+    data.booking_lines,
+    /RD-9 · Friday 10 April 2026 10:04 AM · 4 players · Requested · Awaiting confirmation/,
+  );
   assert.equal(data.campaign, 'booking_status');
   assert.equal(data.reminder_date, 'Wednesday 01 April 2026');
 });

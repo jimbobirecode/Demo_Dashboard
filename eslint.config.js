@@ -17,7 +17,10 @@ export default [
     rules: {
       // An underscore marks a parameter that must exist but is not used
       // (Express error handlers need four arguments to be one).
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none', ignoreRestSiblings: true }],
+      'no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none', ignoreRestSiblings: true },
+      ],
       eqeqeq: ['error', 'always', { null: 'ignore' }],
       'no-console': 'off',
     },

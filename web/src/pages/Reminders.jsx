@@ -169,8 +169,7 @@ export default function Reminders() {
       } else {
         setNotice({
           kind: payload.failed && !payload.sent ? 'error' : 'success',
-          text:
-            `Sent ${payload.sent} reminder(s)${payload.failed ? `, ${payload.failed} failed` : ''}.`,
+          text: `Sent ${payload.sent} reminder(s)${payload.failed ? `, ${payload.failed} failed` : ''}.`,
         });
         await load();
       }
@@ -201,8 +200,8 @@ export default function Reminders() {
 
       {config && !config.configured && (
         <div className="banner error">
-          Reminder email is not configured. Set {config.missing.join(', ')} in the environment, then
-          restart the dashboard. The list below still shows who is due.
+          Reminder email is not configured. Set {config.missing.join(', ')} in the environment, then restart the
+          dashboard. The list below still shows who is due.
         </div>
       )}
 
@@ -320,7 +319,10 @@ export default function Reminders() {
                   </td>
                   <td>
                     <div style={{ fontWeight: 600 }}>{reminder.operatorName}</div>
-                    <div className={reminder.sendable ? 'muted' : undefined} style={{ fontSize: '0.75rem', color: reminder.sendable ? undefined : OVERDUE }}>
+                    <div
+                      className={reminder.sendable ? 'muted' : undefined}
+                      style={{ fontSize: '0.75rem', color: reminder.sendable ? undefined : OVERDUE }}
+                    >
                       {reminder.sendable
                         ? `${reminder.contactName ? `${reminder.contactName} · ` : ''}${reminder.contactEmail}`
                         : reminder.blocker}
@@ -344,7 +346,7 @@ export default function Reminders() {
                   <td style={reminder.maxDaysOverdue > 0 ? { color: OVERDUE, fontWeight: 600 } : undefined}>
                     {reminder.maxDaysOverdue > 0
                       ? `${reminder.maxDaysOverdue} days overdue`
-                      : reminder.bookings[0]?.reason ?? '—'}
+                      : (reminder.bookings[0]?.reason ?? '—')}
                   </td>
                   <td>
                     <button

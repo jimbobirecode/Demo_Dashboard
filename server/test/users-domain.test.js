@@ -34,10 +34,17 @@ test('an account with no password of any kind is still pending', () => {
 
 test('the serialised user never carries a password', () => {
   const user = serialiseUser({
-    id: 7, username: 'Ann', email: 'ann@club.com', full_name: 'Ann Bell',
-    role: 'staff', customer_id: 'royal_dornoch', is_active: true,
-    password_hash: '$2a$12$secret', temp_password: 'letmein',
-    last_login: new Date('2026-09-01T09:00:00Z'), created_by: 'boss',
+    id: 7,
+    username: 'Ann',
+    email: 'ann@club.com',
+    full_name: 'Ann Bell',
+    role: 'staff',
+    customer_id: 'royal_dornoch',
+    is_active: true,
+    password_hash: '$2a$12$secret',
+    temp_password: 'letmein',
+    last_login: new Date('2026-09-01T09:00:00Z'),
+    created_by: 'boss',
   });
 
   const text = JSON.stringify(user);
@@ -55,7 +62,10 @@ test('a new account needs a name, a usable login and somewhere to send the invit
   const good = validateNewUser({ username: 'Ann.Bell', email: ' Ann@Club.com ', fullName: 'Ann Bell' });
   assert.equal(good.ok, true);
   assert.deepEqual(good.value, {
-    username: 'ann.bell', email: 'ann@club.com', fullName: 'Ann Bell', role: 'staff',
+    username: 'ann.bell',
+    email: 'ann@club.com',
+    fullName: 'Ann Bell',
+    role: 'staff',
   });
 
   assert.equal(validateNewUser({ username: 'ab', email: 'a@b.co', fullName: 'A' }).ok, false, 'too short');
@@ -63,7 +73,10 @@ test('a new account needs a name, a usable login and somewhere to send the invit
   assert.match(validateNewUser({ username: 'ann', email: 'nope', fullName: 'A' }).errors[0], /does not look valid/);
   assert.match(validateNewUser({ username: 'ann', fullName: 'A' }).errors[0], /required to send the invitation/);
   assert.match(validateNewUser({ username: 'ann', email: 'a@b.co' }).errors[0], /Full name/);
-  assert.match(validateNewUser({ username: 'ann', email: 'a@b.co', fullName: 'A', role: 'root' }).errors[0], /Role must be/);
+  assert.match(
+    validateNewUser({ username: 'ann', email: 'a@b.co', fullName: 'A', role: 'root' }).errors[0],
+    /Role must be/,
+  );
 
   // An email-shaped username needs no separate address.
   const byUsername = validateNewUser({ username: 'ann@club.com', fullName: 'Ann Bell' });
@@ -86,16 +99,18 @@ test('the address is the login, so it is the username unless one is given', () =
   // longer shows a username field, so that error would be uncorrectable.
   const bad = validateNewUser({ email: 'nope', fullName: 'Ann Bell' });
   assert.deepEqual(bad.errors, ['That email address does not look valid']);
-  assert.deepEqual(
-    validateNewUser({ fullName: 'Ann Bell' }).errors,
-    ['A valid email address is required to send the invitation'],
-  );
+  assert.deepEqual(validateNewUser({ fullName: 'Ann Bell' }).errors, [
+    'A valid email address is required to send the invitation',
+  ]);
 });
 
 test('a patch may only touch the fields it is allowed to', () => {
   const patch = validateUserPatch({ fullName: ' Ann Bell ', role: 'ADMIN', active: false, email: 'A@B.co' });
   assert.deepEqual(patch.patch, {
-    full_name: 'Ann Bell', email: 'a@b.co', role: 'admin', is_active: false,
+    full_name: 'Ann Bell',
+    email: 'a@b.co',
+    role: 'admin',
+    is_active: false,
   });
 
   assert.deepEqual(validateUserPatch({ email: '' }).patch, { email: null }, 'an address can be cleared');
@@ -131,10 +146,7 @@ test('the last active administrator cannot be demoted, deactivated or deleted', 
   // With a second admin in place the same edits are fine.
   assert.equal(guardSelfLockout(ADMIN, other, { role: 'staff' }, { activeAdmins: 2 }).ok, true);
   // Demoting somebody who is already deactivated cannot remove the last admin.
-  assert.equal(
-    guardSelfLockout(ADMIN, { ...other, is_active: false }, { role: 'staff' }, alone).ok,
-    true,
-  );
+  assert.equal(guardSelfLockout(ADMIN, { ...other, is_active: false }, { role: 'staff' }, alone).ok, true);
   // A rename is not a loss of access, however few admins there are.
   assert.equal(guardSelfLockout(ADMIN, other, { full_name: 'New Name' }, alone).ok, true);
 });

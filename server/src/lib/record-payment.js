@@ -12,22 +12,18 @@ export async function recordStripePayment(session) {
   const ref = bookingRefFromSession(session);
   let rows = [];
   if (ref.bookingId && ref.club) {
-    ({ rows } = await query(
-      `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
-      [ref.bookingId, ref.club],
-    ));
+    ({ rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
+      ref.bookingId,
+      ref.club,
+    ]));
   }
   if (!rows[0] && ref.paymentLinkId) {
-    ({ rows } = await query(
-      `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE stripe_payment_link_id = $1`,
-      [ref.paymentLinkId],
-    ));
+    ({ rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE stripe_payment_link_id = $1`, [
+      ref.paymentLinkId,
+    ]));
   }
   if (!rows[0] && ref.bookingId) {
-    ({ rows } = await query(
-      `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1`,
-      [ref.bookingId],
-    ));
+    ({ rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1`, [ref.bookingId]));
   }
   // Not ours (another integration on the same Stripe account); nothing to retry.
   if (rows.length !== 1) {
@@ -83,4 +79,3 @@ export async function recordStripePayment(session) {
     booking: serialiseBooking(result.rows[0]),
   };
 }
-

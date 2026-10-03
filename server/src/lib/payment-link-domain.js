@@ -42,8 +42,8 @@ export function readPaymentLinkConfig(env = process.env) {
     // SendGrid template is a copy of the branding kept in SendGrid, and the
     // ones set up earlier still carry the previous club's, so a template is
     // used only when USE_SENDGRID_PAYMENT_TEMPLATES says it has been checked.
-    templateId: useTemplates ? env.SENDGRID_TEMPLATE_PAYMENT_LINK ?? null : null,
-    receiptTemplateId: useTemplates ? env.SENDGRID_TEMPLATE_PAYMENT_RECEIPT ?? null : null,
+    templateId: useTemplates ? (env.SENDGRID_TEMPLATE_PAYMENT_LINK ?? null) : null,
+    receiptTemplateId: useTemplates ? (env.SENDGRID_TEMPLATE_PAYMENT_RECEIPT ?? null) : null,
     currency: toCurrencyCode(env.STRIPE_CURRENCY, BRAND.currency),
     testMode: String(env.STRIPE_SECRET_KEY ?? '').startsWith('sk_test_'),
     missing,
@@ -88,8 +88,14 @@ function formatPlayDate(date) {
   const value = new Date(`${date}T12:00:00Z`);
   if (Number.isNaN(value.getTime())) return String(date);
   return new Intl.DateTimeFormat(BRAND.locale, {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
-  }).format(value).replace(',', ''); // 'Wednesday 12 May 2027', as the other guest emails write it
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+    .format(value)
+    .replace(',', ''); // 'Wednesday 12 May 2027', as the other guest emails write it
 }
 
 function firstName(booking) {
@@ -125,7 +131,10 @@ function manageLine(url) {
 }
 
 const escape = (value) =>
-  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
 
 /**
  * The email sent when no SendGrid template is configured: plain, branded by
@@ -194,7 +203,9 @@ function emailShell({ clubName, paragraphs, button = null, details = [], footer 
     (button
       ? `<div style="text-align:center;padding:4px 0 24px;"><a href="${escape(button.href)}" style="display:inline-block;background:${c.primary};color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">${escape(button.label)}</a></div>`
       : '') +
-    (rows ? `<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${c.rule};font-size:14px;">${rows}</table>` : '') +
+    (rows
+      ? `<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${c.rule};font-size:14px;">${rows}</table>`
+      : '') +
     (footer ? `<div style="padding-top:16px;font-size:13px;line-height:1.6;color:${c.muted};">${footer}</div>` : '');
 
   // clubName is carried by the shared header and footer.
@@ -237,7 +248,10 @@ function formatPaidOn(value) {
   const date = value ? new Date(value) : new Date();
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat(BRAND.locale, {
-    day: 'numeric', month: 'long', year: 'numeric', timeZone: BRAND.timeZone,
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: BRAND.timeZone,
   }).format(date);
 }
 

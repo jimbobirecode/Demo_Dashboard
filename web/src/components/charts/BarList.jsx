@@ -39,10 +39,7 @@ export function BarList({
                   onSelect && 'cursor-pointer',
                 )}
               >
-                <div
-                  className="h-8 rounded-sm"
-                  style={{ width: `${width}%`, background: fill, opacity: 0.55 }}
-                />
+                <div className="h-8 rounded-sm" style={{ width: `${width}%`, background: fill, opacity: 0.55 }} />
                 <span className="absolute left-2 truncate text-[0.8125rem] font-medium text-ink">
                   {row.label ?? row[index]}
                 </span>

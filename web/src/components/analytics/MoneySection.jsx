@@ -35,7 +35,12 @@ export default function MoneySection({ payments, trade }) {
                   { key: 'count', header: 'Bookings', numeric: true },
                   { key: 'gross', header: 'Value', numeric: true, render: (r) => formatCurrency(r.gross) },
                   { key: 'paid', header: 'Paid', numeric: true, render: (r) => formatCurrency(r.paid) },
-                  { key: 'outstanding', header: 'Outstanding', numeric: true, render: (r) => formatCurrency(r.outstanding) },
+                  {
+                    key: 'outstanding',
+                    header: 'Outstanding',
+                    numeric: true,
+                    render: (r) => formatCurrency(r.outstanding),
+                  },
                 ]}
                 rows={payments.byStatus.filter((row) => row.count > 0).map((row) => ({ ...row, key: row.key }))}
               />
@@ -70,8 +75,7 @@ export default function MoneySection({ payments, trade }) {
             </div>
           ) : (
             <NotRecorded>
-              Nothing in this period records a payment. Payment state is recorded on the
-              booking drawer.
+              Nothing in this period records a payment. Payment state is recorded on the booking drawer.
             </NotRecorded>
           )}
         </ChartCard>
@@ -116,7 +120,12 @@ export default function MoneySection({ payments, trade }) {
                 { key: 'players', header: 'Players', numeric: true },
                 { key: 'averageParty', header: 'Average party', numeric: true },
                 { key: 'conversion', header: 'Conversion', numeric: true, render: (r) => `${r.conversion}%` },
-                { key: 'averageValue', header: 'Average value', numeric: true, render: (r) => formatCurrency(r.averageValue) },
+                {
+                  key: 'averageValue',
+                  header: 'Average value',
+                  numeric: true,
+                  render: (r) => formatCurrency(r.averageValue),
+                },
                 { key: 'revenue', header: 'Revenue', numeric: true, render: (r) => formatCurrency(r.revenue) },
               ]}
               rows={trade.channels}

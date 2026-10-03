@@ -52,9 +52,6 @@ export function describeStage(payment) {
 export function statusDisagrees(payment) {
   // Pending is a state of the link, not of the money: it is expected to disagree.
   return (
-    Boolean(payment) &&
-    !payment.settled &&
-    payment.status !== 'Pending' &&
-    payment.status !== payment.derivedStatus
+    Boolean(payment) && !payment.settled && payment.status !== 'Pending' && payment.status !== payment.derivedStatus
   );
 }

@@ -80,9 +80,7 @@ export default function Operators() {
 
   async function save(payload) {
     const existing = editing?.operator;
-    const { operator } = existing
-      ? await api.updateOperator(existing.id, payload)
-      : await api.createOperator(payload);
+    const { operator } = existing ? await api.updateOperator(existing.id, payload) : await api.createOperator(payload);
 
     setEditing(null);
     setNotice({
@@ -219,9 +217,7 @@ export default function Operators() {
         />
       )}
 
-      {statement && (
-        <Statement statement={statement} onClose={() => setOpenId(null)} />
-      )}
+      {statement && <Statement statement={statement} onClose={() => setOpenId(null)} />}
     </div>
   );
 }
@@ -230,8 +226,8 @@ function AccountsTable({ operators, direct, onEdit, onOpen }) {
   if (!operators.length) {
     return (
       <div className="empty">
-        No trade accounts yet. Open the Unrecognised tab — the domains the club already books with
-        are listed there, ready to become accounts.
+        No trade accounts yet. Open the Unrecognised tab — the domains the club already books with are listed there,
+        ready to become accounts.
       </div>
     );
   }
@@ -330,9 +326,7 @@ function AccountsTable({ operators, direct, onEdit, onOpen }) {
               <td className="num">{formatNumber(direct.bookings)}</td>
               <td className="num">{formatCurrency(direct.committedGross)}</td>
               <td className="num">{formatCurrency(direct.outstanding)}</td>
-              <td className="num">
-                {direct.overdueAmount > 0 ? formatCurrency(direct.overdueAmount) : '—'}
-              </td>
+              <td className="num">{direct.overdueAmount > 0 ? formatCurrency(direct.overdueAmount) : '—'}</td>
               <td className="muted">—</td>
               <td className="muted">—</td>
               <td />
@@ -390,9 +384,7 @@ function AgeingTable({ operators, bands, totals }) {
                         : undefined
                     }
                   >
-                    {operator.account.ageing[band.id] > 0
-                      ? formatCurrency(operator.account.ageing[band.id])
-                      : '—'}
+                    {operator.account.ageing[band.id] > 0 ? formatCurrency(operator.account.ageing[band.id]) : '—'}
                   </td>
                 ))}
                 <td className="num" style={{ fontWeight: 700 }}>
@@ -417,8 +409,8 @@ function AgeingTable({ operators, bands, totals }) {
         </table>
       </div>
       <p className="secondary" style={{ fontSize: '0.8125rem', margin: 0 }}>
-        Bands are counted from each booking&apos;s own due date under its operator&apos;s terms, and only
-        committed bookings are included — an open enquiry is not money anybody owes.
+        Bands are counted from each booking&apos;s own due date under its operator&apos;s terms, and only committed
+        bookings are included — an open enquiry is not money anybody owes.
       </p>
     </div>
   );
@@ -442,8 +434,8 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign }) {
         <div>
           <h2 style={{ margin: 0 }}>Domains with no account</h2>
           <p className="secondary" style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem' }}>
-            Business addresses the club has taken more than one booking from. Personal mailboxes are
-            never listed — a family that books twice from Gmail is not a tour operator.
+            Business addresses the club has taken more than one booking from. Personal mailboxes are never listed — a
+            family that books twice from Gmail is not a tour operator.
           </p>
         </div>
 
@@ -503,9 +495,7 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign }) {
             </table>
           </div>
         ) : (
-          <div className="empty">
-            Every business domain the club books with already has an account.
-          </div>
+          <div className="empty">Every business domain the club books with already has an account.</div>
         )}
       </div>
 
@@ -514,9 +504,9 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign }) {
           <div>
             <h2 style={{ margin: 0 }}>Bookings that name an operator</h2>
             <p className="secondary" style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem' }}>
-              An operator&apos;s name appears in these enquiries, but the booking did not come from one of
-              their domains. A name in prose is not evidence of an account, so nothing has been
-              attached — confirm each one, or leave it as a direct booking.
+              An operator&apos;s name appears in these enquiries, but the booking did not come from one of their
+              domains. A name in prose is not evidence of an account, so nothing has been attached — confirm each one,
+              or leave it as a direct booking.
             </p>
           </div>
 
@@ -575,8 +565,7 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign }) {
                           onClick={() => {
                             const raw = assigning[booking.bookingId] ?? String(booking.operatorId ?? '');
                             const id = raw === '' ? null : Number(raw);
-                            const label =
-                              operators.find((operator) => operator.id === id)?.name ?? 'direct bookings';
+                            const label = operators.find((operator) => operator.id === id)?.name ?? 'direct bookings';
                             onAssign([booking.bookingId], id, label);
                           }}
                         >
@@ -618,10 +607,7 @@ function Statement({ statement, onClose }) {
           <Cell label="Committed" value={formatCurrency(account.committedGross)} />
           <Cell label="Paid" value={formatCurrency(account.paid)} />
           <Cell label="Outstanding" value={formatCurrency(account.outstanding)} accent />
-          <Cell
-            label="Overdue"
-            value={account.overdueAmount > 0 ? formatCurrency(account.overdueAmount) : 'None'}
-          />
+          <Cell label="Overdue" value={account.overdueAmount > 0 ? formatCurrency(account.overdueAmount) : 'None'} />
           <Cell
             label="Credit headroom"
             value={account.headroom === null ? 'No limit' : formatCurrency(account.headroom)}
@@ -634,9 +620,7 @@ function Statement({ statement, onClose }) {
             {operator.contactEmail}
           </div>
         ) : (
-          <div className="banner error">
-            No contact email on this account, so it cannot be sent a reminder.
-          </div>
+          <div className="banner error">No contact email on this account, so it cannot be sent a reminder.</div>
         )}
 
         <div className="table-wrap">
@@ -666,7 +650,10 @@ function Statement({ statement, onClose }) {
                   <td className="num">{formatCurrency(booking.payment.outstanding)}</td>
                   <td className="secondary" style={{ fontSize: '0.8125rem' }}>
                     {booking.payment.dueDate ? formatDate(booking.payment.dueDate) : '—'}
-                    <div className={booking.payment.overdue ? undefined : 'muted'} style={{ color: booking.payment.overdue ? OVERDUE : undefined }}>
+                    <div
+                      className={booking.payment.overdue ? undefined : 'muted'}
+                      style={{ color: booking.payment.overdue ? OVERDUE : undefined }}
+                    >
                       {describeDue(booking.payment)}
                     </div>
                   </td>

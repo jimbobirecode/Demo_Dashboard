@@ -45,7 +45,10 @@ export function checksum(sql) {
 
 /** Every migration file, in order, with its contents and checksum. */
 export function readMigrations(dir = MIGRATIONS_DIR) {
-  const files = fs.readdirSync(dir).filter((name) => name.endsWith('.sql')).sort();
+  const files = fs
+    .readdirSync(dir)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
   const seen = new Map();
 
   return files.map((file) => {
@@ -79,7 +82,9 @@ async function ensureTable(client) {
 }
 
 async function appliedVersions(client) {
-  const { rows } = await client.query('SELECT version, name, checksum, applied_at FROM public.schema_migrations ORDER BY version');
+  const { rows } = await client.query(
+    'SELECT version, name, checksum, applied_at FROM public.schema_migrations ORDER BY version',
+  );
   return new Map(rows.map((row) => [row.version, row]));
 }
 
@@ -156,7 +161,9 @@ export async function migrate({ pool, connectionString, dir = MIGRATIONS_DIR, st
       if (statusOnly) {
         for (const m of migrations) {
           const row = applied.get(m.version);
-          log.info(`${row ? 'applied' : 'pending'}  ${m.file}${row ? `  ${new Date(row.applied_at).toISOString()}` : ''}`);
+          log.info(
+            `${row ? 'applied' : 'pending'}  ${m.file}${row ? `  ${new Date(row.applied_at).toISOString()}` : ''}`,
+          );
         }
         return pending.map((m) => m.file);
       }

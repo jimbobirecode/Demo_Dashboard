@@ -77,11 +77,7 @@ export default function Login({ onLogin }) {
         </button>
 
         {canReset && (
-          <Link
-            to="/forgot-password"
-            className="muted"
-            style={{ fontSize: '0.8125rem', textAlign: 'center' }}
-          >
+          <Link to="/forgot-password" className="muted" style={{ fontSize: '0.8125rem', textAlign: 'center' }}>
             Forgot your password?
           </Link>
         )}

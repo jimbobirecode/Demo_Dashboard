@@ -83,10 +83,10 @@ router.post('/login', async (req, res, next) => {
   const accountKey = String(identifier).trim().toLowerCase();
   const ip = clientIp(req);
   if (loginAccountThrottle.blocked(accountKey) || loginIpThrottle.blocked(ip)) {
-    return refuseThrottled(res, Math.max(
-      loginAccountThrottle.retryAfterSeconds(accountKey),
-      loginIpThrottle.retryAfterSeconds(ip),
-    ));
+    return refuseThrottled(
+      res,
+      Math.max(loginAccountThrottle.retryAfterSeconds(accountKey), loginIpThrottle.retryAfterSeconds(ip)),
+    );
   }
 
   try {
@@ -224,10 +224,7 @@ router.post('/forgot-password', async (req, res) => {
 
     // A new link supersedes any outstanding one, so a stolen older email stops
     // working the moment the real user asks again.
-    await query(
-      'UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL',
-      [user.id],
-    );
+    await query('UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL', [user.id]);
     await query(
       `INSERT INTO public.password_resets (user_id, token_hash, email, expires_at, requested_ip)
        VALUES ($1, $2, $3, $4, $5)`,
@@ -296,10 +293,9 @@ router.post('/reset-password', async (req, res, next) => {
 
     await setPermanentPassword(found.row.user_id, newPassword);
     // Every outstanding link for this user dies with the one just used.
-    await query(
-      'UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL',
-      [found.row.user_id],
-    );
+    await query('UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL', [
+      found.row.user_id,
+    ]);
 
     // The new password is proved by signing in with it, so no session is
     // issued here — a reset link should never be a way in by itself.

@@ -23,14 +23,50 @@ const DEMO_PREFIX = 'RD-DEMO-';
 const USERNAME = process.env.SEED_USERNAME ?? 'demo';
 
 const FIRST_NAMES = [
-  'James', 'Sarah', 'Michael', 'Fiona', 'David', 'Aoife', 'Thomas', 'Claire',
-  'Robert', 'Niamh', 'William', 'Emma', 'Patrick', 'Hannah', 'Andrew', 'Laura',
-  'Stephen', 'Rachel', 'Conor', 'Megan', 'Daniel', 'Sophie', 'Mark', 'Orla',
+  'James',
+  'Sarah',
+  'Michael',
+  'Fiona',
+  'David',
+  'Aoife',
+  'Thomas',
+  'Claire',
+  'Robert',
+  'Niamh',
+  'William',
+  'Emma',
+  'Patrick',
+  'Hannah',
+  'Andrew',
+  'Laura',
+  'Stephen',
+  'Rachel',
+  'Conor',
+  'Megan',
+  'Daniel',
+  'Sophie',
+  'Mark',
+  'Orla',
 ];
 const LAST_NAMES = [
-  'Harrington', 'McAllister', 'Donnelly', 'Whitfield', 'O’Connor', 'Brennan',
-  'Fitzgerald', 'Kavanagh', 'Sinclair', 'Doherty', 'Armstrong', 'Gallagher',
-  'Pemberton', 'Hughes', 'Caldwell', 'Redmond', 'Thornton', 'Mulligan',
+  'Harrington',
+  'McAllister',
+  'Donnelly',
+  'Whitfield',
+  'O’Connor',
+  'Brennan',
+  'Fitzgerald',
+  'Kavanagh',
+  'Sinclair',
+  'Doherty',
+  'Armstrong',
+  'Gallagher',
+  'Pemberton',
+  'Hughes',
+  'Caldwell',
+  'Redmond',
+  'Thornton',
+  'Mulligan',
 ];
 const DOMAINS = ['gmail.com', 'outlook.com', 'btinternet.com', 'yahoo.co.uk', 'me.com'];
 
@@ -46,9 +82,24 @@ const COURSES = [
 
 // The sheet runs in roughly 10-minute intervals.
 const TEE_TIMES = [
-  '07:20 AM', '07:40 AM', '08:00 AM', '08:20 AM', '08:50 AM', '09:10 AM',
-  '09:40 AM', '10:04 AM', '10:24 AM', '10:50 AM', '11:20 AM', '11:50 AM',
-  '12:30 PM', '01:10 PM', '01:40 PM', '02:20 PM', '02:50 PM', '03:30 PM',
+  '07:20 AM',
+  '07:40 AM',
+  '08:00 AM',
+  '08:20 AM',
+  '08:50 AM',
+  '09:10 AM',
+  '09:40 AM',
+  '10:04 AM',
+  '10:24 AM',
+  '10:50 AM',
+  '11:20 AM',
+  '11:50 AM',
+  '12:30 PM',
+  '01:10 PM',
+  '01:40 PM',
+  '02:20 PM',
+  '02:50 PM',
+  '03:30 PM',
 ];
 
 const SOURCES = [
@@ -161,10 +212,7 @@ async function resolveClub(client) {
 }
 
 async function ensureUser(client, CLUB) {
-  const { rows } = await client.query(
-    'SELECT id FROM public.dashboard_users WHERE username = $1',
-    [USERNAME],
-  );
+  const { rows } = await client.query('SELECT id FROM public.dashboard_users WHERE username = $1', [USERNAME]);
 
   if (rows.length) {
     console.log(`User "${USERNAME}" already exists — password left unchanged.`);
@@ -327,7 +375,8 @@ const OPERATORS = [
     domain: 'highlandswing.example',
     terms: { days: 30, deposit: 0, depositBefore: null, balanceBefore: null, limit: 5000 },
     onHold: true,
-    notes: 'ON HOLD: two invoices over 90 days and over its credit limit. No new tee times until the account is settled.',
+    notes:
+      'ON HOLD: two invoices over 90 days and over its credit limit. No new tee times until the account is settled.',
     bookings: [
       { day: -130, players: 8, rounds: 1, status: 'Booked', invoiced: 140, paid: 0 },
       { day: -100, players: 4, rounds: 2, status: 'Booked', invoiced: 110, paid: 0.25 },
@@ -357,9 +406,7 @@ const OPERATORS = [
     terms: { days: 30, deposit: 20, depositBefore: 90, balanceBefore: 30, limit: 15000 },
     active: false,
     notes: 'Retired partner - ceased trading with the club. Kept for history.',
-    bookings: [
-      { day: -300, players: 8, rounds: 1, status: 'Booked', invoiced: 330, paid: 1 },
-    ],
+    bookings: [{ day: -300, players: 8, rounds: 1, status: 'Booked', invoiced: 330, paid: 1 }],
   },
 ];
 
@@ -414,7 +461,9 @@ function buildOperatorBooking(operator, line, index) {
       `Players: ${line.players} (${teeTimes.length} tee time${teeTimes.length === 1 ? '' : 's'})`,
       `Course: ${courses}`,
       line.rounds === 2 ? 'Playing 36 holes - second round charged at the 50% same-day replay rate.' : '',
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
     timestamp: `${requested}T09:30:00Z`,
     course: courses,
     selectedTeeTimes: JSON.stringify(teeTimes),
@@ -431,12 +480,16 @@ function buildOperatorBooking(operator, line, index) {
  */
 export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
   if (reset) {
-    const bookings = await client.query('DELETE FROM public.bookings WHERE booking_id LIKE $1', [`${OPERATOR_PREFIX}%`]);
-    const operators = await client.query(
-      'DELETE FROM public.tour_operators WHERE club = $1 AND notes LIKE $2',
-      [CLUB, `${SAMPLE_OPERATOR_NOTE}%`],
+    const bookings = await client.query('DELETE FROM public.bookings WHERE booking_id LIKE $1', [
+      `${OPERATOR_PREFIX}%`,
+    ]);
+    const operators = await client.query('DELETE FROM public.tour_operators WHERE club = $1 AND notes LIKE $2', [
+      CLUB,
+      `${SAMPLE_OPERATOR_NOTE}%`,
+    ]);
+    console.log(
+      `--reset: removed ${operators.rowCount} sample operator(s) and ${bookings.rowCount} of their booking(s).`,
     );
-    console.log(`--reset: removed ${operators.rowCount} sample operator(s) and ${bookings.rowCount} of their booking(s).`);
   }
 
   let bookingsInserted = 0;
@@ -461,9 +514,22 @@ export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
        WHERE public.tour_operators.notes LIKE '${SAMPLE_OPERATOR_NOTE}%'
        RETURNING id`,
       [
-        CLUB, operator.name, operator.contact, `accounts@${operator.domain}`, operator.phone, operator.code,
-        [operator.domain], t.days, t.deposit, t.depositBefore, t.balanceBefore, t.limit, BRAND.currency,
-        Boolean(operator.onHold), operator.active !== false, `${SAMPLE_OPERATOR_NOTE} ${operator.notes}`,
+        CLUB,
+        operator.name,
+        operator.contact,
+        `accounts@${operator.domain}`,
+        operator.phone,
+        operator.code,
+        [operator.domain],
+        t.days,
+        t.deposit,
+        t.depositBefore,
+        t.balanceBefore,
+        t.limit,
+        BRAND.currency,
+        Boolean(operator.onHold),
+        operator.active !== false,
+        `${SAMPLE_OPERATOR_NOTE} ${operator.notes}`,
       ],
     );
     if (!rows.length) {
@@ -483,16 +549,32 @@ export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$16,$17)
          ON CONFLICT (booking_id) DO NOTHING`,
         [
-          b.bookingId, b.email, b.date, b.teeTime, b.players, b.total, b.status, b.note, CLUB,
-          b.timestamp, b.course, b.selectedTeeTimes,
-          operatorId, b.paymentStatus, b.amountPaid, b.invoiceNumber, b.invoicedAt,
+          b.bookingId,
+          b.email,
+          b.date,
+          b.teeTime,
+          b.players,
+          b.total,
+          b.status,
+          b.note,
+          CLUB,
+          b.timestamp,
+          b.course,
+          b.selectedTeeTimes,
+          operatorId,
+          b.paymentStatus,
+          b.amountPaid,
+          b.invoiceNumber,
+          b.invoicedAt,
         ],
       );
       bookingsInserted += rowCount;
     }
   }
 
-  console.log(`Seeded ${OPERATORS.length} tour operator(s) and ${bookingsInserted} operator booking(s) for club "${CLUB}".`);
+  console.log(
+    `Seeded ${OPERATORS.length} tour operator(s) and ${bookingsInserted} operator booking(s) for club "${CLUB}".`,
+  );
   return { operators: OPERATORS.length, bookings: bookingsInserted };
 }
 
@@ -505,7 +587,6 @@ export async function seed({ client, reset = false, operatorsOnly = false } = {}
     return { club: CLUB, inserted: operators.bookings, operators, password: null };
   }
   {
-
     if (reset) {
       const { rowCount } = await client.query(
         'DELETE FROM public.bookings WHERE booking_id LIKE $1 AND booking_id NOT LIKE $2',

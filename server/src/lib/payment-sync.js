@@ -86,7 +86,10 @@ async function runSync(reason, sendReceipt) {
           if (!recorded.booking) continue;
           let receipt = 'not attempted';
           if (sendReceipt) {
-            const outcome = await sendReceipt(recorded.booking, config).catch((err) => ({ ok: false, message: err.message }));
+            const outcome = await sendReceipt(recorded.booking, config).catch((err) => ({
+              ok: false,
+              message: err.message,
+            }));
             receipt = outcome.ok ? 'sent' : `not sent: ${outcome.message}`;
           }
           result.recorded.push({ bookingId: row.booking_id, result: recorded.result, receipt });

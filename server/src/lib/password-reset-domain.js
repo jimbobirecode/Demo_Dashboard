@@ -53,8 +53,7 @@ export const MIN_PASSWORD_LENGTH = 8;
  * deliberately the same for an unknown username, a known one with no address
  * on file and a link that really went out.
  */
-export const NEUTRAL_REPLY =
-  'If that account exists and has an email address on file, a reset link is on its way.';
+export const NEUTRAL_REPLY = 'If that account exists and has an email address on file, a reset link is on its way.';
 
 /** Reset email settings, with the SendGrid key reduced to a yes/no. */
 export function readResetConfig(env = process.env) {
@@ -153,7 +152,9 @@ export function resolveResetEmail(user) {
 
 /** A plausible address, lowercased and trimmed, or null. */
 export function cleanAddress(value) {
-  const text = String(value ?? '').trim().toLowerCase();
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) ? text : null;
 }
 
@@ -190,9 +191,7 @@ export function buildResetTemplateData({
     // the same branding as the emails the dashboard builds itself.
     ...brandTemplateData(),
     purpose,
-    subject: inviting
-      ? `You have been given access to the ${club} dashboard`
-      : `Reset your ${club} dashboard password`,
+    subject: inviting ? `You have been given access to the ${club} dashboard` : `Reset your ${club} dashboard password`,
     // An invitation has to say what the link is for and who sent it; somebody
     // who was not expecting the email has no other way to tell it apart from
     // a phishing attempt.
@@ -218,7 +217,7 @@ export function buildResetTemplateData({
     url: link,
     // Who the account is for. `email` is where it went, `role` what it grants.
     email: toEmail ?? user?.email ?? null,
-    role: role ? ROLE_LABELS[role] ?? role : null,
+    role: role ? (ROLE_LABELS[role] ?? role) : null,
     expires_in_minutes: ttlMinutes,
     expires_in: describeMinutes(ttlMinutes),
     support_email: fromEmail ?? null,

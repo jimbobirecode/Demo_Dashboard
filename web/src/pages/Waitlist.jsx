@@ -107,10 +107,7 @@ export default function Waitlist() {
         />
       </div>
 
-      <AddEntry
-        disabled={busy}
-        onAdd={(entry) => act(() => api.addWaitlistEntry(entry), 'Added to the waitlist')}
-      />
+      <AddEntry disabled={busy} onAdd={(entry) => act(() => api.addWaitlistEntry(entry), 'Added to the waitlist')} />
 
       {data.suggestions?.length > 0 && (
         <Suggestions
@@ -137,8 +134,7 @@ export default function Waitlist() {
           )
         }
         onCancel={(entry) =>
-          act(() => api.updateWaitlistEntry(entry.waitlistId, { status: 'Cancelled' }),
-            `${entry.waitlistId} cancelled`)
+          act(() => api.updateWaitlistEntry(entry.waitlistId, { status: 'Cancelled' }), `${entry.waitlistId} cancelled`)
         }
         onConvert={(entry, booking) =>
           act(async () => {
@@ -154,8 +150,14 @@ export default function Waitlist() {
 
 function AddEntry({ onAdd, disabled }) {
   const blank = {
-    guestName: '', guestEmail: '', requestedDate: '', preferredTime: '',
-    players: 4, golfCourse: '', priority: 5, notes: '',
+    guestName: '',
+    guestEmail: '',
+    requestedDate: '',
+    preferredTime: '',
+    players: 4,
+    golfCourse: '',
+    priority: 5,
+    notes: '',
   };
   const [form, setForm] = useState(blank);
   const set = (key) => (event) => setForm({ ...form, [key]: event.target.value });
@@ -182,11 +184,24 @@ function AddEntry({ onAdd, disabled }) {
         </label>
         <label className="stack" style={{ gap: '0.35rem' }}>
           <span className="label">Date wanted</span>
-          <input type="date" value={form.requestedDate} onChange={set('requestedDate')} required style={{ width: 'auto' }} />
+          <input
+            type="date"
+            value={form.requestedDate}
+            onChange={set('requestedDate')}
+            required
+            style={{ width: 'auto' }}
+          />
         </label>
         <label className="stack" style={{ gap: '0.35rem' }}>
           <span className="label">Players</span>
-          <input type="number" min="1" max="40" value={form.players} onChange={set('players')} style={{ width: '5rem' }} />
+          <input
+            type="number"
+            min="1"
+            max="40"
+            value={form.players}
+            onChange={set('players')}
+            style={{ width: '5rem' }}
+          />
         </label>
         <label className="stack" style={{ gap: '0.35rem' }}>
           <span className="label">Preferred</span>
@@ -198,9 +213,18 @@ function AddEntry({ onAdd, disabled }) {
         </label>
         <label className="stack" style={{ gap: '0.35rem' }}>
           <span className="label">Priority</span>
-          <input type="number" min="1" max="10" value={form.priority} onChange={set('priority')} style={{ width: '5rem' }} />
+          <input
+            type="number"
+            min="1"
+            max="10"
+            value={form.priority}
+            onChange={set('priority')}
+            style={{ width: '5rem' }}
+          />
         </label>
-        <button type="submit" className="btn-primary" disabled={disabled}>Add</button>
+        <button type="submit" className="btn-primary" disabled={disabled}>
+          Add
+        </button>
       </div>
     </form>
   );
@@ -221,8 +245,8 @@ function Suggestions({ rows, busy, onLink }) {
       <div>
         <h3>Possible conversions ({rows.length})</h3>
         <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8125rem' }}>
-          People on the list who already have a booking. Confirm one and it counts toward
-          conversion — nothing is linked until you say so.
+          People on the list who already have a booking. Confirm one and it counts toward conversion — nothing is linked
+          until you say so.
         </p>
       </div>
       <div className="table-wrap">
@@ -242,7 +266,9 @@ function Suggestions({ rows, busy, onLink }) {
               <tr key={row.key}>
                 <td>
                   <div>{row.guestName || '—'}</div>
-                  <div className="muted" style={{ fontSize: '0.75rem' }}>{row.guestEmail}</div>
+                  <div className="muted" style={{ fontSize: '0.75rem' }}>
+                    {row.guestEmail}
+                  </div>
                 </td>
                 <td>{formatDate(row.requestedDate)}</td>
                 <td className="mono">
@@ -254,13 +280,17 @@ function Suggestions({ rows, busy, onLink }) {
                 <td>
                   {row.because}
                   {row.confidence === 'exact' && (
-                    <div className="muted" style={{ fontSize: '0.75rem' }}>Exact date match</div>
+                    <div className="muted" style={{ fontSize: '0.75rem' }}>
+                      Exact date match
+                    </div>
                   )}
                 </td>
                 <td className="num">
                   {row.waitlistPlayers} → {row.bookingPlayers}
                   {!row.playersMatch && (
-                    <div className="muted" style={{ fontSize: '0.75rem' }}>Party size differs</div>
+                    <div className="muted" style={{ fontSize: '0.75rem' }}>
+                      Party size differs
+                    </div>
                   )}
                 </td>
                 <td className="num">
@@ -284,8 +314,7 @@ function Demand({ rows }) {
       <div>
         <h3>Most wanted dates</h3>
         <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8125rem' }}>
-          Where the waiting players are — a date with many entries and few conversions is one to
-          open more times on
+          Where the waiting players are — a date with many entries and few conversions is one to open more times on
         </p>
       </div>
       <div className="table-wrap">
@@ -306,7 +335,9 @@ function Demand({ rows }) {
                 <td className="num">{row.entries}</td>
                 <td className="num">{row.players}</td>
                 <td className="num">{row.open}</td>
-                <td className="num">{row.converted} ({row.conversion}%)</td>
+                <td className="num">
+                  {row.converted} ({row.conversion}%)
+                </td>
               </tr>
             ))}
           </tbody>
@@ -340,19 +371,28 @@ function EntryTable({ entries, busy, onNotify, onCancel, onConvert, onDelete }) 
             <tr key={entry.waitlistId} style={{ opacity: entry.open ? 1 : 0.6 }}>
               <td>
                 <div>{entry.guestName || '—'}</div>
-                <div className="muted" style={{ fontSize: '0.75rem' }}>{entry.guestEmail}</div>
+                <div className="muted" style={{ fontSize: '0.75rem' }}>
+                  {entry.guestEmail}
+                </div>
               </td>
               <td>{entry.requestedDate ? formatDate(entry.requestedDate) : '—'}</td>
-              <td>{entry.preferredTime || 'Any'}{entry.timeFlexibility ? ` · ${entry.timeFlexibility}` : ''}</td>
+              <td>
+                {entry.preferredTime || 'Any'}
+                {entry.timeFlexibility ? ` · ${entry.timeFlexibility}` : ''}
+              </td>
               <td className="num">{entry.players}</td>
               <td className="num">{entry.priority}</td>
               <td>
                 {entry.status}
                 {entry.convertedBookingId && (
-                  <div className="muted mono" style={{ fontSize: '0.75rem' }}>{entry.convertedBookingId}</div>
+                  <div className="muted mono" style={{ fontSize: '0.75rem' }}>
+                    {entry.convertedBookingId}
+                  </div>
                 )}
                 {entry.notificationSent && entry.open && (
-                  <div className="muted" style={{ fontSize: '0.75rem' }}>Notified</div>
+                  <div className="muted" style={{ fontSize: '0.75rem' }}>
+                    Notified
+                  </div>
                 )}
               </td>
               <td className="num">
@@ -437,7 +477,9 @@ function ConvertForm({ entry, busy, onSubmit }) {
         aria-label="Booking total"
         style={{ width: '7rem' }}
       />
-      <button type="submit" className="btn-primary btn-sm" disabled={busy}>Book it</button>
+      <button type="submit" className="btn-primary btn-sm" disabled={busy}>
+        Book it
+      </button>
     </form>
   );
 }

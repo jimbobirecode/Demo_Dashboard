@@ -133,14 +133,18 @@ export default function EmailComposer({
   }, [body, draftKey, initialBody]);
 
   // A countdown still running when the composer closes is sent, not lost.
-  useEffect(() => () => {
-    if (timer.current) {
-      clearInterval(timer.current);
-      timer.current = null;
-      deliver();
-    }
+  useEffect(
+    () => () => {
+      if (timer.current) {
+        clearInterval(timer.current);
+        timer.current = null;
+        deliver();
+      }
+    },
+    // Unmount only; deliver() reads the latest values through a ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    [],
+  );
 
   async function deliver() {
     setBusy(true);
@@ -234,7 +238,9 @@ export default function EmailComposer({
 
       {!preview && (
         <div className="quick-replies" aria-label="Start from a ready-made reply">
-          <span className="muted" style={{ fontSize: '0.8125rem' }}>Start with:</span>
+          <span className="muted" style={{ fontSize: '0.8125rem' }}>
+            Start with:
+          </span>
           {quickReplies(context).map((entry) => (
             <button
               key={entry.id}
@@ -281,11 +287,25 @@ export default function EmailComposer({
       )}
 
       {preview ? (
-        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: '#fff' }}>
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            overflow: 'hidden',
+            background: '#fff',
+          }}
+        >
           {preview.loading ? (
-            <div className="muted" style={{ padding: '1rem', color: '#555' }}>Building the preview…</div>
+            <div className="muted" style={{ padding: '1rem', color: '#555' }}>
+              Building the preview…
+            </div>
           ) : (
-            <iframe title="Email preview" sandbox="" srcDoc={preview.html} style={{ width: '100%', height: '32rem', border: 0, display: 'block' }} />
+            <iframe
+              title="Email preview"
+              sandbox=""
+              srcDoc={preview.html}
+              style={{ width: '100%', height: '32rem', border: 0, display: 'block' }}
+            />
           )}
         </div>
       ) : (
@@ -309,10 +329,16 @@ export default function EmailComposer({
 
       {pending !== null ? (
         <div className="banner success between" role="status" style={{ margin: 0 }}>
-          <span>Sending to {to} in {pending}s…</span>
+          <span>
+            Sending to {to} in {pending}s…
+          </span>
           <span className="row" style={{ gap: '0.5rem' }}>
-            <button type="button" className="btn-sm" onClick={undo}>Undo</button>
-            <button type="button" className="btn-sm btn-primary" onClick={sendNow}>Send now</button>
+            <button type="button" className="btn-sm" onClick={undo}>
+              Undo
+            </button>
+            <button type="button" className="btn-sm btn-primary" onClick={sendNow}>
+              Send now
+            </button>
           </span>
         </div>
       ) : (
@@ -325,7 +351,9 @@ export default function EmailComposer({
               {preview ? 'Edit' : 'Preview'}
             </button>
             {onCancel && (
-              <button type="button" onClick={onCancel} disabled={busy}>Cancel</button>
+              <button type="button" onClick={onCancel} disabled={busy}>
+                Cancel
+              </button>
             )}
             {note}
           </div>

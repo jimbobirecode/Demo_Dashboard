@@ -46,7 +46,7 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
       outcome: 'rejected',
       detail:
         check.reason === 'Signature mismatch'
-          ? 'Signature mismatch: STRIPE_WEBHOOK_SECRET is not this endpoint\'s signing secret (test and live mode have different ones)'
+          ? "Signature mismatch: STRIPE_WEBHOOK_SECRET is not this endpoint's signing secret (test and live mode have different ones)"
           : check.reason,
     });
     return res.status(400).json({ error: check.reason });

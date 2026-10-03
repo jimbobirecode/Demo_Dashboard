@@ -1,13 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
-import {
-  MAX_SHEET_ROWS,
-  SheetTooLargeError,
-  cellValue,
-  checkRowCount,
-  readXlsxRows,
-} from '../src/lib/sheet-reader.js';
+import { MAX_SHEET_ROWS, SheetTooLargeError, cellValue, checkRowCount, readXlsxRows } from '../src/lib/sheet-reader.js';
 
 async function workbook(rows, { extraSheet = false } = {}) {
   const book = new ExcelJS.Workbook();
@@ -19,10 +13,13 @@ async function workbook(rows, { extraSheet = false } = {}) {
 
 test('reads the first sheet as rows of plain values, dates and formulas included', async () => {
   const played = new Date(Date.UTC(2026, 9, 18));
-  const buffer = await workbook([
-    ['Date', 'Name', 'Players', 'Total'],
-    [played, 'Ann Guest', 4, { formula: 'C2*100', result: 400 }],
-  ], { extraSheet: true });
+  const buffer = await workbook(
+    [
+      ['Date', 'Name', 'Players', 'Total'],
+      [played, 'Ann Guest', 4, { formula: 'C2*100', result: 400 }],
+    ],
+    { extraSheet: true },
+  );
 
   const rows = await readXlsxRows(buffer);
   assert.equal(rows.length, 2, 'only the first sheet');

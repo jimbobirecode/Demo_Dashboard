@@ -3,12 +3,7 @@ import ExcelJS from 'exceljs';
 import { query } from '../db.js';
 import { requireAdmin, requireAuth } from '../auth.js';
 import { csvLine } from '../lib/csv.js';
-import {
-  ALLOWED_STATUSES,
-  normaliseStatus,
-  extractTeeTimeFromNote,
-  serialiseBooking,
-} from '../lib/bookings-domain.js';
+import { ALLOWED_STATUSES, normaliseStatus, extractTeeTimeFromNote, serialiseBooking } from '../lib/bookings-domain.js';
 import { BOOKING_SELECT, OPERATOR_SELECT, buildAuditSet } from '../lib/schema.js';
 import {
   PAYMENT_STATUSES,
@@ -87,10 +82,7 @@ export async function withAccount(booking, club) {
  * having to run a nightly job to say so.
  */
 async function loadBookingsWithAccounts(club) {
-  const [bookings, operators] = await Promise.all([
-    loadBookings(club),
-    loadOperators(club),
-  ]);
+  const [bookings, operators] = await Promise.all([loadBookings(club), loadOperators(club)]);
 
   const today = todayInClubZone();
   const index = buildOperatorIndex(operators);
@@ -278,10 +270,10 @@ router.patch('/:bookingId/tee-time', async (req, res, next) => {
 // call; staff cancel instead, which keeps the row.
 router.delete('/:bookingId', requireAdmin, async (req, res, next) => {
   try {
-    const { rowCount } = await query(
-      'DELETE FROM public.bookings WHERE booking_id = $1 AND club = $2',
-      [req.params.bookingId, req.user.customerId],
-    );
+    const { rowCount } = await query('DELETE FROM public.bookings WHERE booking_id = $1 AND club = $2', [
+      req.params.bookingId,
+      req.user.customerId,
+    ]);
     if (!rowCount) return res.status(404).json({ error: 'Booking not found' });
     res.json({ ok: true });
   } catch (err) {
@@ -304,10 +296,11 @@ router.post('/fix-tee-times', async (req, res, next) => {
     for (const row of rows) {
       const teeTime = extractTeeTimeFromNote(row.note);
       if (!teeTime) continue;
-      await query(
-        'UPDATE public.bookings SET tee_time = $1, updated_at = NOW() WHERE booking_id = $2 AND club = $3',
-        [teeTime, row.booking_id, req.user.customerId],
-      );
+      await query('UPDATE public.bookings SET tee_time = $1, updated_at = NOW() WHERE booking_id = $2 AND club = $3', [
+        teeTime,
+        row.booking_id,
+        req.user.customerId,
+      ]);
       updated += 1;
     }
 
@@ -373,10 +366,7 @@ router.get('/export', async (req, res, next) => {
     sheet.getRow(1).font = { bold: true };
     bookings.forEach((booking) => sheet.addRow(booking));
 
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="bookings_${stamp}.xlsx"`);
     await workbook.xlsx.write(res);
     res.end();

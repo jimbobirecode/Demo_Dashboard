@@ -92,10 +92,7 @@ export default function OperatorForm({ operator, account, onSave, onDelete, onCl
                 label="Headroom"
                 value={account.headroom === null ? 'No limit' : formatCurrency(account.headroom)}
               />
-              <Stat
-                label="Next play"
-                value={account.nextPlayDate ? formatDate(account.nextPlayDate) : '—'}
-              />
+              <Stat label="Next play" value={account.nextPlayDate ? formatDate(account.nextPlayDate) : '—'} />
             </div>
           </div>
         )}
@@ -136,13 +133,32 @@ export default function OperatorForm({ operator, account, onSave, onDelete, onCl
               <input type="number" min="0" max="365" value={form.paymentTermsDays} onChange={set('paymentTermsDays')} />
             </Row>
             <Row label="Deposit (%)" hint="Share of the booking total due up front. 0 means no deposit.">
-              <input type="number" min="0" max="100" step="0.5" value={form.depositPercent} onChange={set('depositPercent')} />
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={form.depositPercent}
+                onChange={set('depositPercent')}
+              />
             </Row>
             <Row label="Deposit due (days before play)" hint="Leave blank to use the invoice terms above.">
-              <input type="number" min="0" max="365" value={form.depositDueDaysBeforePlay} onChange={set('depositDueDaysBeforePlay')} />
+              <input
+                type="number"
+                min="0"
+                max="365"
+                value={form.depositDueDaysBeforePlay}
+                onChange={set('depositDueDaysBeforePlay')}
+              />
             </Row>
             <Row label="Balance due (days before play)" hint="Leave blank to use the invoice terms above.">
-              <input type="number" min="0" max="365" value={form.balanceDueDaysBeforePlay} onChange={set('balanceDueDaysBeforePlay')} />
+              <input
+                type="number"
+                min="0"
+                max="365"
+                value={form.balanceDueDaysBeforePlay}
+                onChange={set('balanceDueDaysBeforePlay')}
+              />
             </Row>
             <Row label="Credit limit" hint="Most they may owe at once. Blank means no limit is enforced.">
               <input type="number" min="0" step="100" value={form.creditLimit} onChange={set('creditLimit')} />
@@ -184,8 +200,8 @@ export default function OperatorForm({ operator, account, onSave, onDelete, onCl
                 Danger zone
               </span>
               <p className="secondary" style={{ margin: 0, fontSize: '0.8125rem' }}>
-                An account with bookings against it is retired rather than deleted — the history and
-                the money owed stay where they are.
+                An account with bookings against it is retired rather than deleted — the history and the money owed stay
+                where they are.
               </p>
               {confirmDelete ? (
                 <div className="row">

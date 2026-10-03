@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { toCurrencyCode } from '../src/lib/currency.js';
-import { formatAccountMoney, serialiseOperator, toOperatorColumns, validateOperator, describeTerms } from '../src/lib/operators-domain.js';
+import {
+  formatAccountMoney,
+  serialiseOperator,
+  toOperatorColumns,
+  validateOperator,
+  describeTerms,
+} from '../src/lib/operators-domain.js';
 
 test('a currency typed as a symbol or a word reads as its ISO code', () => {
   for (const value of ['EUR', 'eur', ' Eur ', '€', 'euro', 'Euros']) assert.equal(toCurrencyCode(value), 'EUR', value);
@@ -28,7 +34,13 @@ test('anything that is not a currency falls back', () => {
 });
 
 test('an operator saved with a bad currency no longer breaks its terms or balances', () => {
-  const operator = serialiseOperator({ id: 1, name: 'Links Trail', currency: 'â\u0082¬', credit_limit: 20000, payment_terms_days: 30 });
+  const operator = serialiseOperator({
+    id: 1,
+    name: 'Links Trail',
+    currency: 'â\u0082¬',
+    credit_limit: 20000,
+    payment_terms_days: 30,
+  });
   assert.equal(operator.currency, 'EUR');
   assert.match(describeTerms(operator), /€20,000/);
   assert.equal(formatAccountMoney(1500, '€'), '€1,500');

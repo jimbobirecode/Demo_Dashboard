@@ -60,16 +60,12 @@ export function Heatmap({
                   type="button"
                   className="h-8 w-full rounded-sm transition-opacity hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-series-bright"
                   style={
-                    fill
-                      ? { background: fill }
-                      : { background: 'transparent', boxShadow: `inset 0 0 0 1px ${GRID}` }
+                    fill ? { background: fill } : { background: 'transparent', boxShadow: `inset 0 0 0 1px ${GRID}` }
                   }
                   aria-label={`${band}, ${day}: ${valueFormatter(value)} ${valueLabel}`}
                   onMouseEnter={() => setHovered({ band, day, cell })}
                   onFocus={() => setHovered({ band, day, cell })}
-                  onMouseMove={(event) =>
-                    setPointer({ x: event.clientX, y: event.clientY })
-                  }
+                  onMouseMove={(event) => setPointer({ x: event.clientX, y: event.clientY })}
                   onBlur={() => setHovered(null)}
                 >
                   {/* The number is the accessible name; the fill is reinforcement. */}
@@ -84,10 +80,7 @@ export function Heatmap({
       <Legend peak={peak} valueFormatter={valueFormatter} />
 
       {hovered && (
-        <div
-          className="pointer-events-none fixed z-50"
-          style={{ left: pointer.x + 12, top: pointer.y + 12 }}
-        >
+        <div className="pointer-events-none fixed z-50" style={{ left: pointer.x + 12, top: pointer.y + 12 }}>
           <ChartTooltip
             title={`${hovered.day} · ${hovered.band}`}
             rows={

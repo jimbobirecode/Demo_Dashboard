@@ -80,7 +80,13 @@ function mailConfig() {
 async function sendMail(toEmail, email) {
   const config = mailConfig();
   if (!config.apiKey || !config.fromEmail) return false;
-  const outcome = await sendHtmlEmail({ ...config, toEmail, subject: email.subject, text: email.text, html: email.html });
+  const outcome = await sendHtmlEmail({
+    ...config,
+    toEmail,
+    subject: email.subject,
+    text: email.text,
+    html: email.html,
+  });
   if (!outcome.ok) log.error('email failed:', outcome.message);
   return outcome.ok;
 }
@@ -332,20 +338,36 @@ router.post('/bookings/:bookingId/request', async (req, res, next) => {
           status, auto_applied, days_before_play, guest_email, requested_ip)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'Pending',FALSE,$8,$9,$10)`,
       [
-        booking.bookingId, booking.club, check.value.kind,
+        booking.bookingId,
+        booking.club,
+        check.value.kind,
         `[${account.operator.name}, via the portal] ${check.value.message ?? ''}`.trim(),
-        check.value.requestedDate, check.value.requestedTime, check.value.requestedPlayers,
-        options.daysUntilPlay, req.portal.email, clientIp(req),
+        check.value.requestedDate,
+        check.value.requestedTime,
+        check.value.requestedPlayers,
+        options.daysUntilPlay,
+        req.portal.email,
+        clientIp(req),
       ],
     );
     // Addressed to the operator, not the booking's lead guest.
-    const email = buildChangeEmail({ outcome: 'received', booking: { ...booking, guestName: '' }, request: { kind: check.value.kind } });
+    const email = buildChangeEmail({
+      outcome: 'received',
+      booking: { ...booking, guestName: '' },
+      request: { kind: check.value.kind },
+    });
     const emailed = await sendMail(req.portal.email, email).catch(() => false);
     if (emailed) {
       await logEmail({
-        club: booking.club, direction: 'outbound', booking_id: booking.bookingId,
-        from_email: process.env.FROM_EMAIL, to_email: req.portal.email, subject: email.subject,
-        body_text: email.text, sent_by: 'bot', kind: 'change_acknowledgement',
+        club: booking.club,
+        direction: 'outbound',
+        booking_id: booking.bookingId,
+        from_email: process.env.FROM_EMAIL,
+        to_email: req.portal.email,
+        subject: email.subject,
+        body_text: email.text,
+        sent_by: 'bot',
+        kind: 'change_acknowledgement',
       });
     }
     res.status(201).json({
@@ -363,7 +385,8 @@ router.post('/bookings/:bookingId/request', async (req, res, next) => {
 router.post('/bookings/:bookingId/pay', async (req, res, next) => {
   try {
     const config = readPaymentLinkConfig();
-    if (!config.configured) return res.status(409).json({ error: 'Online payment is not available. Please contact the club.' });
+    if (!config.configured)
+      return res.status(409).json({ error: 'Online payment is not available. Please contact the club.' });
     const account = await loadAccount(req);
     if (!account) return res.status(401).json({ error: 'This account is no longer active.' });
     const booking = ownBooking(account, req.params.bookingId);
@@ -410,7 +433,10 @@ router.post('/bookings/:bookingId/pay', async (req, res, next) => {
     );
     res.json({ url, amount });
   } catch (err) {
-    if (/^Stripe /.test(err.message)) return res.status(502).json({ error: 'Stripe could not create the payment. Please try again or contact the club.' });
+    if (/^Stripe /.test(err.message))
+      return res
+        .status(502)
+        .json({ error: 'Stripe could not create the payment. Please try again or contact the club.' });
     next(err);
   }
 });
@@ -429,8 +455,13 @@ router.post('/enquiries', async (req, res, next) => {
           routed_to, review_status, review_reason)
        VALUES ($1, 'inbound', $2, $3, $4, $5, 'operator_request', $6, 'inbox', 'open', $7)`,
       [
-        req.portal.club, req.portal.email, process.env.FROM_EMAIL ?? null, enquiry.subject, enquiry.body,
-        enquiry.summary, 'Tee time request from the tour operator portal',
+        req.portal.club,
+        req.portal.email,
+        process.env.FROM_EMAIL ?? null,
+        enquiry.subject,
+        enquiry.body,
+        enquiry.summary,
+        'Tee time request from the tour operator portal',
       ],
     );
     res.status(201).json({ ok: true, message: 'Request sent. The club will reply by email with tee times.' });

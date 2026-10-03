@@ -40,10 +40,7 @@ test('a state-changing call without the header is refused', () => {
 
 test('the header passes, case-insensitively, with or without an Origin', () => {
   assert.equal(checkCsrf({ method: 'POST', path: '/api/auth/login', headers: ok, allowedOrigins: [OWN] }).ok, true);
-  assert.equal(
-    checkCsrf({ method: 'POST', path: '/x', headers: { 'x-requested-with': 'TeeMail' } }).ok,
-    true,
-  );
+  assert.equal(checkCsrf({ method: 'POST', path: '/x', headers: { 'x-requested-with': 'TeeMail' } }).ok, true);
   assert.equal(
     checkCsrf({ method: 'POST', path: '/x', headers: { ...ok, origin: OWN }, allowedOrigins: [OWN] }).ok,
     true,
@@ -77,10 +74,10 @@ test('the Stripe webhook is exempt — it is signed instead', () => {
 
 test('allowed origins: this host, APP_URL, and the Vite dev server outside production', () => {
   const req = { protocol: 'https', get: (name) => (name === 'host' ? 'dash.example.com' : undefined) };
-  assert.deepEqual(
-    allowedOriginsFor(req, { NODE_ENV: 'production', APP_URL: 'https://democlub.teemail.io/' }).sort(),
-    ['https://dash.example.com', 'https://democlub.teemail.io'],
-  );
+  assert.deepEqual(allowedOriginsFor(req, { NODE_ENV: 'production', APP_URL: 'https://democlub.teemail.io/' }).sort(), [
+    'https://dash.example.com',
+    'https://democlub.teemail.io',
+  ]);
   assert.ok(allowedOriginsFor(req, {}).includes('http://localhost:5173'));
   assert.equal(originOf('not a url'), null);
 });

@@ -36,9 +36,18 @@ test('a reply quotes the email it answers, and escapes both', () => {
 
 test('a stored row reads back with labels, and a JSON extraction is parsed', () => {
   const message = serialiseMessage({
-    id: 7, direction: 'inbound', booking_id: null, from_email: 'tom@example.com', subject: 'Buggies?',
-    body_text: 'Do you have buggies?', intent: 'question', routed_to: 'inbox', review_status: 'open',
-    review_reason: 'A question for the team', draft_reply: 'Yes…', extraction: '{"intent":"question","source":"claude"}',
+    id: 7,
+    direction: 'inbound',
+    booking_id: null,
+    from_email: 'tom@example.com',
+    subject: 'Buggies?',
+    body_text: 'Do you have buggies?',
+    intent: 'question',
+    routed_to: 'inbox',
+    review_status: 'open',
+    review_reason: 'A question for the team',
+    draft_reply: 'Yes…',
+    extraction: '{"intent":"question","source":"claude"}',
     created_at: '2026-09-27T10:00:00Z',
   });
   assert.equal(message.intentLabel, 'Question');

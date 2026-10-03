@@ -1,12 +1,4 @@
-import {
-  Area,
-  AreaChart as RechartsArea,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Area, AreaChart as RechartsArea, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AXIS, GRID, SERIES, SERIES_BRIGHT, SURFACE } from '../../lib/palette.js';
 import { tooltipRenderer } from './ChartTooltip.jsx';
 

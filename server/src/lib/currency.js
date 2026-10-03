@@ -11,11 +11,26 @@
  */
 
 const SYMBOLS = new Map([
-  ['€', 'EUR'], ['EURO', 'EUR'], ['EUROS', 'EUR'],
-  ['£', 'GBP'], ['POUND', 'GBP'], ['POUNDS', 'GBP'], ['STERLING', 'GBP'], ['GB£', 'GBP'],
-  ['$', 'USD'], ['US$', 'USD'], ['DOLLAR', 'USD'], ['DOLLARS', 'USD'],
-  ['C$', 'CAD'], ['CA$', 'CAD'], ['A$', 'AUD'], ['AU$', 'AUD'], ['NZ$', 'NZD'],
-  ['¥', 'JPY'], ['CHF', 'CHF'], ['KR', 'SEK'],
+  ['€', 'EUR'],
+  ['EURO', 'EUR'],
+  ['EUROS', 'EUR'],
+  ['£', 'GBP'],
+  ['POUND', 'GBP'],
+  ['POUNDS', 'GBP'],
+  ['STERLING', 'GBP'],
+  ['GB£', 'GBP'],
+  ['$', 'USD'],
+  ['US$', 'USD'],
+  ['DOLLAR', 'USD'],
+  ['DOLLARS', 'USD'],
+  ['C$', 'CAD'],
+  ['CA$', 'CAD'],
+  ['A$', 'AUD'],
+  ['AU$', 'AUD'],
+  ['NZ$', 'NZD'],
+  ['¥', 'JPY'],
+  ['CHF', 'CHF'],
+  ['KR', 'SEK'],
 ]);
 
 /** UTF-8 text that was read as Latin-1 ("â‚¬" for "€"), put back; anything else unchanged. */

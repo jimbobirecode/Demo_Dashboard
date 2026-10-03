@@ -45,7 +45,7 @@ export default function Inbox({ onCountChange }) {
       onCountChange?.(payload.counts?.open ?? 0);
       // Open the first email straight away rather than an empty pane.
       setSelectedId((current) =>
-        current && payload.messages?.some((m) => m.id === current) ? current : payload.messages?.[0]?.id ?? null,
+        current && payload.messages?.some((m) => m.id === current) ? current : (payload.messages?.[0]?.id ?? null),
       );
       return payload;
     } catch (err) {
@@ -95,11 +95,17 @@ export default function Inbox({ onCountChange }) {
             the reply and send.
           </p>
         </div>
-        <button type="button" onClick={load}>Refresh</button>
+        <button type="button" onClick={load}>
+          Refresh
+        </button>
       </div>
 
       {error && <div className="banner error">{error}</div>}
-      {notice && <div className="banner success" role="status">{notice}</div>}
+      {notice && (
+        <div className="banner success" role="status">
+          {notice}
+        </div>
+      )}
 
       <div className="segmented" role="group" aria-label="Which emails">
         {FILTERS.map((entry) => (
@@ -119,10 +125,14 @@ export default function Inbox({ onCountChange }) {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 380px) 1fr', gap: '1rem', alignItems: 'start' }}>
+      <div
+        style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 380px) 1fr', gap: '1rem', alignItems: 'start' }}
+      >
         <div className="stack" style={{ gap: '0.4rem' }}>
           {!messages.length && (
-            <div className="empty">{filter === 'open' ? 'Nothing waiting — every email has been answered.' : 'None.'}</div>
+            <div className="empty">
+              {filter === 'open' ? 'Nothing waiting — every email has been answered.' : 'None.'}
+            </div>
           )}
           {messages.map((message) => (
             <button
@@ -144,7 +154,9 @@ export default function Inbox({ onCountChange }) {
               }}
             >
               <div className="between" style={{ gap: '0.5rem', flexWrap: 'nowrap' }}>
-                <strong style={{ fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <strong
+                  style={{ fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
                   {message.guestName || message.fromEmail}
                 </strong>
                 <span
@@ -155,7 +167,15 @@ export default function Inbox({ onCountChange }) {
                   {`${waiting(message.createdAt)} ago`}
                 </span>
               </div>
-              <div style={{ fontSize: '0.8125rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div
+                style={{
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {message.subject || '(no subject)'}
               </div>
               <div className="inbox-item-snippet">
@@ -185,10 +205,13 @@ function InboxDetail({ id, onChanged, onHandled }) {
 
   useEffect(() => {
     let live = true;
-    api.inboxMessage(id).then((payload) => {
-      if (!live) return;
-      setDetail(payload);
-    }).catch((err) => live && setNotice({ kind: 'error', text: err.message }));
+    api
+      .inboxMessage(id)
+      .then((payload) => {
+        if (!live) return;
+        setDetail(payload);
+      })
+      .catch((err) => live && setNotice({ kind: 'error', text: err.message }));
     return () => {
       live = false;
     };
@@ -262,7 +285,13 @@ function InboxDetail({ id, onChanged, onHandled }) {
       {(why || message.summary) && (
         <div className="secondary" style={{ fontSize: '0.9rem' }}>
           {message.summary ? <strong>{message.summary.replace(/\.$/, '')}.</strong> : null}
-          {why ? <span className="muted"> {message.summary ? 'Here because: ' : ''}{why.charAt(0).toLowerCase() + why.slice(1)}.</span> : null}
+          {why ? (
+            <span className="muted">
+              {' '}
+              {message.summary ? 'Here because: ' : ''}
+              {why.charAt(0).toLowerCase() + why.slice(1)}.
+            </span>
+          ) : null}
         </div>
       )}
 
@@ -275,7 +304,8 @@ function InboxDetail({ id, onChanged, onHandled }) {
           <StatusPill status={booking.status} />
           <span>
             {booking.date ? formatDate(booking.date) : 'No date'}
-            {booking.teeTime ? ` at ${booking.teeTime}` : ''} · {booking.players} players · {formatCurrency(booking.total)}
+            {booking.teeTime ? ` at ${booking.teeTime}` : ''} · {booking.players} players ·{' '}
+            {formatCurrency(booking.total)}
           </span>
         </div>
       ) : (
@@ -300,14 +330,17 @@ function InboxDetail({ id, onChanged, onHandled }) {
       )}
 
       <div>
-        <div className="label" style={{ marginBottom: '0.5rem' }}>The conversation</div>
+        <div className="label" style={{ marginBottom: '0.5rem' }}>
+          The conversation
+        </div>
         <ChatThread thread={thread} guestName={guestName} activeId={message.id} />
       </div>
 
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
         {message.draftReply && open && (
           <div className="muted" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem' }}>
-            Claude has written a draft from the club&rsquo;s own information. Read it, change anything you like, then send.
+            Claude has written a draft from the club&rsquo;s own information. Read it, change anything you like, then
+            send.
           </div>
         )}
         <EmailComposer
@@ -328,7 +361,11 @@ function InboxDetail({ id, onChanged, onHandled }) {
                 No reply needed
               </button>
             ) : (
-              <button type="button" disabled={busy} onClick={() => act(() => api.inboxStatus(message.id, 'open'), 'Back in the inbox')}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => act(() => api.inboxStatus(message.id, 'open'), 'Back in the inbox')}
+              >
                 Move back to “To answer”
               </button>
             )

@@ -25,12 +25,7 @@ import {
   validateNewUser,
   validateUserPatch,
 } from '../lib/users-domain.js';
-import {
-  buildResetTemplateData,
-  mintToken,
-  readResetConfig,
-  resetLink,
-} from '../lib/password-reset-domain.js';
+import { buildResetTemplateData, mintToken, readResetConfig, resetLink } from '../lib/password-reset-domain.js';
 import { sendTemplateEmail } from '../lib/sendgrid.js';
 import { logger } from '../lib/logger.js';
 
@@ -120,10 +115,7 @@ router.post('/:id/invite', async (req, res, next) => {
     const invite = await sendInvite(user, req.user);
     if (!invite.sent) return res.status(400).json({ error: invite.message, invite });
 
-    const { rows } = await query(
-      'SELECT * FROM public.dashboard_users WHERE id = $1',
-      [user.id],
-    );
+    const { rows } = await query('SELECT * FROM public.dashboard_users WHERE id = $1', [user.id]);
     res.json({ user: serialiseUser(rows[0]), invite });
   } catch (err) {
     next(err);
@@ -138,12 +130,9 @@ router.patch('/:id', async (req, res, next) => {
     const check = validateUserPatch(req.body);
     if (!check.ok) return res.status(400).json({ error: check.errors.join('. ') });
 
-    const guard = guardSelfLockout(
-      { id: Number(req.user.sub) },
-      target,
-      check.patch,
-      { activeAdmins: await countActiveAdmins(req.user.customerId) },
-    );
+    const guard = guardSelfLockout({ id: Number(req.user.sub) }, target, check.patch, {
+      activeAdmins: await countActiveAdmins(req.user.customerId),
+    });
     if (!guard.ok) return res.status(409).json({ error: guard.reason });
 
     if (check.patch.email) {
@@ -174,19 +163,17 @@ router.delete('/:id', async (req, res, next) => {
     const target = await findClubUser(req.params.id, req.user.customerId);
     if (!target) return res.status(404).json({ error: 'No such account' });
 
-    const guard = guardDelete(
-      { id: Number(req.user.sub) },
-      target,
-      { activeAdmins: await countActiveAdmins(req.user.customerId) },
-    );
+    const guard = guardDelete({ id: Number(req.user.sub) }, target, {
+      activeAdmins: await countActiveAdmins(req.user.customerId),
+    });
     if (!guard.ok) return res.status(409).json({ error: guard.reason });
 
     // Outstanding links die with the account (ON DELETE CASCADE), so a
     // deleted colleague's invitation cannot be redeemed afterwards.
-    await query(
-      'DELETE FROM public.dashboard_users WHERE id = $1 AND customer_id = $2',
-      [target.id, req.user.customerId],
-    );
+    await query('DELETE FROM public.dashboard_users WHERE id = $1 AND customer_id = $2', [
+      target.id,
+      req.user.customerId,
+    ]);
     // A session naming a deleted account fails its next check anyway; this
     // makes that immediate rather than when the cached row expires.
     forgetSessionUser(target.id);
@@ -210,10 +197,10 @@ async function findClubUser(id, club) {
   const numeric = Number(id);
   if (!Number.isInteger(numeric)) return null;
 
-  const { rows } = await query(
-    'SELECT * FROM public.dashboard_users WHERE id = $1 AND customer_id = $2',
-    [numeric, club],
-  );
+  const { rows } = await query('SELECT * FROM public.dashboard_users WHERE id = $1 AND customer_id = $2', [
+    numeric,
+    club,
+  ]);
   return rows[0] ?? null;
 }
 
@@ -235,18 +222,12 @@ async function countActiveAdmins(club) {
  */
 async function findClash(username, email, excludeId = null) {
   if (username) {
-    const { rows } = await query(
-      'SELECT id FROM public.dashboard_users WHERE LOWER(username) = LOWER($1)',
-      [username],
-    );
+    const { rows } = await query('SELECT id FROM public.dashboard_users WHERE LOWER(username) = LOWER($1)', [username]);
     if (rows.some((row) => row.id !== excludeId)) return 'That username is already taken';
   }
 
   if (email) {
-    const { rows } = await query(
-      'SELECT id FROM public.dashboard_users WHERE LOWER(email) = LOWER($1)',
-      [email],
-    );
+    const { rows } = await query('SELECT id FROM public.dashboard_users WHERE LOWER(email) = LOWER($1)', [email]);
     if (rows.some((row) => row.id !== excludeId)) {
       return 'An account already uses that email address';
     }
@@ -284,10 +265,7 @@ async function sendInvite(user, actor) {
     const { token, tokenHash, expiresAt } = mintToken({ ttlMinutes: invite.ttlMinutes });
     // A fresh invitation supersedes any outstanding one, so a forwarded older
     // email stops working the moment a new link is sent.
-    await query(
-      'UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL',
-      [user.id],
-    );
+    await query('UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL', [user.id]);
     await query(
       `INSERT INTO public.password_resets (user_id, token_hash, email, expires_at, purpose)
        VALUES ($1, $2, $3, $4, 'invite')`,

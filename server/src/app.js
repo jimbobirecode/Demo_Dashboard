@@ -40,11 +40,13 @@ export const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
-app.use(helmet({
-  contentSecurityPolicy: { useDefaults: false, directives: contentSecurityDirectives() },
-  strictTransportSecurity: { maxAge: 180 * 24 * 60 * 60, includeSubDomains: true },
-  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-}));
+app.use(
+  helmet({
+    contentSecurityPolicy: { useDefaults: false, directives: contentSecurityDirectives() },
+    strictTransportSecurity: { maxAge: 180 * 24 * 60 * 60, includeSubDomains: true },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  }),
+);
 
 // Stripe signs the raw request body, so its webhook is mounted before the JSON
 // parser can consume it — and before the CSRF check, which a server-to-server
@@ -118,4 +120,3 @@ app.use((err, req, res, _next) => {
   log.error(`${req.method} ${req.originalUrl.split('?')[0]} failed`, err);
   res.status(500).json({ error: 'Internal server error' });
 });
-

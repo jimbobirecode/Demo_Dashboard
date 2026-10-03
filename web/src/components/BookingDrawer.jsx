@@ -136,9 +136,7 @@ export default function BookingDrawer({
               {booking.lodgingNights != null && <Field label="Nights" value={booking.lodgingNights} />}
               {booking.lodgingRooms != null && <Field label="Rooms" value={booking.lodgingRooms} />}
               {booking.lodgingRoomType && <Field label="Room type" value={booking.lodgingRoomType} />}
-              {booking.lodgingCost != null && (
-                <Field label="Lodging" value={formatCurrency(booking.lodgingCost)} />
-              )}
+              {booking.lodgingCost != null && <Field label="Lodging" value={formatCurrency(booking.lodgingCost)} />}
               {booking.resortFeeTotal != null && (
                 <Field label="Resort fee" value={formatCurrency(booking.resortFeeTotal)} />
               )}
@@ -209,34 +207,36 @@ export default function BookingDrawer({
 
         {/* Deleting is for administrators (the API refuses anyone else), so
             the danger zone is only drawn when there is a handler for it. */}
-        {onDelete && (<>
-        <div className="divider" />
+        {onDelete && (
+          <>
+            <div className="divider" />
 
-        <div className="stack" style={{ gap: '0.5rem' }}>
-          <span className="label" style={{ color: 'var(--status-rejected)' }}>
-            Danger zone
-          </span>
-          {confirmDelete ? (
-            <div className="row">
-              <button
-                type="button"
-                className="btn-danger"
-                disabled={busy}
-                onClick={() => run(() => onDelete(booking))}
-              >
-                Yes, delete permanently
-              </button>
-              <button type="button" onClick={() => setConfirmDelete(false)}>
-                Cancel
-              </button>
+            <div className="stack" style={{ gap: '0.5rem' }}>
+              <span className="label" style={{ color: 'var(--status-rejected)' }}>
+                Danger zone
+              </span>
+              {confirmDelete ? (
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn-danger"
+                    disabled={busy}
+                    onClick={() => run(() => onDelete(booking))}
+                  >
+                    Yes, delete permanently
+                  </button>
+                  <button type="button" onClick={() => setConfirmDelete(false)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="btn-danger" onClick={() => setConfirmDelete(true)}>
+                  Delete booking
+                </button>
+              )}
             </div>
-          ) : (
-            <button type="button" className="btn-danger" onClick={() => setConfirmDelete(true)}>
-              Delete booking
-            </button>
-          )}
-        </div>
-        </>)}
+          </>
+        )}
       </aside>
     </>
   );

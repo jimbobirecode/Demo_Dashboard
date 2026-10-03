@@ -23,13 +23,7 @@ const TIMEOUT_MS = 15_000;
  * exercised a right, and the caller needs to skip the send rather than count a
  * failure and go looking for the fault.
  */
-export async function requestSurveyLink({
-  baseUrl,
-  apiKey,
-  source,
-  round,
-  fetchImpl = fetch,
-}) {
+export async function requestSurveyLink({ baseUrl, apiKey, source, round, fetchImpl = fetch }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -66,7 +60,11 @@ export async function requestSurveyLink({
     }
 
     if (payload?.dry_run) {
-      return { ok: true, dryRun: true, message: `Club Vero would create a survey for ${payload.outlet ?? 'the course'}` };
+      return {
+        ok: true,
+        dryRun: true,
+        message: `Club Vero would create a survey for ${payload.outlet ?? 'the course'}`,
+      };
     }
 
     if (!payload?.survey_url) {
@@ -81,9 +79,12 @@ export async function requestSurveyLink({
       unsubscribeUrl: payload.unsubscribe_url ?? null,
       created: payload.created !== false,
       answered: Boolean(payload.answered),
-      message: payload.created === false
-        ? (payload.answered ? 'Reusing the survey this guest has already answered' : 'Reusing the survey already created for this booking')
-        : `Survey created against ${payload.outlet ?? 'the course'}`,
+      message:
+        payload.created === false
+          ? payload.answered
+            ? 'Reusing the survey this guest has already answered'
+            : 'Reusing the survey already created for this booking'
+          : `Survey created against ${payload.outlet ?? 'the course'}`,
     };
   } catch (err) {
     const message = err?.name === 'AbortError' ? 'Club Vero timed out' : err.message;

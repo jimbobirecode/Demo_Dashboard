@@ -26,7 +26,9 @@ export function isPending(user) {
 }
 
 export function normaliseRole(role) {
-  const text = String(role ?? '').trim().toLowerCase();
+  const text = String(role ?? '')
+    .trim()
+    .toLowerCase();
   return ROLES.includes(text) ? text : DEFAULT_ROLE;
 }
 
@@ -74,7 +76,9 @@ export function validateNewUser(input, { requireEmail = true } = {}) {
   // People sign in with their address, so that is the login. A username is
   // only carried separately for installs that already had one, and for the
   // audit columns that record who changed what.
-  const typed = String(input?.username ?? '').trim().toLowerCase();
+  const typed = String(input?.username ?? '')
+    .trim()
+    .toLowerCase();
   const username = typed || address || '';
 
   // A derived username is only ever as good as the address it came from, so a

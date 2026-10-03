@@ -52,7 +52,10 @@ describe('migrate against Postgres', { skip }, () => {
 
   test('applies every migration to an empty database, then finds nothing to do', async () => {
     const applied = await migrate({ connectionString: db.url });
-    assert.deepEqual(applied, readMigrations().map((m) => m.file));
+    assert.deepEqual(
+      applied,
+      readMigrations().map((m) => m.file),
+    );
 
     const again = await migrate({ connectionString: db.url });
     assert.deepEqual(again, []);
@@ -124,7 +127,10 @@ describe('migrate runner behaviour', { skip }, () => {
     await client.connect();
     try {
       const { rows } = await client.query('SELECT version FROM schema_migrations ORDER BY version');
-      assert.deepEqual(rows.map((r) => r.version), [1, 2]);
+      assert.deepEqual(
+        rows.map((r) => r.version),
+        [1, 2],
+      );
       const three = await client.query("SELECT to_regclass('public.three') AS t");
       assert.equal(three.rows[0].t, null);
     } finally {

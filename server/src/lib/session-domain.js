@@ -18,14 +18,12 @@
  * until a permanent password is set — a temp password is a way to *choose* a
  * password, not a way into the bookings.
  */
-export const PASSWORD_CHANGE_PATHS = [
-  '/api/auth/me',
-  '/api/auth/change-password',
-  '/api/auth/logout',
-];
+export const PASSWORD_CHANGE_PATHS = ['/api/auth/me', '/api/auth/change-password', '/api/auth/logout'];
 
 export function allowedDuringPasswordChange(path) {
-  const clean = String(path ?? '').split('?')[0].replace(/\/+$/, '');
+  const clean = String(path ?? '')
+    .split('?')[0]
+    .replace(/\/+$/, '');
   return PASSWORD_CHANGE_PATHS.includes(clean);
 }
 

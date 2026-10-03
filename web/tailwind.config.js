@@ -36,9 +36,7 @@ export default {
         ink: { DEFAULT: INK_PRIMARY, secondary: INK_SECONDARY, muted: INK_MUTED },
         series: { DEFAULT: SERIES, bright: SERIES_BRIGHT },
         delta: { up: DELTA_UP, down: DELTA_DOWN },
-        status: Object.fromEntries(
-          Object.entries(STATUS_COLORS).map(([name, hex]) => [name.toLowerCase(), hex]),
-        ),
+        status: Object.fromEntries(Object.entries(STATUS_COLORS).map(([name, hex]) => [name.toLowerCase(), hex])),
         pipeline: Object.fromEntries(PIPELINE_RAMP.map((hex, i) => [i + 1, hex])),
         categorical: Object.fromEntries(CATEGORICAL.map((hex, i) => [i + 1, hex])),
         sequential: Object.fromEntries(SEQUENTIAL.map((hex, i) => [i + 1, hex])),

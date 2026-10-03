@@ -57,11 +57,7 @@ export function linkSecret(env = process.env) {
  */
 export function signBooking(bookingId, secret, club = '') {
   if (!secret) return null;
-  return crypto
-    .createHmac('sha256', String(secret))
-    .update(`${club}|${bookingId}`)
-    .digest('base64url')
-    .slice(0, 32);
+  return crypto.createHmac('sha256', String(secret)).update(`${club}|${bookingId}`).digest('base64url').slice(0, 32);
 }
 
 /** Constant-time comparison, so a wrong token cannot be found a byte at a time. */
@@ -93,7 +89,13 @@ export function manageUrlFor(booking, env = process.env) {
 
 function describeRound(booking) {
   const when = booking?.date
-    ? new Intl.DateTimeFormat(BRAND.locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+    ? new Intl.DateTimeFormat(BRAND.locale, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      })
         .format(new Date(`${booking.date}T00:00:00Z`))
         .replace(',', '')
     : '';
@@ -111,7 +113,10 @@ function describeRound(booking) {
  */
 export function buildChangeEmail({ outcome, booking, request = null, note = '', manageUrl = null }) {
   const ref = booking.bookingId;
-  const first = String(booking.guestName ?? '').trim().split(/\s+/)[0] || 'there';
+  const first =
+    String(booking.guestName ?? '')
+      .trim()
+      .split(/\s+/)[0] || 'there';
   const round = describeRound(booking);
   const said = String(note ?? '').trim();
 
@@ -220,9 +225,10 @@ export function describeOptions(booking, policy, today) {
       canAmend: false,
       autoCancel: false,
       daysUntilPlay: days,
-      reason: booking?.status === 'Cancelled'
-        ? 'This booking has already been cancelled.'
-        : 'This booking can no longer be changed online.',
+      reason:
+        booking?.status === 'Cancelled'
+          ? 'This booking has already been cancelled.'
+          : 'This booking can no longer be changed online.',
     };
   }
 
@@ -252,7 +258,9 @@ export function describeOptions(booking, policy, today) {
 export function validateChangeRequest(input, options) {
   const errors = [];
 
-  const kind = String(input?.kind ?? '').trim().toLowerCase();
+  const kind = String(input?.kind ?? '')
+    .trim()
+    .toLowerCase();
   if (!REQUEST_KINDS.includes(kind)) errors.push('Choose whether to amend or cancel');
 
   if (kind === 'cancel' && !options.canCancel) errors.push(options.reason);
@@ -270,9 +278,8 @@ export function validateChangeRequest(input, options) {
     errors.push('That date is not valid');
   }
 
-  const players = input?.requestedPlayers === undefined || input?.requestedPlayers === ''
-    ? null
-    : Number(input.requestedPlayers);
+  const players =
+    input?.requestedPlayers === undefined || input?.requestedPlayers === '' ? null : Number(input.requestedPlayers);
   if (players !== null && (!Number.isInteger(players) || players < 1 || players > 40)) {
     errors.push('Players must be a whole number between 1 and 40');
   }

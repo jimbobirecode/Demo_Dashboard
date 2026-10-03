@@ -108,7 +108,9 @@ export function buildWaitlistConversion(entries, bookings = []) {
   // How well a notification actually works: of the entries the club told about
   // an opening, how many took it. The number that says whether chasing the
   // list is worth the staff time.
-  const everNotified = entries.filter((entry) => entry.notificationSent || entry.status === 'Notified' || entry.status === 'Converted');
+  const everNotified = entries.filter(
+    (entry) => entry.notificationSent || entry.status === 'Notified' || entry.status === 'Converted',
+  );
   const notifiedAndConverted = everNotified.filter((entry) => entry.status === 'Converted');
 
   return {
@@ -123,9 +125,7 @@ export function buildWaitlistConversion(entries, bookings = []) {
     /** The same against every entry, which a part-worked list flatters. */
     conversionRateOfAll: round1(entries.length ? (converted.length / entries.length) * 100 : 0),
     notified: everNotified.length,
-    notifiedConversionRate: round1(
-      everNotified.length ? (notifiedAndConverted.length / everNotified.length) * 100 : 0,
-    ),
+    notifiedConversionRate: round1(everNotified.length ? (notifiedAndConverted.length / everNotified.length) * 100 : 0),
 
     playersWaiting: sum(open, 'players'),
     playersConverted: sum(converted, 'players'),
@@ -138,7 +138,10 @@ export function buildWaitlistConversion(entries, bookings = []) {
     byStatus: WAITLIST_STATUSES.map((status) => ({
       key: status,
       count: entries.filter((entry) => entry.status === status).length,
-      players: sum(entries.filter((entry) => entry.status === status), 'players'),
+      players: sum(
+        entries.filter((entry) => entry.status === status),
+        'players',
+      ),
     })),
   };
 }
@@ -198,13 +201,13 @@ export function suggestConversions(entries, bookings, { windowDays = 3 } = {}) {
   if (!open.length) return [];
 
   // A booking already claimed by another entry is not evidence for this one.
-  const claimed = new Set(
-    entries.map((entry) => entry.convertedBookingId).filter(Boolean),
-  );
+  const claimed = new Set(entries.map((entry) => entry.convertedBookingId).filter(Boolean));
 
   const byEmail = new Map();
   for (const booking of bookings) {
-    const email = String(booking.guestEmail ?? '').trim().toLowerCase();
+    const email = String(booking.guestEmail ?? '')
+      .trim()
+      .toLowerCase();
     if (!email || claimed.has(booking.bookingId)) continue;
     if (TERMINAL.has(booking.status)) continue; // a cancelled booking converted nobody
     if (!byEmail.has(email)) byEmail.set(email, []);
@@ -224,11 +227,7 @@ export function suggestConversions(entries, bookings, { windowDays = 3 } = {}) {
       // that entry turned into; an earlier one is a different trip.
       if (bookedBefore(entry, booking)) continue;
 
-      const confidence = gap === 0
-        ? 'exact'
-        : Math.abs(gap) <= windowDays
-          ? 'likely'
-          : null;
+      const confidence = gap === 0 ? 'exact' : Math.abs(gap) <= windowDays ? 'likely' : null;
       if (!confidence) continue;
 
       suggestions.push({
@@ -240,9 +239,10 @@ export function suggestConversions(entries, bookings, { windowDays = 3 } = {}) {
         confidence,
         // Said in words, because whoever confirms this is deciding whether to
         // believe it and a label alone does not tell them why.
-        because: gap === 0
-          ? `Booked ${booking.date}, the date they asked for`
-          : `Booked ${booking.date}, ${Math.abs(gap)} day${Math.abs(gap) === 1 ? '' : 's'} ${gap > 0 ? 'after' : 'before'} the date they asked for`,
+        because:
+          gap === 0
+            ? `Booked ${booking.date}, the date they asked for`
+            : `Booked ${booking.date}, ${Math.abs(gap)} day${Math.abs(gap) === 1 ? '' : 's'} ${gap > 0 ? 'after' : 'before'} the date they asked for`,
         requestedDate: entry.requestedDate,
         bookingDate: booking.date,
         dayGap: gap,
@@ -286,7 +286,9 @@ function bookedBefore(entry, booking) {
 export function validateWaitlistEntry(input) {
   const errors = [];
 
-  const guestEmail = String(input?.guestEmail ?? '').trim().toLowerCase();
+  const guestEmail = String(input?.guestEmail ?? '')
+    .trim()
+    .toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) errors.push('A valid email address is required');
 
   const requestedDate = String(input?.requestedDate ?? '').trim();
@@ -322,7 +324,10 @@ export function validateWaitlistEntry(input) {
 /** `WL-20260923-4F2A` — sortable by eye, and unique enough for a club. */
 export function mintWaitlistId(now = new Date(), random = Math.random) {
   const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const suffix = Math.floor(random() * 0xffff).toString(16).toUpperCase().padStart(4, '0');
+  const suffix = Math.floor(random() * 0xffff)
+    .toString(16)
+    .toUpperCase()
+    .padStart(4, '0');
   return `WL-${stamp}-${suffix}`;
 }
 
@@ -339,9 +344,7 @@ function median(values) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2
-    ? sorted[middle]
-    : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
 function dateOnly(value) {

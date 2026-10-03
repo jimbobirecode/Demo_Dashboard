@@ -81,10 +81,10 @@ async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request
 }
 
 async function loadBooking(bookingId, club) {
-  const { rows } = await query(
-    `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
-    [bookingId, club],
-  );
+  const { rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
+    bookingId,
+    club,
+  ]);
   return rows[0] ? serialiseBooking(rows[0]) : null;
 }
 
@@ -96,7 +96,10 @@ const submitThrottle = createThrottle({ limit: 10, windowMs: 60 * 60_000 });
 const lookupRefThrottle = createThrottle({ limit: 30, windowMs: 15 * 60_000 });
 const submitRefThrottle = createThrottle({ limit: 10, windowMs: 60 * 60_000 });
 
-const refKey = (ref) => String(ref ?? '').trim().toUpperCase();
+const refKey = (ref) =>
+  String(ref ?? '')
+    .trim()
+    .toUpperCase();
 
 /* ---------- the guest ---------- */
 
@@ -179,9 +182,16 @@ router.post('/request', async (req, res, next) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,'Pending',FALSE,$8,$9,$10)
        RETURNING *`,
       [
-        booking.bookingId, booking.club, check.value.kind, check.value.message,
-        check.value.requestedDate, check.value.requestedTime, check.value.requestedPlayers,
-        options.daysUntilPlay, booking.guestEmail, clientIp(req),
+        booking.bookingId,
+        booking.club,
+        check.value.kind,
+        check.value.message,
+        check.value.requestedDate,
+        check.value.requestedTime,
+        check.value.requestedPlayers,
+        options.daysUntilPlay,
+        booking.guestEmail,
+        clientIp(req),
       ],
     );
 
@@ -193,8 +203,8 @@ router.post('/request', async (req, res, next) => {
       emailed,
       message:
         check.value.kind === 'cancel'
-          ? 'Thank you — your cancellation request is with the club. Your booking stays in place until they confirm it'
-            + (emailed ? ', and we have emailed you a copy of your request.' : '.')
+          ? 'Thank you — your cancellation request is with the club. Your booking stays in place until they confirm it' +
+            (emailed ? ', and we have emailed you a copy of your request.' : '.')
           : 'Thank you — the club has your request and will be in touch.',
       request: serialiseChangeRequest(rows[0]),
     });
@@ -248,10 +258,10 @@ router.post('/:id/:decision', requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: 'Decision must be approve or decline' });
     }
 
-    const { rows: found } = await query(
-      'SELECT * FROM public.booking_change_requests WHERE id = $1 AND club = $2',
-      [Number(req.params.id), req.user.customerId],
-    );
+    const { rows: found } = await query('SELECT * FROM public.booking_change_requests WHERE id = $1 AND club = $2', [
+      Number(req.params.id),
+      req.user.customerId,
+    ]);
     const request = found[0];
     if (!request) return res.status(404).json({ error: 'No such request' });
     if (request.status !== 'Pending') {
@@ -321,10 +331,7 @@ async function findByToken(ref, token) {
 
   if (!bookingId || !secret) return refused;
 
-  const { rows } = await query(
-    `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1`,
-    [bookingId],
-  );
+  const { rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1`, [bookingId]);
 
   // The token is scoped to the club, so it picks out the one row it was
   // signed for even if two clubs happen to share a reference.
@@ -354,6 +361,5 @@ async function findByToken(ref, token) {
 function today() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: BRAND.timeZone }).format(new Date());
 }
-
 
 export default router;

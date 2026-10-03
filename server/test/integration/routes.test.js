@@ -163,9 +163,7 @@ describe('HTTP routes against Postgres', { skip }, () => {
       const fresh = token(claimsFor(ids.staffA));
       assert.equal((await request(app).get('/api/auth/me').set('Cookie', cookie(fresh))).status, 200);
 
-      await pool.query('UPDATE dashboard_users SET session_version = session_version + 1 WHERE id = $1', [
-        ids.staffA,
-      ]);
+      await pool.query('UPDATE dashboard_users SET session_version = session_version + 1 WHERE id = $1', [ids.staffA]);
       // The session cache holds a row for 20s; a new account id is not cached.
       const { forgetSessionUser } = await import('../../src/auth.js');
       forgetSessionUser(ids.staffA);
@@ -236,7 +234,7 @@ describe('HTTP routes against Postgres', { skip }, () => {
         .post('/api/operators/assign')
         .set(CSRF)
         .send({ bookingIds: ['A-1'], operatorId: ids.opB });
-      assert.equal(assign.status, 404, "an operator id from another club is not accepted");
+      assert.equal(assign.status, 404, 'an operator id from another club is not accepted');
     });
 
     test("an administrator only ever sees their own club's accounts", async () => {
@@ -316,8 +314,12 @@ describe('HTTP routes against Postgres', { skip }, () => {
 
   describe('guest manage-booking link', () => {
     test('a bad or missing token is refused without saying whether the booking exists', async () => {
-      const bad = await request(app).get('/api/changes/booking').query({ ref: 'A-1', token: 'x'.repeat(32) });
-      const missing = await request(app).get('/api/changes/booking').query({ ref: 'NO-SUCH', token: 'x'.repeat(32) });
+      const bad = await request(app)
+        .get('/api/changes/booking')
+        .query({ ref: 'A-1', token: 'x'.repeat(32) });
+      const missing = await request(app)
+        .get('/api/changes/booking')
+        .query({ ref: 'NO-SUCH', token: 'x'.repeat(32) });
       assert.equal(bad.status, 404);
       assert.equal(missing.status, 404);
       assert.deepEqual(bad.body, missing.body);

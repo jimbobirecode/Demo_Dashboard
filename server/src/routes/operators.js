@@ -269,10 +269,10 @@ router.post('/assign', async (req, res, next) => {
     // An operator id is only accepted if it is this club's. Without this check
     // one club could move its bookings onto another club's account.
     if (operatorId !== null) {
-      const { rows } = await query(
-        'SELECT id FROM public.tour_operators WHERE id = $1 AND club = $2',
-        [Number(operatorId), club],
-      );
+      const { rows } = await query('SELECT id FROM public.tour_operators WHERE id = $1 AND club = $2', [
+        Number(operatorId),
+        club,
+      ]);
       if (!rows.length) return res.status(404).json({ error: 'Operator not found' });
     }
 

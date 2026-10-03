@@ -84,22 +84,16 @@ test('identification is ranked: an assignment beats a domain beats a name', () =
   const links = operator({ id: 2, name: 'Links Travel', email_domains: [] });
   const index = buildOperatorIndex([golfbreaks, links]);
 
-  assert.deepEqual(
-    pick(identify(booking({ tourOperatorId: 2 }), index)),
-    { name: 'Links Travel', source: 'assigned' },
-  );
-  assert.deepEqual(
-    pick(identify(booking(), index)),
-    { name: 'Golfbreaks', source: 'domain' },
-  );
-  assert.deepEqual(
-    pick(identify(booking({ guestEmail: 'ann@gmail.com', note: 'Booked via Links Travel' }), index)),
-    { name: 'Links Travel', source: 'name' },
-  );
-  assert.deepEqual(
-    pick(identify(booking({ guestEmail: 'ann@gmail.com', note: 'A family trip' }), index)),
-    { name: undefined, source: 'direct' },
-  );
+  assert.deepEqual(pick(identify(booking({ tourOperatorId: 2 }), index)), { name: 'Links Travel', source: 'assigned' });
+  assert.deepEqual(pick(identify(booking(), index)), { name: 'Golfbreaks', source: 'domain' });
+  assert.deepEqual(pick(identify(booking({ guestEmail: 'ann@gmail.com', note: 'Booked via Links Travel' }), index)), {
+    name: 'Links Travel',
+    source: 'name',
+  });
+  assert.deepEqual(pick(identify(booking({ guestEmail: 'ann@gmail.com', note: 'A family trip' }), index)), {
+    name: undefined,
+    source: 'direct',
+  });
 });
 
 test('a name match needs whole words, so it cannot fire on a fragment', () => {
@@ -116,10 +110,7 @@ test('the longest operator name wins, so a parent brand cannot swallow a subsidi
     operator({ id: 2, name: 'Golfbreaks Ireland', email_domains: [] }),
   ]);
 
-  const match = identify(
-    booking({ guestEmail: 'ann@gmail.com', note: 'Golfbreaks Ireland group of 8' }),
-    index,
-  );
+  const match = identify(booking({ guestEmail: 'ann@gmail.com', note: 'Golfbreaks Ireland group of 8' }), index);
   assert.equal(match.operator.name, 'Golfbreaks Ireland');
 });
 
@@ -135,20 +126,23 @@ test('unrecognised business domains are proposed as accounts; personal ones neve
   ];
 
   const suggestions = suggestOperators(bookings, index);
-  assert.deepEqual(suggestions.map((s) => s.domain), ['perrygolf.com']);
+  assert.deepEqual(
+    suggestions.map((s) => s.domain),
+    ['perrygolf.com'],
+  );
   assert.equal(suggestions[0].proposedName, 'Perrygolf');
   assert.equal(suggestions[0].bookings, 2);
   assert.equal(suggestions[0].gross, 6000);
   // One booking from a business domain is not yet a pattern.
-  assert.equal(suggestions.some((s) => s.domain === 'haversham.co.uk'), false);
+  assert.equal(
+    suggestions.some((s) => s.domain === 'haversham.co.uk'),
+    false,
+  );
 });
 
 test('a domain already registered to an operator is never offered again', () => {
   const index = buildOperatorIndex([operator()]);
-  const suggestions = suggestOperators(
-    [booking({ bookingId: 'A' }), booking({ bookingId: 'B' })],
-    index,
-  );
+  const suggestions = suggestOperators([booking({ bookingId: 'A' }), booking({ bookingId: 'B' })], index);
   assert.deepEqual(suggestions, []);
 });
 
@@ -208,11 +202,7 @@ test('paying the deposit moves the milestone on to the balance', () => {
     deposit_due_days_before_play: 60,
     balance_due_days_before_play: 14,
   });
-  const state = paymentState(
-    booking({ amountPaid: 250, paymentStatus: 'Deposit paid' }),
-    terms,
-    { today: TODAY },
-  );
+  const state = paymentState(booking({ amountPaid: 250, paymentStatus: 'Deposit paid' }), terms, { today: TODAY });
 
   assert.equal(state.stage, 'balance');
   assert.equal(state.dueDate, '2026-04-17');
@@ -221,11 +211,9 @@ test('paying the deposit moves the milestone on to the balance', () => {
 });
 
 test('a booking-level due date overrides the account terms', () => {
-  const state = paymentState(
-    booking({ balanceDueDate: '2026-03-01', invoicedAt: '2026-03-10' }),
-    operator(),
-    { today: TODAY },
-  );
+  const state = paymentState(booking({ balanceDueDate: '2026-03-01', invoicedAt: '2026-03-10' }), operator(), {
+    today: TODAY,
+  });
   assert.equal(state.balanceDueDate, '2026-03-01');
   assert.equal(state.daysOverdue, 31);
 });
@@ -247,11 +235,9 @@ test('written off and refunded owe nothing, whatever the arithmetic says', () =>
 });
 
 test('the derived status reports what the money says, beside what was typed', () => {
-  const half = paymentState(
-    booking({ amountPaid: 500, paymentStatus: 'Unpaid' }),
-    operator({ deposit_percent: 50 }),
-    { today: TODAY },
-  );
+  const half = paymentState(booking({ amountPaid: 500, paymentStatus: 'Unpaid' }), operator({ deposit_percent: 50 }), {
+    today: TODAY,
+  });
   assert.equal(half.status, 'Unpaid');
   assert.equal(half.derivedStatus, 'Deposit paid');
 
@@ -262,18 +248,10 @@ test('the derived status reports what the money says, beside what was typed', ()
 
 test('money is only chased once the club has committed to the tee time', () => {
   for (const status of ['Inquiry', 'Requested', 'Rejected', 'Cancelled']) {
-    assert.equal(
-      paymentState(booking({ status }), operator(), { today: TODAY }).chaseable,
-      false,
-      status,
-    );
+    assert.equal(paymentState(booking({ status }), operator(), { today: TODAY }).chaseable, false, status);
   }
   for (const status of ['Booked']) {
-    assert.equal(
-      paymentState(booking({ status }), operator(), { today: TODAY }).chaseable,
-      true,
-      status,
-    );
+    assert.equal(paymentState(booking({ status }), operator(), { today: TODAY }).chaseable, true, status);
   }
 });
 
@@ -320,11 +298,7 @@ test('exposure counts committed bookings only, so an enquiry cannot breach a lim
 });
 
 test('an account past its limit says so', () => {
-  const summary = summarise(
-    operator({ credit_limit: 500 }),
-    [booking({ status: 'Booked' })],
-    { today: TODAY },
-  );
+  const summary = summarise(operator({ credit_limit: 500 }), [booking({ status: 'Booked' })], { today: TODAY });
   assert.equal(summary.headroom, -500);
   assert.equal(summary.overLimit, true);
 });
@@ -376,10 +350,10 @@ test('the portfolio roll-up adds the accounts up and counts the problems', () =>
 // --- input handling ---------------------------------------------------------
 
 test('domains are accepted however they are typed, and de-duplicated', () => {
-  assert.deepEqual(
-    domainList(' @Golfbreaks.com, https://perrygolf.com/trade ; GOLFBREAKS.COM '),
-    ['golfbreaks.com', 'perrygolf.com'],
-  );
+  assert.deepEqual(domainList(' @Golfbreaks.com, https://perrygolf.com/trade ; GOLFBREAKS.COM '), [
+    'golfbreaks.com',
+    'perrygolf.com',
+  ]);
   assert.deepEqual(domainList(null), []);
   assert.deepEqual(domainList(['a.com', 'a.com']), ['a.com']);
 });
@@ -429,7 +403,14 @@ test('form input is normalised into the column shapes the table wants', () => {
 test('terms are written out as a sentence for the screen and the email', () => {
   assert.equal(describeTerms(operator()), 'Net 30 days');
   assert.equal(
-    describeTerms(operator({ deposit_percent: 25, deposit_due_days_before_play: 60, balance_due_days_before_play: 14, credit_limit: 20000 })),
+    describeTerms(
+      operator({
+        deposit_percent: 25,
+        deposit_due_days_before_play: 60,
+        balance_due_days_before_play: 14,
+        credit_limit: 20000,
+      }),
+    ),
     '25% deposit due 60 days before play, balance due 14 days before play, net 30 days, credit limit £20,000',
   );
   assert.equal(describeTerms(operator({ payment_terms_days: 0 })), 'Payable on invoice');
@@ -442,12 +423,42 @@ function pick(match) {
 
 test('isConsumerDomain knows free mail across providers and countries', () => {
   for (const domain of [
-    'gmail.com', 'proton.me', 'protonmail.com', 'gmx.de', 'gmx.net', 'mail.com', 'yandex.ru',
-    'zoho.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'live.ie', 'live.com.au', 'msn.com',
-    'yahoo.fr', 'yahoo.co.jp', 'hotmail.it', 'hotmail.co.uk', 'outlook.de', 'outlook.com.br',
-    'googlemail.com', 'fastmail.com', 'tutanota.com', 'hey.com', 'qq.com', '163.com', 'web.de',
-    't-online.de', 'orange.fr', 'free.fr', 'btinternet.com', 'sky.com', 'virginmedia.com',
-    'eircom.net', 'GMAIL.COM',
+    'gmail.com',
+    'proton.me',
+    'protonmail.com',
+    'gmx.de',
+    'gmx.net',
+    'mail.com',
+    'yandex.ru',
+    'zoho.com',
+    'icloud.com',
+    'me.com',
+    'mac.com',
+    'aol.com',
+    'live.ie',
+    'live.com.au',
+    'msn.com',
+    'yahoo.fr',
+    'yahoo.co.jp',
+    'hotmail.it',
+    'hotmail.co.uk',
+    'outlook.de',
+    'outlook.com.br',
+    'googlemail.com',
+    'fastmail.com',
+    'tutanota.com',
+    'hey.com',
+    'qq.com',
+    '163.com',
+    'web.de',
+    't-online.de',
+    'orange.fr',
+    'free.fr',
+    'btinternet.com',
+    'sky.com',
+    'virginmedia.com',
+    'eircom.net',
+    'GMAIL.COM',
   ]) {
     assert.equal(isConsumerDomain(domain), true, domain);
   }
@@ -455,8 +466,14 @@ test('isConsumerDomain knows free mail across providers and countries', () => {
 
 test('isConsumerDomain leaves business domains alone', () => {
   for (const domain of [
-    'linkstours.com', 'golfbreaks.com', 'live.golfbreaks.com', 'yahootours.com', 'outlookgolf.ie',
-    'mailchimp.com', 'webgolf.co.uk', 'gmx.example.com',
+    'linkstours.com',
+    'golfbreaks.com',
+    'live.golfbreaks.com',
+    'yahootours.com',
+    'outlookgolf.ie',
+    'mailchimp.com',
+    'webgolf.co.uk',
+    'gmx.example.com',
   ]) {
     assert.equal(isConsumerDomain(domain), false, domain);
   }

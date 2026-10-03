@@ -35,10 +35,8 @@ async function reportContents() {
          FROM public.bookings GROUP BY club ORDER BY bookings DESC`,
     );
 
-    log.info('dashboard users by club:',
-      users.rows.map((r) => `${r.customer_id}=${r.users}`).join(', ') || 'none');
-    log.info('bookings by club:',
-      bookings.rows.map((r) => `${r.club}=${r.bookings}`).join(', ') || 'none');
+    log.info('dashboard users by club:', users.rows.map((r) => `${r.customer_id}=${r.users}`).join(', ') || 'none');
+    log.info('bookings by club:', bookings.rows.map((r) => `${r.club}=${r.bookings}`).join(', ') || 'none');
 
     const clubsWithUsers = new Set(users.rows.map((r) => r.customer_id));
     const clubsWithBookings = new Set(bookings.rows.map((r) => r.club));
@@ -46,8 +44,8 @@ async function reportContents() {
     if (orphaned.length && clubsWithBookings.size) {
       log.warn(
         `users on ${orphaned.join(', ')} have no bookings — ` +
-        `bookings exist only on ${[...clubsWithBookings].join(', ')}. ` +
-        'The dashboard will look empty for those users.',
+          `bookings exist only on ${[...clubsWithBookings].join(', ')}. ` +
+          'The dashboard will look empty for those users.',
       );
     }
   } catch (err) {
@@ -67,9 +65,9 @@ async function maybeSeedOnStart() {
   const force = mode === 'force';
   const client = await pool.connect();
   try {
-    const { rows } = await client.query(
-      "SELECT COUNT(*)::int AS count FROM public.bookings WHERE booking_id NOT LIKE 'RD-DEMO-%'",
-    ).catch(() => ({ rows: [{ count: 0 }] }));
+    const { rows } = await client
+      .query("SELECT COUNT(*)::int AS count FROM public.bookings WHERE booking_id NOT LIKE 'RD-DEMO-%'")
+      .catch(() => ({ rows: [{ count: 0 }] }));
 
     if (rows[0].count > 0 && !force) {
       logSeed.info(`skipped — ${rows[0].count} real booking(s) already present.`);
@@ -83,7 +81,7 @@ async function maybeSeedOnStart() {
       // Never the password itself: hosted logs are kept, and shared.
       logSeed.info(
         `created user "${process.env.SEED_USERNAME ?? 'demo'}". Its password is SEED_PASSWORD if set; ` +
-        'otherwise give it an email address and use "Forgot password" to set one.',
+          'otherwise give it an email address and use "Forgot password" to set one.',
       );
     }
   } catch (err) {
@@ -99,7 +97,7 @@ function warnAboutConfiguration() {
   if (process.env.NODE_ENV === 'production' && !process.env.BOOKING_LINK_SECRET) {
     log.warn(
       'BOOKING_LINK_SECRET is not set — manage-booking links are signed with JWT_SECRET, ' +
-      'and the booking service cannot issue links at all. Set the same BOOKING_LINK_SECRET on both services.',
+        'and the booking service cannot issue links at all. Set the same BOOKING_LINK_SECRET on both services.',
     );
   }
 }

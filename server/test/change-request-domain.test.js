@@ -119,8 +119,14 @@ test('a request reads as a sentence in the club’s list', () => {
 
 test('a stored request serialises without surprises', () => {
   const request = serialiseChangeRequest({
-    id: 3, booking_id: 'RDG-1', kind: 'cancel', message: null, status: 'Pending',
-    auto_applied: false, days_before_play: 31, created_at: new Date('2026-05-01T09:00:00Z'),
+    id: 3,
+    booking_id: 'RDG-1',
+    kind: 'cancel',
+    message: null,
+    status: 'Pending',
+    auto_applied: false,
+    days_before_play: 31,
+    created_at: new Date('2026-05-01T09:00:00Z'),
     requested_date: new Date('2026-06-02T00:00:00'),
   });
 

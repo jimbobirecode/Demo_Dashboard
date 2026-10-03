@@ -39,13 +39,7 @@ export default function KpiTile({
   }
 
   return (
-    <button
-      type="button"
-      className="kpi"
-      style={{ '--kpi-accent': accent }}
-      onClick={onClick}
-      aria-pressed={pressed}
-    >
+    <button type="button" className="kpi" style={{ '--kpi-accent': accent }} onClick={onClick} aria-pressed={pressed}>
       {content}
     </button>
   );
@@ -63,10 +57,10 @@ function Delta({ delta, label, higherIsBetter }) {
   return (
     <div className="kpi-delta" style={color ? { color } : undefined}>
       <span aria-hidden="true">{flat ? '→' : rising ? '▲' : '▼'}</span>
-      <span className="kpi-delta-value">
-        {flat ? 'No change' : `${Math.abs(delta)}%`}
+      <span className="kpi-delta-value">{flat ? 'No change' : `${Math.abs(delta)}%`}</span>
+      <span className="kpi-sub" style={{ margin: 0 }}>
+        {label}
       </span>
-      <span className="kpi-sub" style={{ margin: 0 }}>{label}</span>
     </div>
   );
 }

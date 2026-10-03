@@ -19,10 +19,7 @@ export default function StaySection({ lodging, accommodation }) {
       />
 
       <div className="chart-grid">
-        <ChartCard
-          title="Attach rate"
-          subtitle={`${accommodation.attachRate}% of parties also want a bed`}
-        >
+        <ChartCard title="Attach rate" subtitle={`${accommodation.attachRate}% of parties also want a bed`}>
           <div className="stack" style={{ gap: '1rem' }}>
             <CategoryBar
               value={accommodation.withAccommodation}

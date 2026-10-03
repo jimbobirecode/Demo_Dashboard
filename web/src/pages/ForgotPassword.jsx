@@ -49,8 +49,7 @@ export default function ForgotPassword() {
 
         <h1 style={{ fontSize: '1.125rem' }}>Reset your password</h1>
         <p className="muted" style={{ margin: 0, fontSize: '0.8125rem' }}>
-          Enter the email address you sign in with and we will send you a link to set a new
-          password.
+          Enter the email address you sign in with and we will send you a link to set a new password.
         </p>
 
         {error && <div className="banner error">{error}</div>}
@@ -97,11 +96,7 @@ function UnavailableNotice({ config }) {
     <div className="banner">
       <strong>Reset email is not set up yet.</strong>
       <div style={{ marginTop: '0.35rem', fontSize: '0.8125rem' }}>
-        {config.missing?.length > 0 && (
-          <div>
-            Set {config.missing.join(', ')} in the server environment.
-          </div>
-        )}
+        {config.missing?.length > 0 && <div>Set {config.missing.join(', ')} in the server environment.</div>}
       </div>
     </div>
   );

@@ -32,12 +32,7 @@ import {
 } from '../lib/email-domain.js';
 import { sendTemplateEmail } from '../lib/sendgrid.js';
 import { logEmail } from '../lib/email-log.js';
-import {
-  buildRoundPayload,
-  publicVeroConfig,
-  readVeroConfig,
-  veroEnabledFor,
-} from '../lib/vero-domain.js';
+import { buildRoundPayload, publicVeroConfig, readVeroConfig, veroEnabledFor } from '../lib/vero-domain.js';
 import { requestSurveyLink } from '../lib/vero.js';
 
 const router = Router();

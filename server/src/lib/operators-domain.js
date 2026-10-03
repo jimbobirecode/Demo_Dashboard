@@ -52,41 +52,164 @@ const CHASEABLE_STATUSES = COMMITTED_STATUSES;
  * contact address instead.
  */
 export const CONSUMER_EMAIL_DOMAINS = new Set([
-  'gmail.com', 'googlemail.com', 'hotmail.com', 'hotmail.co.uk', 'outlook.com',
-  'outlook.co.uk', 'live.com', 'live.co.uk', 'msn.com', 'yahoo.com', 'yahoo.co.uk',
-  'ymail.com', 'aol.com', 'icloud.com', 'me.com', 'mac.com', 'btinternet.com',
-  'sky.com', 'virginmedia.com', 'talktalk.net', 'protonmail.com', 'proton.me',
-  'gmx.com', 'gmx.co.uk', 'mail.com', 'yandex.com', 'comcast.net', 'verizon.net',
-  'sbcglobal.net', 'att.net', 'cox.net', 'shaw.ca', 'rogers.com', 'bigpond.com',
-  'optusnet.com.au', 'xtra.co.nz',
+  'gmail.com',
+  'googlemail.com',
+  'hotmail.com',
+  'hotmail.co.uk',
+  'outlook.com',
+  'outlook.co.uk',
+  'live.com',
+  'live.co.uk',
+  'msn.com',
+  'yahoo.com',
+  'yahoo.co.uk',
+  'ymail.com',
+  'aol.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'btinternet.com',
+  'sky.com',
+  'virginmedia.com',
+  'talktalk.net',
+  'protonmail.com',
+  'proton.me',
+  'gmx.com',
+  'gmx.co.uk',
+  'mail.com',
+  'yandex.com',
+  'comcast.net',
+  'verizon.net',
+  'sbcglobal.net',
+  'att.net',
+  'cox.net',
+  'shaw.ca',
+  'rogers.com',
+  'bigpond.com',
+  'optusnet.com.au',
+  'xtra.co.nz',
 
   // Privacy and paid personal mail.
-  'pm.me', 'protonmail.ch', 'tutanota.com', 'tutanota.de', 'tutamail.com', 'tuta.io', 'tuta.com',
-  'keemail.me', 'fastmail.com', 'fastmail.fm', 'hey.com', 'duck.com', 'mailbox.org',
-  'posteo.de', 'posteo.net', 'hushmail.com', 'zoho.com', 'zohomail.com', 'zohomail.eu',
-  'email.com', 'usa.com', 'inbox.com', 'lycos.com', 'rocketmail.com', 'aim.com', 'msn.co.uk',
-  'windowslive.com', 'passport.com',
+  'pm.me',
+  'protonmail.ch',
+  'tutanota.com',
+  'tutanota.de',
+  'tutamail.com',
+  'tuta.io',
+  'tuta.com',
+  'keemail.me',
+  'fastmail.com',
+  'fastmail.fm',
+  'hey.com',
+  'duck.com',
+  'mailbox.org',
+  'posteo.de',
+  'posteo.net',
+  'hushmail.com',
+  'zoho.com',
+  'zohomail.com',
+  'zohomail.eu',
+  'email.com',
+  'usa.com',
+  'inbox.com',
+  'lycos.com',
+  'rocketmail.com',
+  'aim.com',
+  'msn.co.uk',
+  'windowslive.com',
+  'passport.com',
 
   // UK and Ireland.
-  'btopenworld.com', 'ntlworld.com', 'blueyonder.co.uk', 'tiscali.co.uk', 'virgin.net',
-  'talk21.com', 'plus.com', 'eircom.net', 'iol.ie', 'vodafone.ie',
+  'btopenworld.com',
+  'ntlworld.com',
+  'blueyonder.co.uk',
+  'tiscali.co.uk',
+  'virgin.net',
+  'talk21.com',
+  'plus.com',
+  'eircom.net',
+  'iol.ie',
+  'vodafone.ie',
 
   // Continental Europe.
-  'web.de', 't-online.de', 'freenet.de', 'arcor.de', 'gmx.de', 'gmx.net', 'gmx.at', 'gmx.ch',
-  'orange.fr', 'wanadoo.fr', 'free.fr', 'sfr.fr', 'laposte.net', 'neuf.fr', 'bbox.fr',
-  'libero.it', 'virgilio.it', 'tin.it', 'alice.it', 'tiscali.it', 'telefonica.net',
-  'terra.es', 'bluewin.ch', 'telenet.be', 'skynet.be', 'ziggo.nl', 'kpnmail.nl', 'planet.nl',
-  'hetnet.nl', 'home.nl', 'telia.com', 'online.no', 'seznam.cz', 'wp.pl', 'o2.pl',
-  'interia.pl', 'onet.pl', 'mail.ru', 'inbox.ru', 'list.ru', 'bk.ru', 'rambler.ru', 'ya.ru',
+  'web.de',
+  't-online.de',
+  'freenet.de',
+  'arcor.de',
+  'gmx.de',
+  'gmx.net',
+  'gmx.at',
+  'gmx.ch',
+  'orange.fr',
+  'wanadoo.fr',
+  'free.fr',
+  'sfr.fr',
+  'laposte.net',
+  'neuf.fr',
+  'bbox.fr',
+  'libero.it',
+  'virgilio.it',
+  'tin.it',
+  'alice.it',
+  'tiscali.it',
+  'telefonica.net',
+  'terra.es',
+  'bluewin.ch',
+  'telenet.be',
+  'skynet.be',
+  'ziggo.nl',
+  'kpnmail.nl',
+  'planet.nl',
+  'hetnet.nl',
+  'home.nl',
+  'telia.com',
+  'online.no',
+  'seznam.cz',
+  'wp.pl',
+  'o2.pl',
+  'interia.pl',
+  'onet.pl',
+  'mail.ru',
+  'inbox.ru',
+  'list.ru',
+  'bk.ru',
+  'rambler.ru',
+  'ya.ru',
 
   // North America and Oceania.
-  'earthlink.net', 'optonline.net', 'charter.net', 'frontier.com', 'juno.com', 'netzero.net',
-  'rr.com', 'telus.net', 'sympatico.ca', 'bell.net', 'videotron.ca', 'iinet.net.au',
-  'tpg.com.au', 'westnet.com.au', 'internode.on.net', 'telstra.com', 'spark.co.nz',
+  'earthlink.net',
+  'optonline.net',
+  'charter.net',
+  'frontier.com',
+  'juno.com',
+  'netzero.net',
+  'rr.com',
+  'telus.net',
+  'sympatico.ca',
+  'bell.net',
+  'videotron.ca',
+  'iinet.net.au',
+  'tpg.com.au',
+  'westnet.com.au',
+  'internode.on.net',
+  'telstra.com',
+  'spark.co.nz',
 
   // Asia.
-  'qq.com', 'foxmail.com', '163.com', '126.com', 'yeah.net', 'sina.com', 'sina.cn', 'sohu.com',
-  'aliyun.com', 'naver.com', 'daum.net', 'hanmail.net', 'rediffmail.com', 'yahoo.co.jp',
+  'qq.com',
+  'foxmail.com',
+  '163.com',
+  '126.com',
+  'yeah.net',
+  'sina.com',
+  'sina.cn',
+  'sohu.com',
+  'aliyun.com',
+  'naver.com',
+  'daum.net',
+  'hanmail.net',
+  'rediffmail.com',
+  'yahoo.co.jp',
 ]);
 
 /**
@@ -97,9 +220,33 @@ export const CONSUMER_EMAIL_DOMAINS = new Set([
  * by "live".
  */
 export const CONSUMER_DOMAIN_FAMILIES = [
-  'gmail', 'googlemail', 'yahoo', 'ymail', 'hotmail', 'outlook', 'live', 'msn', 'windowslive',
-  'aol', 'gmx', 'yandex', 'fastmail', 'tutanota', 'proton', 'protonmail', 'icloud', 'zoho',
-  'zohomail', 'mail', 'orange', 'wanadoo', 'libero', 'virgilio', 'web', 'rediffmail', 'sina',
+  'gmail',
+  'googlemail',
+  'yahoo',
+  'ymail',
+  'hotmail',
+  'outlook',
+  'live',
+  'msn',
+  'windowslive',
+  'aol',
+  'gmx',
+  'yandex',
+  'fastmail',
+  'tutanota',
+  'proton',
+  'protonmail',
+  'icloud',
+  'zoho',
+  'zohomail',
+  'mail',
+  'orange',
+  'wanadoo',
+  'libero',
+  'virgilio',
+  'web',
+  'rediffmail',
+  'sina',
 ];
 
 const COUNTRY_SUFFIX = /^((co|com|net|org|ne|or)\.)?[a-z]{2,3}$/;
@@ -153,13 +300,19 @@ export function serialiseOperator(row) {
  */
 export function emailDomain(email) {
   if (!email) return null;
-  const address = String(email).trim().toLowerCase().replace(/^mailto:/, '').replace(/^<|>$/g, '');
+  const address = String(email)
+    .trim()
+    .toLowerCase()
+    .replace(/^mailto:/, '')
+    .replace(/^<|>$/g, '');
   const at = address.lastIndexOf('@');
   if (at === -1) return null;
-  const domain = address.slice(at + 1).replace(/[^a-z0-9.-]+$/, '').replace(/\.+$/, '');
+  const domain = address
+    .slice(at + 1)
+    .replace(/[^a-z0-9.-]+$/, '')
+    .replace(/\.+$/, '');
   return domain.includes('.') ? domain : null;
 }
-
 
 /**
  * A lookup built once per request and reused across every booking — matching
@@ -325,8 +478,7 @@ export function paymentState(booking, operator, { today, fallbackTerms = DEFAULT
   const outstanding = closed ? 0 : round2(Math.max(gross - paid, 0));
 
   const invoiceBase = booking.invoicedAt ?? booking.date ?? null;
-  const fromInvoice =
-    invoiceBase === null ? null : addDays(invoiceBase, integer(terms.paymentTermsDays, 30));
+  const fromInvoice = invoiceBase === null ? null : addDays(invoiceBase, integer(terms.paymentTermsDays, 30));
 
   const depositDue =
     booking.depositDueDate ??
@@ -346,11 +498,7 @@ export function paymentState(booking, operator, { today, fallbackTerms = DEFAULT
   const stage = closed || outstanding === 0 ? null : depositSettled ? 'balance' : 'deposit';
   const dueDate = stage === 'deposit' ? depositDue : stage === 'balance' ? balanceDue : null;
   const dueAmount =
-    stage === 'deposit'
-      ? round2(Math.max(depositAmount - paid, 0))
-      : stage === 'balance'
-        ? outstanding
-        : 0;
+    stage === 'deposit' ? round2(Math.max(depositAmount - paid, 0)) : stage === 'balance' ? outstanding : 0;
 
   const daysOverdue = dueDate && today && dueDate < today ? daysBetween(dueDate, today) : 0;
   const daysUntilDue = dueDate && today && dueDate >= today ? daysBetween(today, dueDate) : 0;
@@ -495,8 +643,7 @@ export function summarise(operator, bookings, { today, includeStatuses = COMMITT
     overLimit: headroom !== null && headroom < 0,
     onHold: Boolean(operator?.onHold),
     /** How much of the limit is used, as a percentage; null with no limit. */
-    creditUsedPercent:
-      creditLimit && creditLimit > 0 ? Math.round((outstanding / creditLimit) * 100) : null,
+    creditUsedPercent: creditLimit && creditLimit > 0 ? Math.round((outstanding / creditLimit) * 100) : null,
   };
 }
 
@@ -516,9 +663,7 @@ export function summariseAll(operators, bookings, { today } = {}) {
   }
 
   return {
-    operators: operators.map((operator) =>
-      summarise(operator, groups.get(operator.id), { today }),
-    ),
+    operators: operators.map((operator) => summarise(operator, groups.get(operator.id), { today })),
     direct: summarise(null, direct, { today }),
     groups,
     index,
@@ -613,9 +758,7 @@ export function describeTerms(operator) {
   if (operator.depositPercent > 0) {
     parts.push(
       `${operator.depositPercent}% deposit${
-        operator.depositDueDaysBeforePlay != null
-          ? ` due ${operator.depositDueDaysBeforePlay} days before play`
-          : ''
+        operator.depositDueDaysBeforePlay != null ? ` due ${operator.depositDueDaysBeforePlay} days before play` : ''
       }`,
     );
   }

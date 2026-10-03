@@ -70,7 +70,10 @@ function headerLogoSrc(source) {
 }
 
 export const escapeHtml = (value) =>
-  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
 
 /** Merge fields for SendGrid templates, so a template can use the same branding. */
 export function brandTemplateData(source = env) {

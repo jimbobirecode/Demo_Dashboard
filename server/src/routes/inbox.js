@@ -21,13 +21,7 @@ import { sendHtmlEmail } from '../lib/sendgrid.js';
 import { logEmail } from '../lib/email-log.js';
 import { LOGO_CID, inlineLogoAttachment } from '../lib/email-layout.js';
 import { manageUrlFor } from '../lib/change-request-domain.js';
-import {
-  REVIEW_STATUSES,
-  buildReplyEmail,
-  replyProblem,
-  replySubject,
-  serialiseMessage,
-} from '../lib/inbox-domain.js';
+import { REVIEW_STATUSES, buildReplyEmail, replyProblem, replySubject, serialiseMessage } from '../lib/inbox-domain.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -139,10 +133,10 @@ router.get('/', async (req, res, next) => {
 router.get('/booking/:bookingId', async (req, res, next) => {
   try {
     const club = req.user.customerId;
-    const { rows } = await query(
-      'SELECT guest_email FROM public.bookings WHERE booking_id = $1 AND club = $2',
-      [req.params.bookingId, club],
-    );
+    const { rows } = await query('SELECT guest_email FROM public.bookings WHERE booking_id = $1 AND club = $2', [
+      req.params.bookingId,
+      club,
+    ]);
     if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
     const thread = await loadThread(club, { bookingId: req.params.bookingId, guestEmail: rows[0].guest_email });
     res.json({ thread });
@@ -264,7 +258,8 @@ router.post('/:id/reply', async (req, res, next) => {
   try {
     const message = await loadMessage(req, res);
     if (!message) return;
-    if (message.direction !== 'inbound') return res.status(400).json({ error: 'Only a received email can be replied to' });
+    if (message.direction !== 'inbound')
+      return res.status(400).json({ error: 'Only a received email can be replied to' });
 
     const subject = replySubject(req.body?.subject || message.subject, message.bookingId);
     const result = await sendAndRecord(req, {
@@ -319,7 +314,9 @@ router.post('/:id/link', async (req, res, next) => {
   try {
     const message = await loadMessage(req, res);
     if (!message) return;
-    const bookingId = String(req.body?.bookingId ?? '').trim().toUpperCase();
+    const bookingId = String(req.body?.bookingId ?? '')
+      .trim()
+      .toUpperCase();
     const { rows } = await query('SELECT 1 FROM public.bookings WHERE booking_id = $1 AND club = $2', [
       bookingId,
       req.user.customerId,

@@ -109,9 +109,6 @@ export function categoricalColor(index) {
 /** Bucket a 0..1 intensity onto the sequential ramp; 0 stays bare surface. */
 export function sequentialStep(intensity) {
   if (!intensity) return null;
-  const index = Math.min(
-    SEQUENTIAL.length - 1,
-    Math.floor(intensity * SEQUENTIAL.length - 1e-9),
-  );
+  const index = Math.min(SEQUENTIAL.length - 1, Math.floor(intensity * SEQUENTIAL.length - 1e-9));
   return SEQUENTIAL[Math.max(index, 0)];
 }

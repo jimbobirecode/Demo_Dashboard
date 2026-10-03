@@ -10,8 +10,7 @@ import BookingDrawer from '../components/BookingDrawer.jsx';
 import KpiTile from '../components/KpiTile.jsx';
 
 export default function Bookings({ user }) {
-  const { bookings, operators, error, loading, lastUpdated, refresh, replaceBooking, removeBooking } =
-    useBookings();
+  const { bookings, operators, error, loading, lastUpdated, refresh, replaceBooking, removeBooking } = useBookings();
 
   const [search, setSearch] = useState('');
   const [preset, setPreset] = useState(DEFAULT_PRESET);
@@ -23,10 +22,7 @@ export default function Bookings({ user }) {
 
   const range = useMemo(() => resolvePreset(preset, custom), [preset, custom]);
 
-  const dateFiltered = useMemo(
-    () => bookings.filter((booking) => withinRange(booking.date, range)),
-    [bookings, range],
-  );
+  const dateFiltered = useMemo(() => bookings.filter((booking) => withinRange(booking.date, range)), [bookings, range]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -69,9 +65,7 @@ export default function Bookings({ user }) {
   );
 
   function toggleStatusOnly(stage) {
-    setStatuses((current) =>
-      current.length === 1 && current[0] === stage ? DEFAULT_STATUS_FILTER : [stage],
-    );
+    setStatuses((current) => (current.length === 1 && current[0] === stage ? DEFAULT_STATUS_FILTER : [stage]));
   }
 
   async function mutate(action) {
@@ -238,12 +232,16 @@ export default function Bookings({ user }) {
               await refresh({ silent: true });
             })
           }
-          onDelete={user?.role === 'admin' ? (booking) =>
-            mutate(async () => {
-              await api.remove(booking.bookingId);
-              removeBooking(booking.bookingId);
-              setSelectedId(null);
-            }) : undefined}
+          onDelete={
+            user?.role === 'admin'
+              ? (booking) =>
+                  mutate(async () => {
+                    await api.remove(booking.bookingId);
+                    removeBooking(booking.bookingId);
+                    setSelectedId(null);
+                  })
+              : undefined
+          }
         />
       )}
     </div>

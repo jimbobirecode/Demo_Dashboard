@@ -13,8 +13,18 @@ import { logger } from './logger.js';
 const log = logger.child('email-log');
 
 const COLUMNS = [
-  'club', 'direction', 'booking_id', 'from_email', 'to_email', 'subject', 'body_text',
-  'sent_by', 'kind', 'in_reply_to', 'routed_to', 'review_status',
+  'club',
+  'direction',
+  'booking_id',
+  'from_email',
+  'to_email',
+  'subject',
+  'body_text',
+  'sent_by',
+  'kind',
+  'in_reply_to',
+  'routed_to',
+  'review_status',
 ];
 
 /** Record one email. Resolves to the new row's id, or null. */

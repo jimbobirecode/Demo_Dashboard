@@ -5,13 +5,7 @@ import { formatCurrency, formatDate, formatDateShort, formatNumber } from '../li
 import { STATUS_COLORS } from '../lib/status.js';
 import { INK_MUTED, PIPELINE_RAMP, SERIES, categoricalColor } from '../lib/palette.js';
 import KpiTile from '../components/KpiTile.jsx';
-import {
-  AreaChart,
-  BarChart,
-  BarList,
-  ChartCard,
-  TableView,
-} from '../components/charts/index.js';
+import { AreaChart, BarChart, BarList, ChartCard, TableView } from '../components/charts/index.js';
 import {
   GuestSection,
   MoneySection,
@@ -91,12 +85,11 @@ export default function Analytics() {
         <div>
           <h1>Reports &amp; Analytics</h1>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            {range.from ? formatDate(range.from) : 'earliest'} →{' '}
-            {range.to ? formatDate(range.to) : 'latest'}
+            {range.from ? formatDate(range.from) : 'earliest'} → {range.to ? formatDate(range.to) : 'latest'}
             {data?.comparison && (
               <>
-                {' '}· compared with {formatDate(data.comparison.from)} –{' '}
-                {formatDate(data.comparison.to)}
+                {' '}
+                · compared with {formatDate(data.comparison.from)} – {formatDate(data.comparison.to)}
               </>
             )}
           </p>
@@ -205,7 +198,12 @@ export default function Analytics() {
                   columns={[
                     { key: 'stage', header: 'Stage' },
                     { key: 'count', header: 'Reached', numeric: true },
-                    { key: 'conversionFromPrevious', header: 'From previous', numeric: true, render: (r) => `${r.conversionFromPrevious}%` },
+                    {
+                      key: 'conversionFromPrevious',
+                      header: 'From previous',
+                      numeric: true,
+                      render: (r) => `${r.conversionFromPrevious}%`,
+                    },
                     { key: 'droppedHere', header: 'Lost here', numeric: true },
                   ]}
                   rows={data.funnel.map((row) => ({ ...row, key: row.stage }))}
@@ -302,9 +300,7 @@ export default function Analytics() {
             >
               <BarList
                 data={data.courses}
-                colorFor={(row, index) =>
-                  row.key === 'Not specified' ? INK_MUTED : categoricalColor(index)
-                }
+                colorFor={(row, index) => (row.key === 'Not specified' ? INK_MUTED : categoricalColor(index))}
                 valueFormatter={formatNumber}
                 emptyMessage="No course recorded on any booking in this period."
               />
@@ -381,7 +377,6 @@ export default function Analytics() {
     </div>
   );
 }
-
 
 function KpiRow({ totals }) {
   const delta = totals.delta ?? {};

@@ -21,7 +21,22 @@ export const SIGNATURE_TOLERANCE_SECONDS = 300;
 
 /** Currencies Stripe takes in whole units rather than hundredths. */
 const ZERO_DECIMAL = new Set([
-  'bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga', 'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf',
+  'bif',
+  'clp',
+  'djf',
+  'gnf',
+  'jpy',
+  'kmf',
+  'krw',
+  'mga',
+  'pyg',
+  'rwf',
+  'ugx',
+  'vnd',
+  'vuv',
+  'xaf',
+  'xof',
+  'xpf',
 ]);
 
 export function toMinorUnits(amount, currency) {
@@ -179,7 +194,9 @@ export function prefilledLinkUrl(url, { email, bookingId }) {
 export function verifyWebhookSignature(rawBody, header, secret, { now = Date.now() / 1000 } = {}) {
   if (!header || !secret) return { ok: false, reason: 'Missing signature or secret' };
 
-  const parts = String(header).split(',').map((part) => part.split('='));
+  const parts = String(header)
+    .split(',')
+    .map((part) => part.split('='));
   const timestamp = Number(parts.find(([key]) => key === 't')?.[1]);
   const signatures = parts.filter(([key]) => key === 'v1').map(([, value]) => value);
   if (!Number.isFinite(timestamp) || !signatures.length) {

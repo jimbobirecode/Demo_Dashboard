@@ -3,12 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from './db.js';
 import { USER_SELECT } from './lib/schema.js';
-import {
-  allowedDuringPasswordChange,
-  evaluateSession,
-  isBcryptHash,
-  sessionClaims,
-} from './lib/session-domain.js';
+import { allowedDuringPasswordChange, evaluateSession, isBcryptHash, sessionClaims } from './lib/session-domain.js';
 import { logger } from './lib/logger.js';
 
 const log = logger.child('auth');
@@ -20,8 +15,7 @@ const TOKEN_TTL = '12h';
 
 // A generated secret keeps dev working, but every instance would then sign with
 // a different key — so a multi-instance deploy must supply its own.
-export const JWT_SECRET =
-  process.env.JWT_SECRET ?? crypto.randomBytes(32).toString('hex');
+export const JWT_SECRET = process.env.JWT_SECRET ?? crypto.randomBytes(32).toString('hex');
 
 if (!process.env.JWT_SECRET) {
   log.warn('JWT_SECRET not set — using an ephemeral secret; sessions drop on restart.');
@@ -195,18 +189,16 @@ async function matchesTempPassword(user, password) {
   }
   if (!timingSafeEqual(password, user.temp_password)) return false;
 
-  await query(
-    'UPDATE public.dashboard_users SET temp_password = $1 WHERE id = $2',
-    [await bcrypt.hash(String(password), 12), user.id],
-  ).catch((err) => log.warn('could not hash a legacy temp password:', err.message));
+  await query('UPDATE public.dashboard_users SET temp_password = $1 WHERE id = $2', [
+    await bcrypt.hash(String(password), 12),
+    user.id,
+  ]).catch((err) => log.warn('could not hash a legacy temp password:', err.message));
   return true;
 }
 
 /** Hash any temporary password still stored in plaintext. Run once at boot. */
 export async function hashLegacyTempPasswords() {
-  const { rows } = await query(
-    'SELECT id, temp_password FROM public.dashboard_users WHERE temp_password IS NOT NULL',
-  );
+  const { rows } = await query('SELECT id, temp_password FROM public.dashboard_users WHERE temp_password IS NOT NULL');
   let hashed = 0;
   for (const row of rows) {
     if (isBcryptHash(row.temp_password)) continue;

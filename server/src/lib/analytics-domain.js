@@ -77,7 +77,9 @@ export const TIME_BANDS = [
  */
 export function parseTeeHour(teeTime) {
   if (!teeTime) return null;
-  const match = String(teeTime).trim().match(/^(\d{1,2}):(\d{2})\s*([AP]M)?/i);
+  const match = String(teeTime)
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})\s*([AP]M)?/i);
   if (!match) return null;
 
   let hour = Number(match[1]);
@@ -201,16 +203,13 @@ export function buildFunnel(bookings) {
 
   let previousCount = null;
   return PIPELINE_STAGES.map((stage, index) => {
-    const count = live.filter(
-      (booking) => PIPELINE_STAGES.indexOf(normaliseStatus(booking.status)) >= index,
-    ).length;
+    const count = live.filter((booking) => PIPELINE_STAGES.indexOf(normaliseStatus(booking.status)) >= index).length;
 
     const row = {
       stage,
       count,
       conversionFromTop: round1((count / top) * 100),
-      conversionFromPrevious:
-        previousCount === null ? 100 : round1(previousCount ? (count / previousCount) * 100 : 0),
+      conversionFromPrevious: previousCount === null ? 100 : round1(previousCount ? (count / previousCount) * 100 : 0),
       droppedHere: previousCount === null ? 0 : Math.max(previousCount - count, 0),
     };
     previousCount = count;
@@ -241,7 +240,12 @@ export function buildPartySizes(bookings) {
       key,
       count: group.length,
       players: sum(group, 'players'),
-      revenue: round2(sum(group.filter((b) => COMMITTED.has(b.status)), 'total')),
+      revenue: round2(
+        sum(
+          group.filter((b) => COMMITTED.has(b.status)),
+          'total',
+        ),
+      ),
     };
   });
 }
@@ -275,20 +279,14 @@ export function buildCourseMix(bookings, knownCourses = ['Championship', 'Struie
 export function buildAccommodation(bookings) {
   const withStay = bookings.filter((booking) => booking.hotelRequired);
   const committedWith = withStay.filter((booking) => COMMITTED.has(booking.status));
-  const committedWithout = bookings.filter(
-    (booking) => !booking.hotelRequired && COMMITTED.has(booking.status),
-  );
+  const committedWithout = bookings.filter((booking) => !booking.hotelRequired && COMMITTED.has(booking.status));
 
   return {
     total: bookings.length,
     withAccommodation: withStay.length,
     attachRate: round1(bookings.length ? (withStay.length / bookings.length) * 100 : 0),
-    averageWith: round2(
-      committedWith.length ? sum(committedWith, 'total') / committedWith.length : 0,
-    ),
-    averageWithout: round2(
-      committedWithout.length ? sum(committedWithout, 'total') / committedWithout.length : 0,
-    ),
+    averageWith: round2(committedWith.length ? sum(committedWith, 'total') / committedWith.length : 0),
+    averageWithout: round2(committedWithout.length ? sum(committedWithout, 'total') / committedWithout.length : 0),
   };
 }
 
@@ -379,8 +377,7 @@ export function buildRequestUtilisation(bookings) {
     const day = weekdayFor(booking.date);
     const requested = day ? index.get(`${bandFor(requestedTeeHour(booking))}|${day}`) : null;
     const committed = COMMITTED.has(booking.status);
-    const booked =
-      committed && day ? index.get(`${bandFor(bookedTeeHour(booking))}|${day}`) : null;
+    const booked = committed && day ? index.get(`${bandFor(bookedTeeHour(booking))}|${day}`) : null;
 
     if (requested) {
       placed += 1;
@@ -492,8 +489,7 @@ export function buildBusiestDays(bookings) {
   return WEEK_ORDER.map((day) => ({
     key: day,
     count: bookings.filter(
-      (booking) =>
-        booking.date && DAY_NAMES[new Date(`${booking.date}T00:00:00Z`).getUTCDay()] === day,
+      (booking) => booking.date && DAY_NAMES[new Date(`${booking.date}T00:00:00Z`).getUTCDay()] === day,
     ).length,
   }));
 }
@@ -561,9 +557,7 @@ export function buildPaymentHealth(bookings, { today = todayIso() } = {}) {
     invoiced: invoiced.length,
     invoicedRate: round1(committed.length ? (invoiced.length / committed.length) * 100 : 0),
     overdue: overdue.length,
-    overdueAmount: round2(
-      overdue.reduce((total, { booking }) => total + outstandingOn(booking), 0),
-    ),
+    overdueAmount: round2(overdue.reduce((total, { booking }) => total + outstandingOn(booking), 0)),
     byStatus,
     ageing,
   };
@@ -730,7 +724,9 @@ export function buildCaddieDemand(bookings) {
 
 /** Three answers the field actually gives, from text that is never structured. */
 export function classifyCaddie(text) {
-  const value = String(text ?? '').trim().toLowerCase();
+  const value = String(text ?? '')
+    .trim()
+    .toLowerCase();
   if (!value || value === 'none' || value === 'n/a' || value === '-') return 'Not specified';
   if (/\b(no|not)\b(?!\w)/.test(value) && !/\bnumber\b/.test(value)) {
     // "no caddies", "not required" — but never "no. of caddies: 4".
@@ -774,9 +770,8 @@ export const REQUEST_THEMES = [
 ];
 
 export function buildRequestThemes(bookings) {
-  const texts = bookings.map(
-    (booking) =>
-      `${booking.specialRequests ?? ''} ${booking.caddieRequirements ?? ''} ${booking.lodgingPreferences ?? ''}`.trim(),
+  const texts = bookings.map((booking) =>
+    `${booking.specialRequests ?? ''} ${booking.caddieRequirements ?? ''} ${booking.lodgingPreferences ?? ''}`.trim(),
   );
   const withText = texts.filter(Boolean);
 
@@ -805,7 +800,9 @@ export function buildGuestMix(bookings) {
   let anonymous = 0;
 
   for (const booking of bookings) {
-    const email = String(booking.guestEmail ?? '').trim().toLowerCase();
+    const email = String(booking.guestEmail ?? '')
+      .trim()
+      .toLowerCase();
     if (!email) {
       anonymous += 1;
       continue;
@@ -874,10 +871,9 @@ export function buildResponseTimes(bookings) {
     const asked = Date.parse(booking.formSubmittedAt ?? booking.timestamp ?? '');
     if (Number.isNaN(asked)) continue;
 
-    const answeredAt = booking.customerConfirmedAt
-      ?? (COMMITTED.has(booking.status) || TERMINAL_STATUSES.includes(booking.status)
-        ? booking.updatedAt
-        : null);
+    const answeredAt =
+      booking.customerConfirmedAt ??
+      (COMMITTED.has(booking.status) || TERMINAL_STATUSES.includes(booking.status) ? booking.updatedAt : null);
     const answered = Date.parse(answeredAt ?? '');
 
     if (Number.isNaN(answered) || answered < asked) {

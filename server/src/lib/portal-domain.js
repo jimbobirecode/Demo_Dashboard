@@ -107,9 +107,7 @@ export function portalBooking(booking, { pendingRequest = null, payable = false 
     daysOverdue: p.daysOverdue ?? 0,
     invoiceNumber: booking.invoiceNumber ?? null,
     paymentStatus: p.status ?? booking.paymentStatus ?? null,
-    pendingRequest: pendingRequest
-      ? { kind: pendingRequest.kind, createdAt: pendingRequest.createdAt }
-      : null,
+    pendingRequest: pendingRequest ? { kind: pendingRequest.kind, createdAt: pendingRequest.createdAt } : null,
     // A balance can be paid online when it is owed on a booking the club has
     // confirmed - never on an enquiry it has not accepted yet.
     canPay: payable && (p.outstanding ?? 0) >= 0.5 && PAYABLE_STATUSES.includes(booking.status),
@@ -127,12 +125,32 @@ export function isCurrent(booking, today) {
 /** The operator's statement: one row per booking, for their accounts team. */
 export function statementCsv(bookings, { currency = BRAND.currency } = {}) {
   const header = [
-    'Booking reference', 'Invoice', 'Play date', 'Tee time', 'Players', 'Course', 'Status',
-    `Total (${currency})`, `Paid (${currency})`, `Outstanding (${currency})`, 'Due date', 'Overdue days',
+    'Booking reference',
+    'Invoice',
+    'Play date',
+    'Tee time',
+    'Players',
+    'Course',
+    'Status',
+    `Total (${currency})`,
+    `Paid (${currency})`,
+    `Outstanding (${currency})`,
+    'Due date',
+    'Overdue days',
   ];
   const rows = bookings.map((b) => [
-    b.bookingId, b.invoiceNumber, b.date, b.teeTime, b.players, b.course, b.status,
-    b.total.toFixed(2), Number(b.paid).toFixed(2), Number(b.outstanding).toFixed(2), b.dueDate, b.daysOverdue || '',
+    b.bookingId,
+    b.invoiceNumber,
+    b.date,
+    b.teeTime,
+    b.players,
+    b.course,
+    b.status,
+    b.total.toFixed(2),
+    Number(b.paid).toFixed(2),
+    Number(b.outstanding).toFixed(2),
+    b.dueDate,
+    b.daysOverdue || '',
   ]);
   return [header, ...rows].map(csvLine).join('\r\n') + '\r\n';
 }
@@ -147,10 +165,18 @@ export function buildEnquiry(input, operator, email) {
   const errors = [];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) errors.push('Choose a date');
   if (!Number.isInteger(players) || players < 1 || players > 200) errors.push('Enter how many players (1 to 200)');
-  const notes = String(input?.notes ?? '').trim().slice(0, 4000);
-  const course = String(input?.course ?? '').trim().slice(0, 200);
-  const timing = String(input?.timing ?? '').trim().slice(0, 200);
-  const groupName = String(input?.groupName ?? '').trim().slice(0, 200);
+  const notes = String(input?.notes ?? '')
+    .trim()
+    .slice(0, 4000);
+  const course = String(input?.course ?? '')
+    .trim()
+    .slice(0, 200);
+  const timing = String(input?.timing ?? '')
+    .trim()
+    .slice(0, 200);
+  const groupName = String(input?.groupName ?? '')
+    .trim()
+    .slice(0, 200);
   if (errors.length) return { error: errors.join('. ') };
 
   const lines = [

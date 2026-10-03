@@ -95,8 +95,8 @@ export default function ManageBooking() {
 
         {pending?.length > 0 && (
           <div className="banner">
-            You have already asked the club to {pending[0].kind === 'cancel' ? 'cancel this booking' : 'change this booking'}.
-            They will be in touch.
+            You have already asked the club to{' '}
+            {pending[0].kind === 'cancel' ? 'cancel this booking' : 'change this booking'}. They will be in touch.
           </div>
         )}
 
@@ -106,7 +106,9 @@ export default function ManageBooking() {
           <div className="banner">{options.reason}</div>
         ) : pending?.length ? null : !kind ? (
           <div className="stack" style={{ gap: '0.5rem' }}>
-            <p className="muted" style={{ margin: 0, fontSize: '0.8125rem' }}>{options.reason}</p>
+            <p className="muted" style={{ margin: 0, fontSize: '0.8125rem' }}>
+              {options.reason}
+            </p>
             <div className="row">
               {options.canAmend && (
                 <button type="button" className="btn-primary" onClick={() => setKind('amend')}>
@@ -124,8 +126,8 @@ export default function ManageBooking() {
           <form className="stack" style={{ gap: '0.75rem' }} onSubmit={submit}>
             {kind === 'cancel' ? (
               <div className="banner">
-                This sends a cancellation request to the club. Your booking is not cancelled until the club confirms
-                it — your tee time is held until then, and you will get an email either way.
+                This sends a cancellation request to the club. Your booking is not cancelled until the club confirms it
+                — your tee time is held until then, and you will get an email either way.
               </div>
             ) : (
               <div className="toolbar">
@@ -175,11 +177,15 @@ export default function ManageBooking() {
 
             <div className="row">
               <button type="submit" className="btn-primary" disabled={busy}>
-                {busy ? 'Sending…' : kind === 'cancel'
-                  ? 'Send cancellation request'
-                  : 'Send request'}
+                {busy ? 'Sending…' : kind === 'cancel' ? 'Send cancellation request' : 'Send request'}
               </button>
-              <button type="button" onClick={() => { setKind(null); setError(null); }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setKind(null);
+                  setError(null);
+                }}
+              >
                 Back
               </button>
             </div>
@@ -194,7 +200,9 @@ function Detail({ label, value, mono }) {
   return (
     <div>
       <div className="label">{label}</div>
-      <div className={mono ? 'mono' : undefined} style={{ fontWeight: 600 }}>{value}</div>
+      <div className={mono ? 'mono' : undefined} style={{ fontWeight: 600 }}>
+        {value}
+      </div>
     </div>
   );
 }

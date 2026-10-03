@@ -9,8 +9,14 @@ import {
 } from '../src/lib/session-domain.js';
 
 const ROW = {
-  id: 7, username: 'ann', customer_id: 'royal_dornoch', full_name: 'Ann',
-  role: 'staff', is_active: true, session_version: 3, must_change_password: false,
+  id: 7,
+  username: 'ann',
+  customer_id: 'royal_dornoch',
+  full_name: 'Ann',
+  role: 'staff',
+  is_active: true,
+  session_version: 3,
+  must_change_password: false,
 };
 
 test('a token carries the session version it was issued at', () => {
@@ -25,7 +31,7 @@ test('a matching, active account passes, with authority read from the row', () =
   const verdict = evaluateSession({ sub: '7', sv: 3, role: 'admin', customerId: 'elsewhere' }, ROW);
   assert.equal(verdict.ok, true);
   assert.equal(verdict.user.role, 'staff', 'a demoted admin is staff on the next request');
-  assert.equal(verdict.user.customerId, 'royal_dornoch', 'the club is the row\'s, not the token\'s');
+  assert.equal(verdict.user.customerId, 'royal_dornoch', "the club is the row's, not the token's");
   assert.equal(verdict.user.mustChangePassword, false);
 });
 
@@ -52,10 +58,7 @@ test('a temporary-password session reaches only the password screens', () => {
   assert.equal(allowedDuringPasswordChange('/api/auth/logout/'), true);
   assert.equal(allowedDuringPasswordChange('/api/bookings'), false);
   assert.equal(allowedDuringPasswordChange('/api/users'), false);
-  assert.equal(
-    evaluateSession({ sv: 3 }, { ...ROW, must_change_password: true }).user.mustChangePassword,
-    true,
-  );
+  assert.equal(evaluateSession({ sv: 3 }, { ...ROW, must_change_password: true }).user.mustChangePassword, true);
 });
 
 test('bcrypt hashes are told apart from plaintext temp passwords', () => {

@@ -64,7 +64,9 @@ export function checkCsrf({ method, path, headers = {}, allowedOrigins = [] }) {
     return { ok: true };
   }
 
-  const marker = String(headers[CSRF_HEADER] ?? '').trim().toLowerCase();
+  const marker = String(headers[CSRF_HEADER] ?? '')
+    .trim()
+    .toLowerCase();
   if (marker !== CSRF_HEADER_VALUE) {
     return { ok: false, reason: 'missing request header' };
   }

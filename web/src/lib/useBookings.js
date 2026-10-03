@@ -52,9 +52,7 @@ export function useBookings() {
   }, [refresh]);
 
   const replaceBooking = useCallback((updated) => {
-    setBookings((current) =>
-      current.map((booking) => (booking.bookingId === updated.bookingId ? updated : booking)),
-    );
+    setBookings((current) => current.map((booking) => (booking.bookingId === updated.bookingId ? updated : booking)));
   }, []);
 
   const removeBooking = useCallback((bookingId) => {

@@ -107,9 +107,7 @@ export default function Emails() {
     }
     if (!dryRun) {
       const resends = bookings.filter((b) => selected.has(b.bookingId) && b.sentAt).length;
-      const warning = resends
-        ? `\n\n${resends} of them already received this email — they will get it again.`
-        : '';
+      const warning = resends ? `\n\n${resends} of them already received this email — they will get it again.` : '';
       if (!window.confirm(`Send the ${campaign.label.toLowerCase()} to ${ids.length} guest(s)?${warning}`)) {
         return;
       }
@@ -170,15 +168,15 @@ export default function Emails() {
 
       {config && !config.configured && (
         <div className="banner error">
-          Email sending is not configured. Set {config.missing.join(', ')} in the environment,
-          then restart the dashboard.
+          Email sending is not configured. Set {config.missing.join(', ')} in the environment, then restart the
+          dashboard.
         </div>
       )}
 
       {vero?.enabled === false && vero.campaigns?.includes(campaignId) === true && (
         <div className="banner error">
-          Club Vero is meant to carry the survey link on this campaign, but it is not configured.
-          Set {vero.missing.join(', ')} in the environment, then restart the dashboard.
+          Club Vero is meant to carry the survey link on this campaign, but it is not configured. Set{' '}
+          {vero.missing.join(', ')} in the environment, then restart the dashboard.
         </div>
       )}
 
@@ -218,9 +216,7 @@ export default function Emails() {
           label={scope === 'due' ? (pending?.startsOnPayment ? 'Playing by' : 'Target play date') : 'Campaign timing'}
           value={scope === 'due' ? (pending ? formatDate(pending.targetDate) : '—') : timing}
           sub={
-            scope === 'due'
-              ? timing
-              : `Normally sent on ${pending ? formatDate(pending.targetDate) : 'the due date'}`
+            scope === 'due' ? timing : `Normally sent on ${pending ? formatDate(pending.targetDate) : 'the due date'}`
           }
           accent="var(--links-green)"
         />
@@ -273,8 +269,8 @@ export default function Emails() {
       {pending?.startsOnPayment && pending.awaitingPayment > 0 && (
         <div className="banner">
           {formatNumber(pending.awaitingPayment)} booked {pending.awaitingPayment === 1 ? 'guest is' : 'guests are'} not
-          listed because no payment has been received yet. Payment starts a guest&rsquo;s pre-play emails
-          &mdash; a Stripe payment, or marking the payment Paid or Deposit paid in the booking.
+          listed because no payment has been received yet. Payment starts a guest&rsquo;s pre-play emails &mdash; a
+          Stripe payment, or marking the payment Paid or Deposit paid in the booking.
         </div>
       )}
 
@@ -343,8 +339,8 @@ export default function Emails() {
 
         {!loading && !bookings.length && (
           <div className="empty">
-            No booked guests {campaignId === 'pre_arrival' ? 'are due a welcome' : 'are due a thank you'} in
-            this window.
+            No booked guests {campaignId === 'pre_arrival' ? 'are due a welcome' : 'are due a thank you'} in this
+            window.
             {scope === 'due' && ' Try the wider window above.'}
           </div>
         )}
@@ -369,7 +365,10 @@ export default function Emails() {
                   <tr key={row.bookingId}>
                     <td className="mono">{row.bookingId}</td>
                     <td>{row.email ?? '—'}</td>
-                    <td style={{ color: row.status === 'failed' ? 'var(--status-rejected)' : undefined }} className={row.status === 'skipped' ? 'muted' : undefined}>
+                    <td
+                      style={{ color: row.status === 'failed' ? 'var(--status-rejected)' : undefined }}
+                      className={row.status === 'skipped' ? 'muted' : undefined}
+                    >
                       {OUTCOME_LABELS[row.status] ?? row.status}
                     </td>
                     <td className="secondary">{row.message}</td>

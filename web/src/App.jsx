@@ -157,10 +157,7 @@ function StaffApp() {
             <Route path="/operators" element={<Operators />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/reminders" element={<Reminders />} />
-            <Route
-              path="/users"
-              element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />}
-            />
+            <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />
             {/* A signed-in reader following an old reset link goes to the
                 bookings table rather than to a form they no longer need. */}
             <Route path="*" element={<Navigate to="/bookings" replace />} />

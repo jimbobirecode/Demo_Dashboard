@@ -43,28 +43,56 @@ pool.query = async (text, params = []) => {
 };
 
 function reset() {
-  users = new Map([[1, {
-    id: 1, username: 'ann', email: 'ann@club.test', password_hash: null, temp_password: null,
-    customer_id: 'royal_dornoch', full_name: 'Ann', is_active: true, must_change_password: false,
-    role: 'admin', session_version: 0,
-  }]]);
+  users = new Map([
+    [
+      1,
+      {
+        id: 1,
+        username: 'ann',
+        email: 'ann@club.test',
+        password_hash: null,
+        temp_password: null,
+        customer_id: 'royal_dornoch',
+        full_name: 'Ann',
+        is_active: true,
+        must_change_password: false,
+        role: 'admin',
+        session_version: 0,
+      },
+    ],
+  ]);
   auth.forgetSessionUser(1);
 }
 
 function tokenFor(user, extra = {}) {
-  return jwt.sign({ sub: String(user.id), customerId: user.customer_id, sv: user.session_version, ...extra }, 'test-secret');
+  return jwt.sign(
+    { sub: String(user.id), customerId: user.customer_id, sv: user.session_version, ...extra },
+    'test-secret',
+  );
 }
 
 async function call(token, path = '/api/bookings') {
   const req = { cookies: { teemail_session: token }, baseUrl: path, path: '' };
   const res = {
-    statusCode: 200, body: null, cleared: false,
-    status(code) { this.statusCode = code; return this; },
-    json(body) { this.body = body; return this; },
-    clearCookie() { this.cleared = true; },
+    statusCode: 200,
+    body: null,
+    cleared: false,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.body = body;
+      return this;
+    },
+    clearCookie() {
+      this.cleared = true;
+    },
   };
   let passed = false;
-  await auth.requireAuth(req, res, () => { passed = true; });
+  await auth.requireAuth(req, res, () => {
+    passed = true;
+  });
   return { passed, res, req };
 }
 

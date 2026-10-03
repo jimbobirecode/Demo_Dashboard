@@ -32,7 +32,11 @@ function sender(message) {
  */
 export default function ChatThread({ thread, guestName = '', activeId = null, onReplyTo = null }) {
   if (!thread?.length) {
-    return <div className="muted" style={{ fontSize: '0.875rem' }}>No emails yet.</div>;
+    return (
+      <div className="muted" style={{ fontSize: '0.875rem' }}>
+        No emails yet.
+      </div>
+    );
   }
   return (
     <div className="chat">

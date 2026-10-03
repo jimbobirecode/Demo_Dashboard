@@ -32,10 +32,7 @@ router.get('/', async (req, res, next) => {
     const bookings = await loadConvertedBookings(entries, req.user.customerId);
     // Conversions made outside the dashboard leave no link, so they are found
     // by looking rather than reported by the act that made them.
-    const suggestions = suggestConversions(
-      entries,
-      await loadCandidateBookings(entries, req.user.customerId),
-    );
+    const suggestions = suggestConversions(entries, await loadCandidateBookings(entries, req.user.customerId));
 
     res.json({
       entries,
@@ -62,8 +59,17 @@ router.post('/', async (req, res, next) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Waiting', $9, $10, $11)
        RETURNING *`,
       [
-        mintWaitlistId(), v.guestEmail, v.guestName, v.requestedDate, v.preferredTime,
-        v.timeFlexibility, v.players, v.golfCourse, v.priority, v.notes, req.user.customerId,
+        mintWaitlistId(),
+        v.guestEmail,
+        v.guestName,
+        v.requestedDate,
+        v.preferredTime,
+        v.timeFlexibility,
+        v.players,
+        v.golfCourse,
+        v.priority,
+        v.notes,
+        req.user.customerId,
       ],
     );
 
@@ -260,8 +266,10 @@ router.delete('/:waitlistId', async (req, res, next) => {
       });
     }
 
-    await query('DELETE FROM public.waitlist WHERE waitlist_id = $1 AND club = $2',
-      [entry.waitlist_id, req.user.customerId]);
+    await query('DELETE FROM public.waitlist WHERE waitlist_id = $1 AND club = $2', [
+      entry.waitlist_id,
+      req.user.customerId,
+    ]);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -302,7 +310,10 @@ async function loadCandidateBookings(entries, club) {
   if (!open.length) return [];
 
   const emails = [...new Set(open.map((entry) => entry.guestEmail))];
-  const dates = open.map((entry) => entry.requestedDate).filter(Boolean).sort();
+  const dates = open
+    .map((entry) => entry.requestedDate)
+    .filter(Boolean)
+    .sort();
   if (!dates.length) return [];
 
   const { rows } = await query(
@@ -316,17 +327,20 @@ async function loadCandidateBookings(entries, club) {
 }
 
 async function findEntry(waitlistId, club) {
-  const { rows } = await query(
-    'SELECT * FROM public.waitlist WHERE waitlist_id = $1 AND club = $2',
-    [String(waitlistId), club],
-  );
+  const { rows } = await query('SELECT * FROM public.waitlist WHERE waitlist_id = $1 AND club = $2', [
+    String(waitlistId),
+    club,
+  ]);
   return rows[0] ?? null;
 }
 
 /** `BOOK-20260923-8F2A` — the shape the Streamlit conversion used. */
 function mintConvertedBookingId(now = new Date()) {
   const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const suffix = Math.floor(Math.random() * 0xffff).toString(16).toUpperCase().padStart(4, '0');
+  const suffix = Math.floor(Math.random() * 0xffff)
+    .toString(16)
+    .toUpperCase()
+    .padStart(4, '0');
   return `BOOK-${stamp}-${suffix}`;
 }
 
