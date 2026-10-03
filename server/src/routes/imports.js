@@ -15,7 +15,6 @@
  * system and were never a TeeMail enquiry.
  */
 import { Router } from 'express';
-import ExcelJS from 'exceljs';
 import { pool, query } from '../db.js';
 import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
@@ -26,6 +25,7 @@ import {
   mintImportedBookingId,
   parseTeeSheet,
 } from '../lib/import-domain.js';
+import { SheetTooLargeError, checkRowCount, readXlsxRows } from '../lib/sheet-reader.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -195,29 +195,21 @@ async function readRows(body) {
   const buffer = Buffer.from(content, 'base64');
   if (buffer.length > 8 * 1024 * 1024) return { error: 'That file is larger than 8MB' };
 
-  if (name.endsWith('.xlsx') || name.endsWith('.xlsm')) {
-    try {
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
-      const sheet = workbook.worksheets[0];
-      if (!sheet) return { error: 'That workbook has no sheets' };
-
-      const rows = [];
-      sheet.eachRow({ includeEmpty: false }, (row) => {
-        const values = row.values.slice(1).map((cell) => {
-          if (cell && typeof cell === 'object' && 'result' in cell) return cell.result;
-          if (cell && typeof cell === 'object' && 'text' in cell) return cell.text;
-          return cell ?? '';
-        });
-        rows.push(values);
-      });
-      return { rows };
-    } catch {
-      return { error: 'That file could not be read as a spreadsheet' };
+  try {
+    if (name.endsWith('.xlsx') || name.endsWith('.xlsm')) {
+      try {
+        const rows = await readXlsxRows(buffer);
+        return rows.length ? { rows } : { error: 'That workbook has no rows on its first sheet' };
+      } catch (err) {
+        if (err instanceof SheetTooLargeError) throw err;
+        return { error: 'That file could not be read as a spreadsheet' };
+      }
     }
+    return { rows: checkRowCount(parseCsv(buffer.toString('utf8'))) };
+  } catch (err) {
+    if (err instanceof SheetTooLargeError) return { error: err.message };
+    throw err;
   }
-
-  return { rows: parseCsv(buffer.toString('utf8')) };
 }
 
 /**
