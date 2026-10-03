@@ -153,7 +153,7 @@ router.get('/me', requireAuth, (req, res) => {
       fullName: req.user.fullName,
       customerId: req.user.customerId,
       clubName: clubDisplayName(req.user.customerId),
-      role: req.user.role ?? 'admin',
+      role: req.user.role,
     },
     mustChangePassword: Boolean(req.user.mustChangePassword),
   });
