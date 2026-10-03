@@ -43,7 +43,6 @@ export default function Reminders() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [migration, setMigration] = useState(null);
   const [notice, setNotice] = useState(null);
   const [results, setResults] = useState(null);
 
@@ -75,10 +74,8 @@ export default function Reminders() {
         ),
       );
       setError(null);
-      setMigration(null);
     } catch (err) {
-      if (err.status === 409) setMigration(err.message);
-      else setError(err.message);
+      setError(err.message);
       setPending(null);
     } finally {
       setLoading(false);
@@ -94,7 +91,6 @@ export default function Reminders() {
 
   const reminders = pending?.reminders ?? [];
   const ready = Boolean(config?.campaigns?.[campaignId]?.configured && config?.hasApiKey && config?.fromEmail);
-  const untracked = config && config.tracking?.[campaignId] === false;
 
   const totals = useMemo(
     () =>
@@ -175,10 +171,7 @@ export default function Reminders() {
         setNotice({
           kind: payload.failed && !payload.sent ? 'error' : 'success',
           text:
-            `Sent ${payload.sent} reminder(s)${payload.failed ? `, ${payload.failed} failed` : ''}.` +
-            (payload.tracked === false
-              ? ' Sends could not be recorded, so an account could be chased twice — run migration_add_tour_operators.sql.'
-              : ''),
+            `Sent ${payload.sent} reminder(s)${payload.failed ? `, ${payload.failed} failed` : ''}.`,
         });
         await load();
       }
@@ -187,15 +180,6 @@ export default function Reminders() {
     } finally {
       setBusy(false);
     }
-  }
-
-  if (migration) {
-    return (
-      <div className="stack">
-        <h1>Operator Reminders</h1>
-        <div className="banner error">{migration}</div>
-      </div>
-    );
   }
 
   const days = config?.campaigns?.[campaignId]?.days;
@@ -220,13 +204,6 @@ export default function Reminders() {
         <div className="banner error">
           Reminder email is not configured. Set {config.missing.join(', ')} in the environment, then
           restart the dashboard. The list below still shows who is due.
-        </div>
-      )}
-
-      {untracked && (
-        <div className="banner error">
-          This database cannot record reminder sends, so an account could be chased twice. Run{' '}
-          <code>migration_add_tour_operators.sql</code> to fix it.
         </div>
       )}
 

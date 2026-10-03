@@ -25,7 +25,6 @@ export default function Operators() {
   const [tab, setTab] = useState('accounts');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [migration, setMigration] = useState(null);
   const [notice, setNotice] = useState(null);
   const [editing, setEditing] = useState(null); // { operator } | { seed } | null
   const [openId, setOpenId] = useState(null);
@@ -37,13 +36,11 @@ export default function Operators() {
       const payload = await api.operators();
       setData(payload);
       setError(null);
-      setMigration(null);
       // Suggestions need the same full scan, so they are fetched alongside
       // rather than only when the tab is opened — the count belongs on the tab.
       setSuggestions(await api.operatorSuggestions());
     } catch (err) {
-      if (err.status === 409) setMigration(err.message);
-      else setError(err.message);
+      setError(err.message);
       setData(null);
     } finally {
       setLoading(false);
@@ -119,20 +116,6 @@ export default function Operators() {
     }
   }
 
-  if (migration) {
-    return (
-      <div className="stack">
-        <h1>Tour Operators</h1>
-        <div className="banner error">
-          {migration}
-        </div>
-        <p className="secondary">
-          Until then, bookings still load and the rest of the dashboard is unaffected.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="stack">
       <div className="between">
@@ -155,13 +138,6 @@ export default function Operators() {
 
       {error && <div className="banner error">{error}</div>}
       {notice && <div className={`banner ${notice.kind}`}>{notice.text}</div>}
-      {data && data.tracking === false && (
-        <div className="banner error">
-          Bookings cannot carry an operator or a payment state on this database. Run{' '}
-          <code>migration_add_tour_operators.sql</code> — until then an account can be set up, but
-          nothing can be assigned to it by hand.
-        </div>
-      )}
 
       {totals && (
         <div className="kpi-row">
@@ -229,7 +205,6 @@ export default function Operators() {
           operators={operators}
           onOpenAccount={(seed) => setEditing({ seed })}
           onAssign={assign}
-          tracking={data?.tracking !== false}
         />
       )}
 
@@ -454,7 +429,7 @@ function AgeingTable({ operators, bands, totals }) {
  * need different answers: a domain with no account at all, and a booking whose
  * text names an account it has not been attached to.
  */
-function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, tracking }) {
+function Unrecognised({ suggestions, operators, onOpenAccount, onAssign }) {
   const [assigning, setAssigning] = useState({});
 
   if (!suggestions) return <div className="empty">Loading…</div>;
@@ -545,13 +520,6 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, trackin
             </p>
           </div>
 
-          {!tracking && (
-            <div className="banner error">
-              Assigning needs the <code>tour_operator_id</code> column. Run{' '}
-              <code>migration_add_tour_operators.sql</code> first.
-            </div>
-          )}
-
           <div className="table-wrap">
             <table className="data">
               <thead>
@@ -593,7 +561,6 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, trackin
                             }))
                           }
                           style={{ width: 'auto' }}
-                          disabled={!tracking}
                         >
                           <option value="">Direct booking</option>
                           {operators.map((operator) => (
@@ -605,7 +572,6 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, trackin
                         <button
                           type="button"
                           className="btn-sm"
-                          disabled={!tracking}
                           onClick={() => {
                             const raw = assigning[booking.bookingId] ?? String(booking.operatorId ?? '');
                             const id = raw === '' ? null : Number(raw);

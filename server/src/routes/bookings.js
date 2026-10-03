@@ -9,12 +9,7 @@ import {
   extractTeeTimeFromNote,
   serialiseBooking,
 } from '../lib/bookings-domain.js';
-import {
-  buildAuditSet,
-  getBookingColumns,
-  getOperatorColumns,
-  hasOperatorsTable,
-} from '../lib/schema.js';
+import { BOOKING_SELECT, OPERATOR_SELECT, buildAuditSet } from '../lib/schema.js';
 import {
   PAYMENT_STATUSES,
   attachOperators,
@@ -32,52 +27,34 @@ const router = Router();
 router.use(requireAuth);
 
 async function loadBookings(club) {
-  const columns = await getBookingColumns();
-  // Older installs may not have a timestamp column to order by.
-  const orderBy = columns.has('timestamp')
-    ? 'ORDER BY timestamp DESC'
-    : columns.has('created_at')
-      ? 'ORDER BY created_at DESC'
-      : 'ORDER BY id DESC';
-
   const { rows } = await query(
-    `SELECT ${columns.selectList}
+    `SELECT ${BOOKING_SELECT}
        FROM public.bookings
       WHERE club = $1
-      ${orderBy}`,
+      ORDER BY timestamp DESC`,
     [club],
   );
   return rows.map(serialiseBooking);
 }
 
-/** One-column update that only writes audit fields the table actually has. */
+/** One-column update, stamped with who made it. */
 async function updateBookingField({ column, value, bookingId, club, username }) {
-  const columns = await getBookingColumns();
-  const audit = buildAuditSet(columns, 3, username);
+  const audit = buildAuditSet(3, username);
 
   const { rows } = await query(
     `UPDATE public.bookings
-        SET "${column}" = $1${audit.clauses.length ? `, ${audit.clauses.join(', ')}` : ''}
+        SET "${column}" = $1, ${audit.clauses.join(', ')}
       WHERE booking_id = $2 AND club = $${3 + audit.values.length}
-    RETURNING ${columns.selectList}`,
+    RETURNING ${BOOKING_SELECT}`,
     [value, bookingId, ...audit.values, club],
   );
 
   return rows[0] ? serialiseBooking(rows[0]) : null;
 }
 
-/**
- * The operators this club trades with, or an empty list on an install that has
- * not run `migration_add_tour_operators.sql`. Absence is normal, not an error:
- * the bookings table simply shows no trade columns.
- */
-async function loadOperatorsIfPresent(club) {
-  if (!(await hasOperatorsTable())) return [];
-  const columns = await getOperatorColumns();
-  const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.tour_operators WHERE club = $1`,
-    [club],
-  );
+/** The operators this club trades with. */
+async function loadOperators(club) {
+  const { rows } = await query(`SELECT ${OPERATOR_SELECT} FROM public.tour_operators WHERE club = $1`, [club]);
   return rows.map(serialiseOperator);
 }
 
@@ -90,7 +67,7 @@ async function loadOperatorsIfPresent(club) {
  * the wrong terms — and so the wrong due date.
  */
 export async function withAccount(booking, club) {
-  const operators = await loadOperatorsIfPresent(club);
+  const operators = await loadOperators(club);
   const { operator } = identify(booking, buildOperatorIndex(operators));
   return {
     ...booking,
@@ -112,7 +89,7 @@ export async function withAccount(booking, club) {
 async function loadBookingsWithAccounts(club) {
   const [bookings, operators] = await Promise.all([
     loadBookings(club),
-    loadOperatorsIfPresent(club),
+    loadOperators(club),
   ]);
 
   const today = todayInClubZone();
@@ -162,16 +139,6 @@ router.get('/', async (req, res, next) => {
  * clears an override so the account terms apply again.
  */
 router.patch('/:bookingId/payment', async (req, res, next) => {
-  const columns = await getBookingColumns();
-  if (!columns.has('payment_status')) {
-    return res.status(409).json({
-      error:
-        'This database has no payment columns. Run migration_add_tour_operators.sql ' +
-        'to add them — the dashboard picks them up within 30 seconds, with no restart.',
-      migration: 'migration_add_tour_operators.sql',
-    });
-  }
-
   const body = req.body ?? {};
   const updates = {};
 
@@ -210,16 +177,16 @@ router.patch('/:bookingId/payment', async (req, res, next) => {
     }
   }
 
-  const names = Object.keys(updates).filter((name) => columns.has(name));
+  const names = Object.keys(updates);
   if (!names.length) return res.status(400).json({ error: 'Nothing to update' });
 
   try {
-    const audit = buildAuditSet(columns, names.length + 1, req.user.username);
+    const audit = buildAuditSet(names.length + 1, req.user.username);
     const params = names.map((name) => updates[name]);
     const sets = names.map((name, index) => `"${name}" = $${index + 1}`);
     // Money received by hand starts the pre-play emails the same way a Stripe
     // payment does; a booking whose clock is already running keeps its start.
-    if (CLOCK_STARTING_PAYMENTS.includes(updates.payment_status) && columns.has('pre_play_clock_started_at')) {
+    if (CLOCK_STARTING_PAYMENTS.includes(updates.payment_status)) {
       sets.push('pre_play_clock_started_at = COALESCE(pre_play_clock_started_at, NOW())');
     }
 
@@ -230,7 +197,7 @@ router.patch('/:bookingId/payment', async (req, res, next) => {
       `UPDATE public.bookings
           SET ${[...sets, ...audit.clauses].join(', ')}
         WHERE booking_id = $${params.length - 1} AND club = $${params.length}
-      RETURNING ${columns.selectList}`,
+      RETURNING ${BOOKING_SELECT}`,
       params,
     );
 
@@ -325,13 +292,6 @@ router.delete('/:bookingId', requireAdmin, async (req, res, next) => {
 /** Backfill tee_time from the stored email body for rows that never got one. */
 router.post('/fix-tee-times', async (req, res, next) => {
   try {
-    const columns = await getBookingColumns();
-    if (!columns.has('note') || !columns.has('tee_time')) {
-      return res.status(400).json({
-        error: 'This install has no note/tee_time columns to extract from.',
-      });
-    }
-
     const { rows } = await query(
       `SELECT booking_id, note
          FROM public.bookings
@@ -345,9 +305,7 @@ router.post('/fix-tee-times', async (req, res, next) => {
       const teeTime = extractTeeTimeFromNote(row.note);
       if (!teeTime) continue;
       await query(
-        `UPDATE public.bookings SET tee_time = $1${
-          columns.has('updated_at') ? ', updated_at = NOW()' : ''
-        } WHERE booking_id = $2 AND club = $3`,
+        'UPDATE public.bookings SET tee_time = $1, updated_at = NOW() WHERE booking_id = $2 AND club = $3',
         [teeTime, row.booking_id, req.user.customerId],
       );
       updated += 1;
