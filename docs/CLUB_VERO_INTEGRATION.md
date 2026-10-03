@@ -36,7 +36,10 @@ email asking the same question.
    node -e "console.log('sk_'+require('crypto').randomBytes(24).toString('hex'))"
    ```
 
-3. Set `PARTNER_INGEST_KEYS=dornoch:<that key>` and restart.
+3. Set `PARTNER_INGEST_KEYS=dornoch:<that key>` and restart. `dornoch` is the
+   partner name this dashboard sends by default (`VERO_PARTNER_SOURCE`, a
+   leftover of the Royal Dornoch demo profile); if you change it here, change
+   it there too.
 
 ### On this side
 
@@ -46,6 +49,11 @@ Set these and restart:
 VERO_BASE_URL=https://clubvero.example.com
 VERO_PARTNER_KEY=<the same key>
 ```
+
+Optional: `VERO_PARTNER_SOURCE` (default `dornoch`, must match the name in
+`PARTNER_INGEST_KEYS`), `VERO_SITE` (the club's slug, only for a Vero serving
+several clubs) and `VERO_CAMPAIGNS` (default `post_play`). See
+[`.env.example`](../.env.example).
 
 Then check the **Club Vero** tile on the Guest Emails page. "Linked" means the
 next post-play run will carry survey links.
@@ -117,6 +125,10 @@ The other refusals name what to do:
 | `server/src/lib/vero.js` | The call itself. |
 | `server/src/routes/emails.js` | The send loop — Vero is asked first, because it can veto the send. |
 | `server/test/vero-domain.test.js` | Both of the above. |
+
+What is sent about each guest, and the data-protection view of it:
+[DATA_FLOWS.md](DATA_FLOWS.md).
+
 
 On the Club Vero side: `server/routes/partner-ingest.js`,
 `server/lib/partner-ingest.js`, `migrations/partner-bookings.sql`.

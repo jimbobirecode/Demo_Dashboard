@@ -1,5 +1,7 @@
 services:
   - type: web
+    # Historical name from the Royal Dornoch demo profile. Render matches a
+    # Blueprint to its service by name, so renaming it creates a new service.
     name: royal-dornoch-dashboard
     runtime: node
     plan: free
