@@ -30,7 +30,22 @@ export const ROUTE_LABELS = {
   inbox: 'Held for the team',
   change_request: 'Filed as a Guest Request',
   ignored: 'Ignored',
+  // The core API records an inbound email before it answers SendGrid and
+  // claims it while a worker handles it. Neither needs a person yet: an email
+  // stuck there is handed to the Inbox ('inbox', review open) by the core
+  // API's recovery sweep.
+  queued: 'Queued',
+  processing: 'Being processed',
 };
+
+/** Routes of inbound emails the core API has not finished with. */
+export const IN_FLIGHT_ROUTES = ['queued', 'processing'];
+
+/** SQL: this row is not one the core API is still working on. `alias` is the table alias, if any. */
+export function notInFlightSql(alias = '') {
+  const column = alias ? `${alias}.routed_to` : 'routed_to';
+  return `COALESCE(${column}, '') NOT IN (${IN_FLIGHT_ROUTES.map((route) => `'${route}'`).join(', ')})`;
+}
 
 const iso = (value) => (value ? new Date(value).toISOString() : null);
 

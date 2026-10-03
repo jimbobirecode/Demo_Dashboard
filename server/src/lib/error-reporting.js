@@ -3,10 +3,13 @@
  *
  * Off unless SENTRY_DSN is set. When on, every logger.error that carries an
  * Error is reported, as are unhandled rejections and uncaught exceptions.
- * sendDefaultPii is off: no cookies, headers, IPs or request bodies leave the
- * server, because bookings carry guests' names, addresses and phone numbers.
+ * sendDefaultPii is off, and every event and breadcrumb passes through
+ * lib/sentry-scrub.js: no cookies, headers, IPs, request bodies or query
+ * strings (link tokens) leave the server, and email addresses are masked,
+ * because bookings carry guests' names, addresses and phone numbers.
  */
 import { logger, setErrorHook } from './logger.js';
+import { scrubBreadcrumb, scrubEvent } from './sentry-scrub.js';
 
 const log = logger.child('sentry');
 
@@ -20,7 +23,11 @@ export async function initErrorReporting() {
     environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
     release: process.env.RENDER_GIT_COMMIT ?? undefined,
     sendDefaultPii: false,
+    includeLocalVariables: false,
     tracesSampleRate: 0,
+    beforeSend: scrubEvent,
+    beforeSendTransaction: scrubEvent,
+    beforeBreadcrumb: scrubBreadcrumb,
   });
 
   setErrorHook((err, { scope } = {}) => {

@@ -31,3 +31,14 @@ test('csvCell neutralises before it quotes', () => {
   assert.equal(csvCell('two\nlines'), '"two\nlines"');
   assert.equal(csvLine(['=cmd', 2, 'North, South']), `'=cmd,2,"North, South"`);
 });
+
+test('an .xlsx row defuses formula-like strings and keeps other types', async () => {
+  const { defuseRow } = await import('../src/lib/csv.js');
+  const row = defuseRow({ name: '=HYPERLINK("x")', total: 12.5, refund: '-5', paid: true, extra: 'dropped' }, [
+    'name',
+    'total',
+    'refund',
+    'paid',
+  ]);
+  assert.deepEqual(row, { name: `'=HYPERLINK("x")`, total: 12.5, refund: '-5', paid: true });
+});

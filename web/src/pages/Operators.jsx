@@ -19,7 +19,7 @@ import { describeDue } from '../lib/payments.js';
  * remember its operators — the repeat business names them, and an account is
  * opened from the suggestion with the domain already filled in.
  */
-export default function Operators() {
+export default function Operators({ user }) {
   const [data, setData] = useState(null);
   const [suggestions, setSuggestions] = useState(null);
   const [tab, setTab] = useState('accounts');
@@ -212,7 +212,7 @@ export default function Operators() {
           account={editing.operator?.account}
           seed={editing.seed}
           onSave={save}
-          onDelete={editing.operator ? remove : undefined}
+          onDelete={editing.operator && user?.role === 'admin' ? remove : undefined}
           onClose={() => setEditing(null)}
         />
       )}

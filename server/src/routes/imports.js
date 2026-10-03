@@ -92,7 +92,7 @@ router.post('/commit', async (req, res, next) => {
     let inserted = 0;
 
     for (const booking of wanted) {
-      const bookingId = booking.bookingId || mintImportedBookingId(batchId, booking.line);
+      const bookingId = booking.bookingId || mintImportedBookingId();
       const note = [`Imported from the club tee sheet (${batchId}).`, booking.notes].filter(Boolean).join(' ');
 
       const { rowCount } = await client.query(

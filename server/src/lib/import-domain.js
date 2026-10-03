@@ -12,6 +12,8 @@
  * Everything here is pure — text in, rows and complaints out — so the parsing
  * can be tested against real-world nonsense without a database or a file.
  */
+import crypto from 'node:crypto';
+import { mintBookingReference, randomCode } from './booking-ref.js';
 import { ALLOWED_STATUSES, normaliseStatus } from './bookings-domain.js';
 
 /**
@@ -296,19 +298,15 @@ function slotKey(booking) {
   ].join('|');
 }
 
-/** `IMP-20260923-8F2A` — one per upload, so a batch can be found again. */
-export function mintBatchId(now = new Date(), random = Math.random) {
+/** `IMP-20260923-8F2AC1` — one per upload, so a batch can be found again. Not a booking reference. */
+export function mintBatchId(now = new Date(), randomInt = crypto.randomInt) {
   const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const suffix = Math.floor(random() * 0xffff)
-    .toString(16)
-    .toUpperCase()
-    .padStart(4, '0');
-  return `IMP-${stamp}-${suffix}`;
+  return `IMP-${stamp}-${randomCode(6, randomInt)}`;
 }
 
-/** A booking reference for a row whose sheet had none. */
-export function mintImportedBookingId(batchId, line) {
-  return `${batchId}-${String(line).padStart(4, '0')}`;
+/** A booking reference for a row whose sheet had none, in the core API's format (lib/booking-ref.js). */
+export function mintImportedBookingId(options) {
+  return mintBookingReference(options);
 }
 
 function empty(error, extra = {}) {

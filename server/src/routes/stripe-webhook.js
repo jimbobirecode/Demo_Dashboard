@@ -72,7 +72,13 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
   } catch (err) {
     const detail = `Database error: ${err.message}`;
     log.error('could not record payment', session.id, err);
-    logWebhook({ outcome: 'failed', type: event.type, bookingId: session.metadata?.booking_id ?? null, detail });
+    logWebhook({
+      outcome: 'failed',
+      type: event.type,
+      bookingId: session.metadata?.booking_id ?? null,
+      club: session.metadata?.club ?? null,
+      detail,
+    });
     return res.status(503).json({ error: 'Could not record the payment yet' });
   }
 
@@ -93,6 +99,7 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
     outcome: recorded.booking ? 'recorded' : 'skipped',
     type: event.type,
     bookingId: recorded.booking?.bookingId ?? session.metadata?.booking_id ?? null,
+    club: recorded.booking?.club ?? session.metadata?.club ?? null,
     detail: receipt ? `${recorded.result}; receipt ${receipt}` : recorded.result,
   });
   res.json({ received: true, result: recorded.result, receipt });

@@ -33,3 +33,18 @@ export function csvCell(value) {
 export function csvLine(values) {
   return values.map(csvCell).join(',');
 }
+
+/**
+ * A row for the .xlsx export, held to the same rule. ExcelJS writes a string
+ * as a text cell, which Excel does not evaluate, but the file may be opened
+ * or re-saved as CSV by other tools, so formula-like strings are defused here
+ * too. Numbers, dates and booleans keep their type.
+ */
+export function defuseRow(row, keys) {
+  const out = {};
+  for (const key of keys) {
+    const value = row[key];
+    out[key] = typeof value === 'string' ? neutraliseFormula(value) : value;
+  }
+  return out;
+}

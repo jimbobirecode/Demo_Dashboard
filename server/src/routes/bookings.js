@@ -2,7 +2,7 @@ import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import { query } from '../db.js';
 import { requireAdmin, requireAuth } from '../auth.js';
-import { csvLine } from '../lib/csv.js';
+import { csvLine, defuseRow } from '../lib/csv.js';
 import { ALLOWED_STATUSES, normaliseStatus, extractTeeTimeFromNote, serialiseBooking } from '../lib/bookings-domain.js';
 import { BOOKING_SELECT, OPERATOR_SELECT, buildAuditSet } from '../lib/schema.js';
 import {
@@ -364,7 +364,8 @@ router.get('/export', async (req, res, next) => {
     const sheet = workbook.addWorksheet('Bookings');
     sheet.columns = EXPORT_COLUMNS.map(([key, header]) => ({ key, header, width: 20 }));
     sheet.getRow(1).font = { bold: true };
-    bookings.forEach((booking) => sheet.addRow(booking));
+    const keys = EXPORT_COLUMNS.map(([key]) => key);
+    bookings.forEach((booking) => sheet.addRow(defuseRow(booking, keys)));
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="bookings_${stamp}.xlsx"`);

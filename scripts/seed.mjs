@@ -12,7 +12,7 @@
  * --reset only ever deletes rows carrying those marks. Real bookings and real
  * operators are never touched.
  */
-import 'dotenv/config';
+import '../server/src/env.js';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../server/src/db.js';

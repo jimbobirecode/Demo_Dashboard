@@ -82,6 +82,11 @@ test('allowed origins: this host, APP_URL, and the Vite dev server outside produ
   assert.equal(originOf('not a url'), null);
 });
 
+test('without APP_URL in production only the request host is trusted, never the default link address', () => {
+  const req = { protocol: 'https', get: (name) => (name === 'host' ? 'dash.example.com' : undefined) };
+  assert.deepEqual(allowedOriginsFor(req, { NODE_ENV: 'production' }), ['https://dash.example.com']);
+});
+
 test('log masking keeps an address recognisable but not harvestable', () => {
   assert.equal(maskForLog('jamie@example.com'), 'j****@example.com');
   assert.equal(maskForLog('dornoch_demo'), '(12 characters)');

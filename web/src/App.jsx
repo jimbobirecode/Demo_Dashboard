@@ -153,8 +153,8 @@ function StaffApp() {
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/requests" element={<Requests />} />
             <Route path="/inbox" element={<Inbox onCountChange={setInboxCount} />} />
-            <Route path="/waitlist" element={<Waitlist />} />
-            <Route path="/operators" element={<Operators />} />
+            <Route path="/waitlist" element={<Waitlist user={user} />} />
+            <Route path="/operators" element={<Operators user={user} />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/reminders" element={<Reminders />} />
             <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />

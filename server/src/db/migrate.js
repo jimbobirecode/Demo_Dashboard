@@ -25,6 +25,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { logger } from '../lib/logger.js';
+import { databaseOptions } from '../lib/db-ssl.js';
 
 const log = logger.child('migrate');
 
@@ -137,13 +138,23 @@ async function apply(client, migration) {
   log.info(`applied ${migration.file} in ${Date.now() - started}ms`);
 }
 
+/** pg options for a URL: TLS for remote hosts, as the server's own pool (lib/db-ssl.js). */
+function connectionOptions(url) {
+  const { connectionString, ssl } = databaseOptions(url, process.env, (file) =>
+    fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null,
+  );
+  return { connectionString, ssl };
+}
+
 /**
  * Apply every pending migration. Pass a pg Pool or a connection string; with
  * neither, DATABASE_URL is used. Resolves to the list of files applied.
  */
 export async function migrate({ pool, connectionString, dir = MIGRATIONS_DIR, statusOnly = false } = {}) {
   const migrations = readMigrations(dir);
-  const ownPool = pool ? null : new pg.Pool({ connectionString: connectionString ?? process.env.DATABASE_URL, max: 1 });
+  const ownPool = pool
+    ? null
+    : new pg.Pool({ ...connectionOptions(connectionString ?? process.env.DATABASE_URL), max: 1 });
   const client = await (pool ?? ownPool).connect();
   const onNotice = (notice) => {
     // RAISE WARNING from a migration is something an operator must see.
@@ -187,7 +198,7 @@ export async function migrate({ pool, connectionString, dir = MIGRATIONS_DIR, st
 
 /* CLI: node server/src/db/migrate.js [--status] */
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await import('dotenv/config');
+  await import('../env.js');
   if (!process.env.DATABASE_URL) {
     log.error('DATABASE_URL is not set. Point it at the dashboard database and retry.');
     process.exit(1);

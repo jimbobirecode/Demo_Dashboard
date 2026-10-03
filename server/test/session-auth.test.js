@@ -192,3 +192,26 @@ test('changing a password ends other sessions and needs the current one', async 
   assert.equal((await call(before)).passed, false, 'the old cookie is dead');
   assert.equal((await call(tokenFor(updated))).passed, true, 'a re-issued one works');
 });
+
+test('an unknown, inactive or password-less account still costs one bcrypt comparison', async () => {
+  reset();
+  const original = bcrypt.compare;
+  let compares = 0;
+  bcrypt.compare = async (...args) => {
+    compares += 1;
+    return original(...args);
+  };
+  try {
+    assert.equal(await auth.authenticateUser('nobody', 'whatever'), null);
+    assert.equal(compares, 1, 'unknown account');
+
+    assert.equal(await auth.authenticateUser('ann', 'whatever'), null);
+    assert.equal(compares, 2, 'account with no password');
+
+    users.get(1).is_active = false;
+    assert.equal(await auth.authenticateUser('ann', 'whatever'), null);
+    assert.equal(compares, 3, 'deactivated account');
+  } finally {
+    bcrypt.compare = original;
+  }
+});

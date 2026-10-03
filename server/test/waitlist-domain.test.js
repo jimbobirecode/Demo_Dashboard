@@ -190,9 +190,10 @@ test('a new entry needs an address, a date and a sane party size', () => {
 });
 
 test('a minted id is dated and unique enough to read', () => {
-  const id = mintWaitlistId(new Date('2026-09-23T10:00:00Z'), () => 0.5);
-  assert.match(id, /^WL-20260923-[0-9A-F]{4}$/);
-  assert.notEqual(mintWaitlistId(new Date(), Math.random), mintWaitlistId(new Date(), Math.random));
+  const id = mintWaitlistId(new Date('2026-09-23T10:00:00Z'), () => 0);
+  assert.equal(id, 'WL-20260923-AAAAAA');
+  assert.match(mintWaitlistId(), /^WL-\d{8}-[A-Z0-9]{6}$/);
+  assert.notEqual(mintWaitlistId(), mintWaitlistId());
 });
 
 /* ---------- conversions that happened somewhere else ---------- */

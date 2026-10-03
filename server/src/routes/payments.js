@@ -25,7 +25,7 @@ import {
   paidSessionsForLink,
   prefilledLinkUrl,
 } from '../lib/stripe.js';
-import { lastSync, syncPendingPayments } from '../lib/payment-sync.js';
+import { lastSync, scopeSyncResult, syncPendingPayments } from '../lib/payment-sync.js';
 import { PAYMENT_EVENTS } from '../lib/payment-link-domain.js';
 import { recordStripePayment } from '../lib/record-payment.js';
 import { recentWebhooks } from '../lib/webhook-log.js';
@@ -51,7 +51,7 @@ router.use(requireAuth);
 router.get('/config', (req, res) => {
   res.json({
     ...publicPaymentLinkConfig(readPaymentLinkConfig()),
-    webhooks: recentWebhooks(),
+    webhooks: recentWebhooks(req.user.customerId),
   });
 });
 
@@ -269,7 +269,8 @@ router.post('/bookings/:bookingId/check', async (req, res, next) => {
 router.post('/sync', async (req, res, next) => {
   try {
     const result = await syncPendingPayments({ reason: `manual (${req.user.username})` });
-    res.json(result);
+    // The run covers every club on this server; answer with this club's part.
+    res.json(scopeSyncResult(result, req.user.customerId));
   } catch (err) {
     next(err);
   }
@@ -363,7 +364,7 @@ router.get('/diagnostics', requireAdmin, async (req, res, next) => {
       }
     }
 
-    const { entries, startedAt } = recentWebhooks();
+    const { entries, startedAt } = recentWebhooks(req.user.customerId);
     const last = entries[0] ?? null;
     add(
       'webhook_received',
@@ -375,7 +376,7 @@ router.get('/diagnostics', requireAdmin, async (req, res, next) => {
       last && (last.outcome === 'rejected' || last.outcome === 'failed') ? last.detail : null,
     );
 
-    const sync = lastSync();
+    const sync = lastSync(req.user.customerId);
     add(
       'sync',
       sync ? !sync.skipped && !sync.errors.length : null,

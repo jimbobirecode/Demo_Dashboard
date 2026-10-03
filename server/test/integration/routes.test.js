@@ -257,8 +257,53 @@ describe('HTTP routes against Postgres', { skip }, () => {
       assert.equal((await agent.delete('/api/bookings/A-1').set(CSRF)).status, 403);
       assert.equal((await agent.delete('/api/imports/some-batch').set(CSRF)).status, 403);
       assert.equal((await agent.get('/api/payments/diagnostics')).status, 403);
+      assert.equal((await agent.delete(`/api/operators/${ids.op1}`).set(CSRF)).status, 403);
+      assert.equal((await agent.delete('/api/waitlist/WL-NONE').set(CSRF)).status, 403);
       const { rows } = await pool.query("SELECT 1 FROM bookings WHERE booking_id = 'A-1'");
       assert.equal(rows.length, 1);
+      const { rows: ops } = await pool.query('SELECT 1 FROM tour_operators WHERE id = $1', [ids.op1]);
+      assert.equal(ops.length, 1);
+    });
+
+    test('the payment webhook log shows a club only its own deliveries', async () => {
+      const { logWebhook } = await import('../../src/lib/webhook-log.js');
+      logWebhook({ outcome: 'recorded', bookingId: 'B-1', club: 'club_b', detail: 'club b' });
+      logWebhook({ outcome: 'recorded', bookingId: 'A-1', club: 'club_a', detail: 'club a' });
+      logWebhook({ outcome: 'rejected', detail: 'Signature mismatch' });
+      const agent = await signIn('staff@club-a.test');
+      const res = await agent.get('/api/payments/config');
+      assert.equal(res.status, 200);
+      const text = JSON.stringify(res.body.webhooks);
+      assert.ok(text.includes('A-1') && text.includes('Signature mismatch'));
+      assert.ok(!text.includes('B-1') && !text.includes('club b'), 'nothing of club B');
+    });
+  });
+
+  describe('Inbox', () => {
+    test('emails the core API is still processing are not counted or listed as needing a person', async () => {
+      await pool.query(
+        `INSERT INTO email_messages (club, direction, from_email, subject, body_text, routed_to, review_status, message_id)
+         VALUES ('club_a', 'inbound', 'g@a.test', 'held', 'b', 'inbox', 'open', '<1@a.test>'),
+                ('club_a', 'inbound', 'g@a.test', 'queued', 'b', 'queued', 'open', '<2@a.test>'),
+                ('club_a', 'inbound', 'g@a.test', 'working', 'b', 'processing', 'open', '<3@a.test>')`,
+      );
+      const agent = await signIn('staff@club-a.test');
+      const open = await agent.get('/api/inbox').query({ status: 'open' });
+      assert.equal(open.status, 200);
+      assert.equal(open.body.counts.open, 1);
+      assert.deepEqual(
+        open.body.messages.map((m) => m.subject),
+        ['held'],
+      );
+      const all = await agent.get('/api/inbox').query({ status: 'all' });
+      assert.ok(all.body.messages.some((m) => m.routeLabel === 'Being processed'));
+      // The same Message-ID twice for one club is refused by the 0007 index.
+      await assert.rejects(
+        pool.query(
+          `INSERT INTO email_messages (club, direction, message_id) VALUES ('club_a', 'inbound', '<1@a.test>')`,
+        ),
+        /uq_email_messages_inbound_message_id/,
+      );
     });
   });
 
@@ -273,8 +318,45 @@ describe('HTTP routes against Postgres', { skip }, () => {
       const agent = request.agent(app);
       const res = await agent.post('/api/portal/session').set(CSRF).send({ token });
       assert.equal(res.status, 200);
-      return { agent, token };
+      const cookie = res.headers['set-cookie'].find((c) => c.startsWith('teemail_operator=')).split(';')[0];
+      return { agent, token, cookie };
     }
+
+    test('signing out revokes the session, so a copied cookie stops working', async () => {
+      const { agent, cookie } = await portalAgent(ids.op1, 'accounts@first-tours.test');
+      assert.equal((await request(app).get('/api/portal/me').set('Cookie', cookie)).status, 200);
+      assert.equal((await agent.post('/api/portal/logout').set(CSRF)).status, 200);
+      assert.equal((await request(app).get('/api/portal/me').set('Cookie', cookie)).status, 401);
+    });
+
+    test('a portal token without a session row is refused', async () => {
+      const forged = jwt.sign(
+        { kind: 'operator', operatorId: ids.op1, club: 'club_a', email: 'accounts@first-tours.test' },
+        SECRET,
+      );
+      const res = await request(app).get('/api/portal/me').set('Cookie', `teemail_operator=${forged}`);
+      assert.equal(res.status, 401);
+    });
+
+    test('asking for a new sign-in link retires the unused older ones', async () => {
+      const email = 'accounts@first-tours.test';
+      const old = `portal-old-${Date.now()}`;
+      await pool.query(
+        `INSERT INTO operator_portal_links (club, operator_id, email, token_hash, expires_at)
+         VALUES ('club_a', $1, $2, $3, NOW() + INTERVAL '10 minutes')`,
+        [ids.op1, email, hashToken(old)],
+      );
+      const before = (await pool.query('SELECT COUNT(*)::int AS n FROM operator_portal_links')).rows[0].n;
+      assert.equal((await request(app).post('/api/portal/login').set(CSRF).send({ email })).status, 200);
+      // The link is written after the reply, so wait for it.
+      for (let i = 0; i < 50; i += 1) {
+        const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM operator_portal_links');
+        if (rows[0].n > before) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      const res = await request(app).post('/api/portal/session').set(CSRF).send({ token: old });
+      assert.equal(res.status, 400);
+    });
 
     test("an operator sees only their own bookings and cannot act on another's", async () => {
       const { agent, token } = await portalAgent(ids.op1, 'accounts@first-tours.test');

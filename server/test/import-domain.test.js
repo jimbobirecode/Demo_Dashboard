@@ -160,7 +160,8 @@ test('duplicates are found by reference and by slot, including within one file',
 });
 
 test('generated references are dated and traceable to their batch', () => {
-  const batch = mintBatchId(new Date('2026-09-23T10:00:00Z'), () => 0.5);
-  assert.match(batch, /^IMP-20260923-[0-9A-F]{4}$/);
-  assert.equal(mintImportedBookingId(batch, 7), `${batch}-0007`);
+  const batch = mintBatchId(new Date('2026-09-23T10:00:00Z'), () => 1);
+  assert.equal(batch, 'IMP-20260923-BBBBBB');
+  // A row without a reference gets one in the core API's format.
+  assert.match(mintImportedBookingId(), /^[A-Z]{2,6}-\d{8}-[A-Z0-9]{10}$/);
 });

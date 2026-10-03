@@ -8,9 +8,10 @@
  */
 import { Router } from 'express';
 import { pool, query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { BOOKING_SELECT } from '../lib/schema.js';
+import { mintBookingReference } from '../lib/booking-ref.js';
 import {
   WAITLIST_STATUSES,
   buildWaitlistConversion,
@@ -152,9 +153,9 @@ router.post('/:waitlistId/convert', async (req, res, next) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'A valid date is required' });
 
     const total = Number(req.body?.total ?? 0);
-    // Shaped like a booking, not like the waitlist entry it came from: the two
-    // ids sit in adjacent columns and a shared prefix makes them unreadable.
-    const bookingId = mintConvertedBookingId();
+    // A booking reference in the core API's format (lib/booking-ref.js), so a
+    // guest's reply quoting it is linked to the booking.
+    const bookingId = mintBookingReference();
 
     await client.query('BEGIN');
 
@@ -255,7 +256,7 @@ router.post('/:waitlistId/link', async (req, res, next) => {
   }
 });
 
-router.delete('/:waitlistId', async (req, res, next) => {
+router.delete('/:waitlistId', requireAdmin, async (req, res, next) => {
   try {
     const entry = await findEntry(req.params.waitlistId, req.user.customerId);
     if (!entry) return res.status(404).json({ error: 'No such waitlist entry' });
@@ -332,16 +333,6 @@ async function findEntry(waitlistId, club) {
     club,
   ]);
   return rows[0] ?? null;
-}
-
-/** `BOOK-20260923-8F2A` — the shape the Streamlit conversion used. */
-function mintConvertedBookingId(now = new Date()) {
-  const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const suffix = Math.floor(Math.random() * 0xffff)
-    .toString(16)
-    .toUpperCase()
-    .padStart(4, '0');
-  return `BOOK-${stamp}-${suffix}`;
 }
 
 function toDateOnly(value) {

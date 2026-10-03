@@ -5,7 +5,7 @@
  * assume the schema in db/migrations. A failed migration stops the process
  * with the reason in the log rather than serving against a half-known schema.
  */
-import 'dotenv/config';
+import './env.js';
 import { initErrorReporting } from './lib/error-reporting.js';
 import { logger } from './lib/logger.js';
 import { app } from './app.js';
@@ -14,6 +14,7 @@ import { migrate } from './db/migrate.js';
 import { hashLegacyTempPasswords } from './auth.js';
 import { sendReceipt } from './routes/payments.js';
 import { startPaymentSync } from './lib/payment-sync.js';
+import { appBaseUrl } from './lib/brand.js';
 
 const logSeed = logger.child('seed');
 
@@ -94,6 +95,14 @@ async function maybeSeedOnStart() {
 
 /** Configuration that works, but less safely than it should; said once at boot. */
 function warnAboutConfiguration() {
+  if (process.env.NODE_ENV === 'production' && !process.env.APP_URL && !process.env.PUBLIC_URL) {
+    // The CSRF origin check then trusts only the request's own host (see
+    // allowedOriginsFor); emailed links fall back to the default address.
+    log.error(
+      `APP_URL is not set — reset, invitation, portal and manage-booking emails will link to ${appBaseUrl()} ` +
+        "instead of this dashboard. Set APP_URL to the dashboard's public https:// address.",
+    );
+  }
   if (process.env.NODE_ENV === 'production' && !process.env.BOOKING_LINK_SECRET) {
     log.warn(
       'BOOKING_LINK_SECRET is not set — manage-booking links are signed with JWT_SECRET, ' +

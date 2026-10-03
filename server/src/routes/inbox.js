@@ -21,7 +21,14 @@ import { sendHtmlEmail } from '../lib/sendgrid.js';
 import { logEmail } from '../lib/email-log.js';
 import { LOGO_CID, inlineLogoAttachment } from '../lib/email-layout.js';
 import { manageUrlFor } from '../lib/change-request-domain.js';
-import { REVIEW_STATUSES, buildReplyEmail, replyProblem, replySubject, serialiseMessage } from '../lib/inbox-domain.js';
+import {
+  REVIEW_STATUSES,
+  buildReplyEmail,
+  notInFlightSql,
+  replyProblem,
+  replySubject,
+  serialiseMessage,
+} from '../lib/inbox-domain.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -99,8 +106,8 @@ router.get('/', async (req, res, next) => {
       status === 'all'
         ? `m.direction = 'inbound'`
         : REVIEW_STATUSES.includes(status)
-          ? `m.direction = 'inbound' AND m.review_status = '${status}'`
-          : `m.direction = 'inbound' AND m.review_status = 'open'`;
+          ? `m.direction = 'inbound' AND m.review_status = '${status}' AND ${notInFlightSql('m')}`
+          : `m.direction = 'inbound' AND m.review_status = 'open' AND ${notInFlightSql('m')}`;
     // The guest's name from their booking, so the list reads as people rather
     // than addresses.
 
@@ -115,7 +122,7 @@ router.get('/', async (req, res, next) => {
       ),
       query(
         `SELECT review_status, COUNT(*)::int AS n FROM public.email_messages
-          WHERE club = $1 AND direction = 'inbound' GROUP BY review_status`,
+          WHERE club = $1 AND direction = 'inbound' AND ${notInFlightSql()} GROUP BY review_status`,
         [club],
       ),
     ]);

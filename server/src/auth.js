@@ -161,9 +161,11 @@ export async function authenticateUser(identifier, password) {
   );
 
   const user = rows[0];
-  if (!user) return null;
   // NULL is_active predates the column's default and has always meant active.
-  if (user.is_active === false) return null;
+  if (!user || user.is_active === false) {
+    await spendBcryptTime(password);
+    return null;
+  }
 
   if (user.must_change_password && user.temp_password) {
     if (await matchesTempPassword(user, password)) {
@@ -171,11 +173,27 @@ export async function authenticateUser(identifier, password) {
     }
   }
 
-  if (user.password_hash && (await bcrypt.compare(String(password), user.password_hash))) {
+  if (!user.password_hash) {
+    await spendBcryptTime(password);
+    return null;
+  }
+  if (await bcrypt.compare(String(password), user.password_hash)) {
     return { user, mustChangePassword: false };
   }
 
   return null;
+}
+
+/**
+ * A bcrypt comparison whose answer is thrown away. Unknown, inactive and
+ * password-less accounts take as long to refuse as a wrong password does, so
+ * response time does not say which addresses have an account here. The hash
+ * is of a random string nobody knows, at the cost every real hash uses (12).
+ */
+const DUMMY_HASH = '$2a$12$ahtwFzy.Vucnthtn9QICOeBdPvDSjiHkqq1OkIcqGqoKtNjJvzA8e';
+
+export async function spendBcryptTime(password) {
+  await bcrypt.compare(String(password ?? ''), DUMMY_HASH);
 }
 
 /**

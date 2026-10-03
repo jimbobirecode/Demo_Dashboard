@@ -13,7 +13,7 @@ import { PIPELINE_RAMP, STATUS_COLORS } from '../lib/palette.js';
  * previous path recorded the connection in a sentence inside the booking's
  * note, and nothing could report on that.
  */
-export default function Waitlist() {
+export default function Waitlist({ user }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -142,7 +142,12 @@ export default function Waitlist() {
             setNotice(`Booked ${result.booking.bookingId} for ${entry.guestName || entry.guestEmail}`);
           })
         }
-        onDelete={(entry) => act(() => api.deleteWaitlistEntry(entry.waitlistId), 'Entry removed')}
+        // Deleting is an administrator's call (the API refuses staff); staff cancel instead.
+        onDelete={
+          user?.role === 'admin'
+            ? (entry) => act(() => api.deleteWaitlistEntry(entry.waitlistId), 'Entry removed')
+            : undefined
+        }
       />
     </div>
   );
@@ -414,9 +419,16 @@ function EntryTable({ entries, busy, onNotify, onCancel, onConvert, onDelete }) 
                     <button type="button" className="btn-sm" disabled={busy} onClick={() => onCancel(entry)}>
                       Cancel
                     </button>
-                    <button type="button" className="btn-sm btn-danger" disabled={busy} onClick={() => onDelete(entry)}>
-                      Delete
-                    </button>
+                    {onDelete && (
+                      <button
+                        type="button"
+                        className="btn-sm btn-danger"
+                        disabled={busy}
+                        onClick={() => onDelete(entry)}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 )}
                 {converting === entry.waitlistId && (

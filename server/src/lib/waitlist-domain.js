@@ -11,6 +11,8 @@
  * waiting has not failed to convert — it simply has not answered yet, and
  * counting it as a failure makes a healthy list look like a broken one.
  */
+import crypto from 'node:crypto';
+import { randomCode } from './booking-ref.js';
 import { COMMITTED_STATUSES } from './operators-domain.js';
 import { TERMINAL_STATUSES } from './bookings-domain.js';
 
@@ -321,14 +323,10 @@ export function validateWaitlistEntry(input) {
   };
 }
 
-/** `WL-20260923-4F2A` — sortable by eye, and unique enough for a club. */
-export function mintWaitlistId(now = new Date(), random = Math.random) {
+/** `WL-20260923-4F2A1C` — sortable by eye; random part from the CSPRNG. */
+export function mintWaitlistId(now = new Date(), randomInt = crypto.randomInt) {
   const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const suffix = Math.floor(random() * 0xffff)
-    .toString(16)
-    .toUpperCase()
-    .padStart(4, '0');
-  return `WL-${stamp}-${suffix}`;
+  return `WL-${stamp}-${randomCode(6, randomInt)}`;
 }
 
 /* ---------- helpers ---------- */

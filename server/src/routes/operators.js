@@ -8,7 +8,7 @@
  */
 import { Router } from 'express';
 import { query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { BOOKING_SELECT, OPERATOR_COLUMNS, OPERATOR_SELECT, buildAuditSet } from '../lib/schema.js';
 import {
@@ -177,7 +177,7 @@ router.patch('/:id', async (req, res, next) => {
  * history, and an operator with money against their name must not be able to
  * vanish along with the debt. Only an account with no bookings is removed.
  */
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAdmin, async (req, res, next) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'Unknown operator' });
 

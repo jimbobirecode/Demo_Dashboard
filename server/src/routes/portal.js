@@ -3,7 +3,7 @@
  *
  *   POST /login              email a one-time sign-in link (same reply either way)
  *   POST /session            redeem the link for a portal session
- *   POST /logout
+ *   POST /logout             revoke the session (operator_portal_sessions)
  *   GET  /me                 the operator, their terms and account summary
  *   GET  /bookings           every booking on their account, with what it owes
  *   GET  /statement.csv      the same, for their accounts team
@@ -15,6 +15,7 @@
  * routes refuse them (auth.js requireAuth), so a portal user never reaches the
  * staff dashboard and sees only their own operator's bookings.
  */
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../db.js';
@@ -93,7 +94,7 @@ async function sendMail(toEmail, email) {
 
 /* ---------- the one-time links ---------- */
 
-// operator_portal_links is created by db/migrations/0003_baseline_operator_portal.sql.
+// operator_portal_links: db/migrations/0003; operator_portal_sessions: 0006.
 
 /** Every club's operators, for matching a sign-in address. */
 async function allActiveOperators() {
@@ -127,6 +128,12 @@ router.post('/login', async (req, res) => {
       return;
     }
     const { token, tokenHash, expiresAt } = mintToken({ ttlMinutes: PORTAL_LINK_TTL_MINUTES });
+    // A new link supersedes any still unused for this address, so an older
+    // email someone else may hold stops working the moment the real user asks.
+    await query(
+      'UPDATE public.operator_portal_links SET used_at = NOW() WHERE lower(email) = lower($1) AND used_at IS NULL',
+      [email],
+    );
     await query(
       `INSERT INTO public.operator_portal_links (club, operator_id, email, token_hash, expires_at, requested_ip)
        VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -165,8 +172,16 @@ router.post('/session', async (req, res, next) => {
     );
     if (!ops[0] || ops[0].active === false) return res.status(400).json(refused);
 
+    // The session is a row as well as a signed cookie, so signing out (or an
+    // administrator) can end it before it expires. Only the id's hash is stored.
+    const sid = crypto.randomBytes(32).toString('base64url');
+    await query(
+      `INSERT INTO public.operator_portal_sessions (sid_hash, club, operator_id, email, expires_at, requested_ip)
+       VALUES ($1, $2, $3, $4, NOW() + make_interval(hours => $5), $6)`,
+      [hashToken(sid), rows[0].club, ops[0].id, rows[0].email, PORTAL_SESSION_HOURS, clientIp(req)],
+    );
     const session = jwt.sign(
-      { kind: 'operator', operatorId: ops[0].id, club: rows[0].club, email: rows[0].email },
+      { kind: 'operator', operatorId: ops[0].id, club: rows[0].club, email: rows[0].email, sid },
       JWT_SECRET,
       { expiresIn: `${PORTAL_SESSION_HOURS}h` },
     );
@@ -182,8 +197,23 @@ router.post('/session', async (req, res, next) => {
   }
 });
 
-router.post('/logout', (req, res) => {
+/** Sign out: the session row is revoked, so a copy of the cookie is no use either. */
+router.post('/logout', async (req, res) => {
+  const token = req.cookies?.[COOKIE];
   res.clearCookie(COOKIE);
+  if (token) {
+    try {
+      const claims = jwt.verify(token, JWT_SECRET);
+      if (claims.kind === 'operator' && claims.sid) {
+        await query(
+          'UPDATE public.operator_portal_sessions SET revoked_at = NOW() WHERE sid_hash = $1 AND revoked_at IS NULL',
+          [hashToken(claims.sid)],
+        );
+      }
+    } catch (err) {
+      if (!(err instanceof jwt.JsonWebTokenError)) log.warn('could not revoke a portal session:', err.message);
+    }
+  }
   res.json({ ok: true });
 });
 
@@ -206,12 +236,21 @@ async function requireOperator(req, res, next) {
   let claims;
   try {
     claims = jwt.verify(token, JWT_SECRET);
-    if (claims.kind !== 'operator' || !claims.operatorId || !claims.club) throw new Error('not a portal session');
+    if (claims.kind !== 'operator' || !claims.operatorId || !claims.club || !claims.sid) {
+      throw new Error('not a portal session');
+    }
   } catch {
     return ended();
   }
 
   try {
+    const { rows: live } = await query(
+      `SELECT 1 FROM public.operator_portal_sessions
+        WHERE sid_hash = $1 AND operator_id = $2 AND club = $3 AND revoked_at IS NULL AND expires_at > NOW()`,
+      [hashToken(claims.sid), claims.operatorId, claims.club],
+    );
+    if (!live.length) return ended();
+
     const { rows } = await query(
       `SELECT id, club, name, contact_email, email_domains, active FROM public.tour_operators
         WHERE id = $1 AND club = $2`,

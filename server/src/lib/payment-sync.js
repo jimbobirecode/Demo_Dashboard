@@ -37,8 +37,25 @@ export function setReceiptSender(fn) {
   defaultSendReceipt = fn;
 }
 
-export function lastSync() {
-  return lastRun;
+export function lastSync(club) {
+  return lastRun && scopeSyncResult(lastRun, club);
+}
+
+/**
+ * A sync run as one club may see it. The run covers every club this process
+ * serves; a club is shown only its own bookings, and errors that belong to no
+ * booking (Stripe unreachable, no key) without anything else's detail.
+ */
+export function scopeSyncResult(result, club) {
+  const { checkedClubs = [], ...rest } = result;
+  const own = (entry) => entry.club === club;
+  const strip = ({ club: _club, ...entry }) => entry;
+  return {
+    ...rest,
+    checked: checkedClubs.filter((owner) => owner === club).length,
+    recorded: result.recorded.filter(own).map(strip),
+    errors: result.errors.filter((entry) => own(entry) || entry.club === null).map(strip),
+  };
 }
 
 /**
@@ -62,7 +79,7 @@ export function syncIfStale({ maxAgeMs = 60_000, reason, sendReceipt } = {}) {
 async function runSync(reason, sendReceipt) {
   const startedAt = new Date().toISOString();
   const config = readPaymentLinkConfig();
-  const result = { reason, startedAt, checked: 0, recorded: [], errors: [], skipped: null };
+  const result = { reason, startedAt, checked: 0, checkedClubs: [], recorded: [], errors: [], skipped: null };
 
   try {
     if (!config.secretKey) {
@@ -79,6 +96,7 @@ async function runSync(reason, sendReceipt) {
 
     for (const row of rows) {
       result.checked += 1;
+      result.checkedClubs.push(row.club);
       try {
         const sessions = await paidSessionsForLink({ secretKey: config.secretKey, linkId: row.stripe_payment_link_id });
         for (const session of sessions) {
@@ -92,17 +110,17 @@ async function runSync(reason, sendReceipt) {
             }));
             receipt = outcome.ok ? 'sent' : `not sent: ${outcome.message}`;
           }
-          result.recorded.push({ bookingId: row.booking_id, result: recorded.result, receipt });
+          result.recorded.push({ bookingId: row.booking_id, club: row.club, result: recorded.result, receipt });
           log.info(`${row.booking_id}: ${recorded.result}; receipt ${receipt}`);
         }
       } catch (err) {
-        result.errors.push({ bookingId: row.booking_id, error: err.message });
+        result.errors.push({ bookingId: row.booking_id, club: row.club, error: err.message });
         log.warn(`${row.booking_id}: ${err.message}`);
       }
     }
     return result;
   } catch (err) {
-    result.errors.push({ bookingId: null, error: err.message });
+    result.errors.push({ bookingId: null, club: null, error: err.message });
     log.error('run failed:', err.message);
     return result;
   } finally {

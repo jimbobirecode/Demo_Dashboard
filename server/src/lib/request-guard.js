@@ -80,6 +80,9 @@ export function checkCsrf({ method, path, headers = {}, allowedOrigins = [] }) {
 
 /** The origins a state-changing request may come from, for this request. */
 export function allowedOriginsFor(req, env = process.env) {
+  // Only an APP_URL that was actually configured is trusted. The default
+  // address emailed links fall back to (lib/brand.js) is never an origin
+  // this check accepts.
   const origins = new Set();
   const host = req.get?.('host');
   if (host) origins.add(`${req.protocol}://${host}`);
