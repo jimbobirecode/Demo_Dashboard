@@ -22,45 +22,8 @@
 -- seed_tour_operators.sql instead (it includes this).
 -- ============================================================================
 
--- The tour operators table (the migration; does nothing if already applied)
-CREATE TABLE IF NOT EXISTS public.tour_operators (
-    id                  SERIAL PRIMARY KEY,
-    club                VARCHAR(100) NOT NULL,
-    name                VARCHAR(255) NOT NULL,
-
-    contact_name        VARCHAR(255),
-    contact_email       VARCHAR(255),
-    contact_phone       VARCHAR(64),
-    account_code        VARCHAR(64),
-
-    -- How a booking is recognised as this operator's without anybody tagging
-    -- it: the email domains they book from, e.g. {"golfbreaks.com"}.
-    email_domains       TEXT[] NOT NULL DEFAULT '{}',
-
-    -- Credit terms.
-    payment_terms_days          INTEGER NOT NULL DEFAULT 30,
-    deposit_percent             NUMERIC(5,2) NOT NULL DEFAULT 0,
-    deposit_due_days_before_play   INTEGER,
-    balance_due_days_before_play   INTEGER,
-    credit_limit        NUMERIC(12,2),
-    currency            VARCHAR(3) NOT NULL DEFAULT 'GBP',
-
-    -- Trading state. `on_hold` means no new business until the account is
-    -- settled; `active` retires an operator without deleting their history.
-    on_hold             BOOLEAN NOT NULL DEFAULT FALSE,
-    active              BOOLEAN NOT NULL DEFAULT TRUE,
-
-    notes               TEXT,
-    created_at          TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at          TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_by          VARCHAR(255)
-);
-
--- One name per club, case-insensitively: two rows called "Golfbreaks" would
--- split the same account's exposure in half.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tour_operators_club_name
-    ON public.tour_operators (club, LOWER(name));
-CREATE INDEX IF NOT EXISTS idx_tour_operators_club ON public.tour_operators (club);
+-- Schema: none here. Run the migrations first (npm run migrate, or start the
+-- server, which runs them) — this file only adds sample rows.
 
 -- The accounts
 DO $$

@@ -20,63 +20,8 @@
 
 BEGIN;
 
--- ---------------------------------------------------------------------------
--- 1. Schema (the change requests migration; does nothing if already applied)
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.booking_change_requests (
-  id              SERIAL PRIMARY KEY,
-  booking_id      TEXT NOT NULL,
-  club            TEXT NOT NULL,
-
-  -- 'cancel' or 'amend'. An amend carries what they want in `message`; the
-  -- club decides what to do with it, because a tee sheet is not a form.
-  kind            TEXT NOT NULL,
-  message         TEXT,
-
-  -- What they asked to move to, where they said. All optional: a guest who
-  -- writes "any time on the Sunday" has told the club something useful that
-  -- does not fit in a date column.
-  requested_date  DATE,
-  requested_time  TEXT,
-  requested_players INTEGER,
-
-  status          TEXT NOT NULL DEFAULT 'Pending',
-  -- Recorded at the moment of the request, so a later policy change cannot
-  -- rewrite what the guest was told at the time.
-  auto_applied    BOOLEAN NOT NULL DEFAULT FALSE,
-  days_before_play INTEGER,
-
-  resolved_at     TIMESTAMPTZ,
-  resolved_by     TEXT,
-  resolution_note TEXT,
-
-  guest_email     TEXT,
-  requested_ip    TEXT,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-DO $$
-BEGIN
-  ALTER TABLE public.booking_change_requests
-    ADD CONSTRAINT booking_change_requests_kind_check CHECK (kind IN ('cancel', 'amend'));
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-  ALTER TABLE public.booking_change_requests
-    ADD CONSTRAINT booking_change_requests_status_check
-    CHECK (status IN ('Pending', 'Approved', 'Declined', 'Applied'));
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-CREATE INDEX IF NOT EXISTS idx_change_requests_booking ON public.booking_change_requests (booking_id);
-CREATE INDEX IF NOT EXISTS idx_change_requests_open ON public.booking_change_requests (club, status)
-  WHERE status = 'Pending';
-
-
--- The page shows each guest's name from their booking.
-ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS guest_name VARCHAR(255);
+-- Schema: none here. Run the migrations first (npm run migrate, or start the
+-- server, which runs them) — this file only adds sample rows.
 
 -- ---------------------------------------------------------------------------
 -- 2. The guests' bookings and their requests

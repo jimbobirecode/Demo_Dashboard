@@ -14,12 +14,10 @@
  */
 import 'dotenv/config';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import bcrypt from 'bcryptjs';
 import { pool } from '../server/src/db.js';
 import { BRAND } from '../server/src/lib/brand.js';
+import { migrate } from '../server/src/db/migrate.js';
 
 const DEMO_PREFIX = 'RD-DEMO-';
 const USERNAME = process.env.SEED_USERNAME ?? 'demo';
@@ -125,52 +123,6 @@ function buildNote({ name, email, teeDate, teeTime, players, course }) {
   ]
     .join('\n')
     .trim();
-}
-
-async function ensureSchema(client) {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS public.dashboard_users (
-      id SERIAL PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT,
-      temp_password TEXT,
-      customer_id TEXT NOT NULL,
-      full_name TEXT,
-      is_active BOOLEAN DEFAULT TRUE,
-      must_change_password BOOLEAN DEFAULT FALSE,
-      last_login TIMESTAMPTZ
-    )`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS public.bookings (
-      id SERIAL PRIMARY KEY,
-      booking_id TEXT UNIQUE NOT NULL,
-      guest_email TEXT,
-      date DATE,
-      tee_time TEXT,
-      players INTEGER,
-      total NUMERIC(10,2),
-      status TEXT,
-      note TEXT,
-      club TEXT,
-      timestamp TIMESTAMPTZ DEFAULT NOW(),
-      customer_confirmed_at TIMESTAMPTZ,
-      updated_at TIMESTAMPTZ,
-      updated_by TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      hotel_required BOOLEAN DEFAULT FALSE,
-      hotel_checkin DATE,
-      hotel_checkout DATE,
-      golf_courses TEXT,
-      selected_tee_times TEXT,
-      guest_name TEXT,
-      pre_arrival_email_sent_at TIMESTAMPTZ,
-      post_play_email_sent_at TIMESTAMPTZ
-    )`);
-
-  await client.query(
-    'CREATE INDEX IF NOT EXISTS bookings_club_date_idx ON public.bookings (club, date)',
-  );
 }
 
 /**
@@ -310,7 +262,6 @@ function buildBookings(count) {
 
 const OPERATOR_PREFIX = `${DEMO_PREFIX}OP-`;
 const SAMPLE_OPERATOR_NOTE = 'Sample operator (seeded).';
-const MIGRATION_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migration_add_tour_operators.sql');
 
 /**
  * Six fictional trade partners, one for each situation the Tour Operators page
@@ -466,7 +417,7 @@ function buildOperatorBooking(operator, line, index) {
     ].filter(Boolean).join('\n'),
     timestamp: `${requested}T09:30:00Z`,
     course: courses,
-    selectedTeeTimes: teeTimes.join(', '),
+    selectedTeeTimes: JSON.stringify(teeTimes),
     paymentStatus,
     amountPaid: paid.toFixed(2),
     invoiceNumber: line.invoiced == null ? null : `INV-${operator.code}-${String(2600 + index)}`,
@@ -474,18 +425,11 @@ function buildOperatorBooking(operator, line, index) {
   };
 }
 
-/** The tour_operators table and the bookings' payment columns, if not there yet. */
-async function ensureOperatorSchema(client) {
-  await client.query(fs.readFileSync(MIGRATION_FILE, 'utf8'));
-}
-
 /**
  * Seed the sample tour operators and their bookings. Operators are upserted
  * by name, so re-running refreshes their terms instead of duplicating them.
  */
 export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
-  await ensureOperatorSchema(client);
-
   if (reset) {
     const bookings = await client.query('DELETE FROM public.bookings WHERE booking_id LIKE $1', [`${OPERATOR_PREFIX}%`]);
     const operators = await client.query(
@@ -553,8 +497,8 @@ export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
 }
 
 export async function seed({ client, reset = false, operatorsOnly = false } = {}) {
-  // Schema first: resolveClub reads dashboard_users, which may not exist yet.
-  await ensureSchema(client);
+  // The schema comes from db/migrations: the server runs them at boot, and
+  // the CLI below runs them before seeding.
   const CLUB = await resolveClub(client);
   if (operatorsOnly) {
     const operators = await seedTourOperators(client, CLUB, { reset });
@@ -599,7 +543,8 @@ export async function seed({ client, reset = false, operatorsOnly = false } = {}
           booking.hotelCheckin,
           booking.hotelCheckout,
           booking.course,
-          booking.teeTime ? booking.teeTimeLabel : '',
+          // selected_tee_times is JSONB.
+          booking.teeTime ? JSON.stringify([booking.teeTimeLabel]) : null,
         ],
       );
       inserted += rowCount;
@@ -638,6 +583,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   }
 
+  await migrate({ pool });
   const client = await pool.connect();
   try {
     await seed({

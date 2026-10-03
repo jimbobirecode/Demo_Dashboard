@@ -84,23 +84,7 @@ async function sendMail(toEmail, email) {
 
 /* ---------- the one-time links ---------- */
 
-let schemaReady = false;
-async function ensurePortalSchema() {
-  if (schemaReady) return;
-  await query(`
-    CREATE TABLE IF NOT EXISTS public.operator_portal_links (
-      id           SERIAL PRIMARY KEY,
-      club         TEXT NOT NULL,
-      operator_id  INTEGER NOT NULL,
-      email        TEXT NOT NULL,
-      token_hash   TEXT NOT NULL UNIQUE,
-      expires_at   TIMESTAMPTZ NOT NULL,
-      used_at      TIMESTAMPTZ,
-      requested_ip TEXT,
-      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`);
-  schemaReady = true;
-}
+// operator_portal_links is created by db/migrations/0003_baseline_operator_portal.sql.
 
 /** Every club's operators, for matching a sign-in address. */
 async function allActiveOperators() {
@@ -134,7 +118,6 @@ router.post('/login', async (req, res) => {
       console.warn('[portal] sign-in asked for an address on no operator account:', maskForLog(email));
       return;
     }
-    await ensurePortalSchema();
     const { token, tokenHash, expiresAt } = mintToken({ ttlMinutes: PORTAL_LINK_TTL_MINUTES });
     await query(
       `INSERT INTO public.operator_portal_links (club, operator_id, email, token_hash, expires_at, requested_ip)
@@ -159,7 +142,6 @@ router.post('/session', async (req, res, next) => {
     const refused = { error: 'That sign-in link has expired or has already been used. Ask for a new one.' };
     const token = String(req.body?.token ?? '');
     if (!token) return res.status(400).json(refused);
-    await ensurePortalSchema();
 
     // Used once: the row is claimed in the same statement that checks it.
     const { rows } = await query(

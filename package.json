@@ -11,10 +11,10 @@
     "dev": "concurrently -n api,web -c yellow,cyan \"npm run dev -w server\" \"npm run dev -w web\"",
     "build": "npm run build -w web",
     "start": "node server/src/index.js",
-    "postinstall": "echo ''",
     "seed": "node scripts/seed.mjs",
-    "check": "node scripts/check-install.mjs",
-    "test": "node --test server/test/*.test.js"
+    "test": "node --test 'server/test/*.test.js' 'server/test/integration/*.test.js'",
+    "migrate": "node server/src/db/migrate.js",
+    "migrate:status": "node server/src/db/migrate.js --status"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
