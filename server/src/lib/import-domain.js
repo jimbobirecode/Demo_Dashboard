@@ -90,7 +90,7 @@ export function parseDate(value, { dayFirst = true } = {}) {
   if (iso) return toIso(Number(iso[1]), Number(iso[2]), Number(iso[3]));
 
   // 03/04/2026, 3-4-26, 03.04.2026
-  const parts = text.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})/);
+  const parts = text.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
   if (parts) {
     const a = Number(parts[1]);
     const b = Number(parts[2]);

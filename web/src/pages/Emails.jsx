@@ -75,7 +75,7 @@ export default function Emails() {
     load();
   }, [load]);
 
-  const bookings = pending?.bookings ?? [];
+  const bookings = useMemo(() => pending?.bookings ?? [], [pending]);
   const unsentCount = useMemo(() => bookings.filter((b) => !b.sentAt).length, [bookings]);
   const ready = Boolean(config?.campaigns?.[campaignId]?.configured && config?.hasApiKey && config?.fromEmail);
   const vero = config?.vero ?? null;
@@ -110,7 +110,6 @@ export default function Emails() {
       const warning = resends
         ? `\n\n${resends} of them already received this email — they will get it again.`
         : '';
-      // eslint-disable-next-line no-alert
       if (!window.confirm(`Send the ${campaign.label.toLowerCase()} to ${ids.length} guest(s)?${warning}`)) {
         return;
       }

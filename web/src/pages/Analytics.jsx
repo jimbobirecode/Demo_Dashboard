@@ -74,6 +74,8 @@ export default function Analytics() {
       cancelled = true;
       clearInterval(timer);
     };
+    // Keyed on the range's ends, not the object, which is rebuilt each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range.from, range.to, granularity]);
 
   if (loading && !data) return <div className="empty">Loading analytics…</div>;

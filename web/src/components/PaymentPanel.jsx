@@ -22,6 +22,9 @@ export default function PaymentPanel({ booking, operators, onSave, onAssign, onS
   useEffect(() => {
     setForm(toForm(booking));
     setMessage(null);
+    // Reset only when the stored payment fields change, so a re-render with a
+    // fresh booking object does not throw away what is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking.bookingId, booking.paymentStatus, booking.amountPaid, booking.invoiceNumber, booking.invoicedAt, booking.depositDueDate, booking.balanceDueDate]);
 
   if (!payment) return null;
@@ -79,7 +82,7 @@ export default function PaymentPanel({ booking, operators, onSave, onAssign, onS
       {statusDisagrees(payment) && (
         <div className="banner">
           The money recorded here reads as <strong>{payment.derivedStatus}</strong>, but the booking
-          is marked <strong>{payment.status}</strong>. Nothing has been changed — the club's own
+          is marked <strong>{payment.status}</strong>. Nothing has been changed — the club&apos;s own
           record of what was agreed is not overwritten automatically.
         </div>
       )}

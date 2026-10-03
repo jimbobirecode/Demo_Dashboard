@@ -38,6 +38,9 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
   useEffect(() => {
     setAmount(defaultAmount(booking));
     setMessage(null);
+    // Reset only when a different booking opens or what it owes changes, not
+    // whenever the parent hands over a fresh object for the same booking.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking.bookingId, booking.payment?.outstanding]);
 
   // Opening a booking that is still awaiting payment asks Stripe directly, so

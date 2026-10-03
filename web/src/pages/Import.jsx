@@ -54,7 +54,7 @@ export default function Import({ user }) {
       <header>
         <h1>Upload tee sheet</h1>
         <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-          Bring in bookings made in the club's own system. They are marked as imported, so they
+          Bring in bookings made in the club&apos;s own system. They are marked as imported, so they
           count as play and revenue but never as enquiries TeeMail converted.
         </p>
       </header>

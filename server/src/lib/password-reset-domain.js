@@ -98,7 +98,7 @@ export function readResetConfig(env = process.env) {
 
 /** Strips the API key, for anything that crosses the wire. */
 export function publicResetConfig(config) {
-  const { apiKey: _apiKey, ...rest } = config;
+  const { apiKey, ...rest } = config;
   return {
     ...rest,
     // The login screen only offers the link when a click could actually

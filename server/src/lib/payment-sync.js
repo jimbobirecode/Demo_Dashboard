@@ -17,7 +17,6 @@
  * receipt.
  */
 import { query } from '../db.js';
-import { serialiseBooking } from './bookings-domain.js';
 import { paidSessionsForLink } from './stripe.js';
 import { readPaymentLinkConfig } from './payment-link-domain.js';
 import { recordStripePayment } from './record-payment.js';

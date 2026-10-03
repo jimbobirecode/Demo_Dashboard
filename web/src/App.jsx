@@ -22,7 +22,6 @@ import { useInboxCount } from './lib/useInboxCount.js';
 // the initial bundle so the bookings table loads fast.
 const Analytics = lazy(() => import('./pages/Analytics.jsx'));
 
-import { BRAND } from './lib/brand.js';
 import Wordmark from './components/Wordmark.jsx';
 
 export default function App() {

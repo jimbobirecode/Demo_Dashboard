@@ -63,7 +63,7 @@ export default function Operators() {
     };
   }, [openId]);
 
-  const operators = data?.operators ?? [];
+  const operators = useMemo(() => data?.operators ?? [], [data]);
   const totals = data?.totals;
   const bands = data?.ageingBands ?? [];
 
@@ -417,7 +417,7 @@ function AgeingTable({ operators, bands, totals }) {
         </table>
       </div>
       <p className="secondary" style={{ fontSize: '0.8125rem', margin: 0 }}>
-        Bands are counted from each booking's own due date under its operator's terms, and only
+        Bands are counted from each booking&apos;s own due date under its operator&apos;s terms, and only
         committed bookings are included — an open enquiry is not money anybody owes.
       </p>
     </div>
@@ -514,7 +514,7 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign }) {
           <div>
             <h2 style={{ margin: 0 }}>Bookings that name an operator</h2>
             <p className="secondary" style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem' }}>
-              An operator's name appears in these enquiries, but the booking did not come from one of
+              An operator&apos;s name appears in these enquiries, but the booking did not come from one of
               their domains. A name in prose is not evidence of an account, so nothing has been
               attached — confirm each one, or leave it as a direct booking.
             </p>

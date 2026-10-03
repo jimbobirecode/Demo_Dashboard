@@ -300,7 +300,7 @@ router.get('/statement.csv', async (req, res, next) => {
     const name = account.operator.name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${name}-statement-${account.today}.csv"`);
-    res.send(`﻿${statementCsv(list)}`);
+    res.send(`\uFEFF${statementCsv(list)}`);
   } catch (err) {
     next(err);
   }

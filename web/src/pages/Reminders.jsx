@@ -89,7 +89,7 @@ export default function Reminders() {
     load();
   }, [load]);
 
-  const reminders = pending?.reminders ?? [];
+  const reminders = useMemo(() => pending?.reminders ?? [], [pending]);
   const ready = Boolean(config?.campaigns?.[campaignId]?.configured && config?.hasApiKey && config?.fromEmail);
 
   const totals = useMemo(
@@ -150,7 +150,6 @@ export default function Reminders() {
             pending?.resendGuardDays ?? 7
           } days.`
         : '';
-      // eslint-disable-next-line no-alert
       if (!window.confirm(`Send the ${campaign.label.toLowerCase()} reminder to ${ids.length} account(s)?${warning}`)) {
         return;
       }

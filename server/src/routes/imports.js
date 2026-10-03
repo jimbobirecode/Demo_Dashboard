@@ -211,7 +211,7 @@ export function parseCsv(text) {
   let field = '';
   let quoted = false;
 
-  const body = text.replace(/^﻿/, ''); // Excel writes a byte-order mark
+  const body = text.replace(/^\uFEFF/, ''); // Excel writes a byte-order mark
 
   for (let i = 0; i < body.length; i += 1) {
     const char = body[i];
