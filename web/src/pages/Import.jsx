@@ -9,7 +9,7 @@ import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../lib
  * 03/04 means 4 March imports perfectly and is wrong in every row. So nothing
  * is written until somebody has seen the dates it read.
  */
-export default function Import() {
+export default function Import({ user }) {
   const [config, setConfig] = useState(null);
   const [file, setFile] = useState(null);
   const [dayFirst, setDayFirst] = useState(true);
@@ -130,6 +130,9 @@ export default function Import() {
         <Batches
           batches={config.batches}
           busy={busy}
+          // Undoing deletes bookings in bulk, which the API keeps for
+          // administrators; staff see the history without the button.
+          canUndo={user?.role === 'admin'}
           onUndo={(batch) =>
             run(async () => {
               const undone = await api.undoImport(batch.batchId);
@@ -217,13 +220,15 @@ function Preview({ preview, onCommit, busy }) {
   );
 }
 
-function Batches({ batches, onUndo, busy }) {
+function Batches({ batches, onUndo, busy, canUndo }) {
   return (
     <div className="card stack" style={{ gap: '0.75rem' }}>
       <div>
         <h3>Previous uploads</h3>
         <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8125rem' }}>
-          Undoing removes the rows nobody has edited since — anything worked on is left alone.
+          {canUndo
+            ? 'Undoing removes the rows nobody has edited since — anything worked on is left alone.'
+            : 'Only an administrator can undo an upload.'}
         </p>
       </div>
       <div className="table-wrap">
@@ -245,6 +250,7 @@ function Batches({ batches, onUndo, busy }) {
                 </td>
                 <td className="num">{formatNumber(batch.bookings)}</td>
                 <td className="num">
+                  {canUndo && (
                   <button
                     type="button"
                     className="btn-sm btn-danger"
@@ -258,6 +264,7 @@ function Batches({ batches, onUndo, busy }) {
                   >
                     Undo
                   </button>
+                  )}
                 </td>
               </tr>
             ))}

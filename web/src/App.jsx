@@ -146,7 +146,7 @@ function StaffApp() {
             {/* A guest's link works for a signed-in member of staff too —
                 they are often the one checking it. */}
             <Route path="/manage-booking" element={<ManageBooking />} />
-            <Route path="/import" element={<Import />} />
+            <Route path="/import" element={<Import user={user} />} />
             <Route
               path="/account/password"
               element={<ChangePassword requireCurrent onSubmit={completePasswordChange} />}

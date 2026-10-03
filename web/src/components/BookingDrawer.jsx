@@ -207,6 +207,9 @@ export default function BookingDrawer({
           {booking.updatedBy && ` · last updated ${formatDateTime(booking.updatedAt)} by ${booking.updatedBy}`}
         </div>
 
+        {/* Deleting is for administrators (the API refuses anyone else), so
+            the danger zone is only drawn when there is a handler for it. */}
+        {onDelete && (<>
         <div className="divider" />
 
         <div className="stack" style={{ gap: '0.5rem' }}>
@@ -233,6 +236,7 @@ export default function BookingDrawer({
             </button>
           )}
         </div>
+        </>)}
       </aside>
     </>
   );

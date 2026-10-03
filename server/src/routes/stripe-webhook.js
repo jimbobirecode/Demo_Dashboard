@@ -1,6 +1,6 @@
 /**
  * POST /api/stripe/webhook — Stripe telling us a payment link was paid.
- * GET  /api/stripe/webhook — answers so the URL can be checked in a browser.
+ * GET  /api/stripe/webhook — answers { ok: true }, so the URL can be checked in a browser.
  *
  * Mounted ahead of the JSON body parser with a raw parser of its own, because
  * the signature is computed over the exact bytes Stripe sent; parsed and
@@ -15,21 +15,17 @@
  */
 import express, { Router } from 'express';
 import { verifyWebhookSignature } from '../lib/stripe.js';
-import { PAYMENT_EVENTS, paidSessionFromEvent, readPaymentLinkConfig } from '../lib/payment-link-domain.js';
+import { paidSessionFromEvent, readPaymentLinkConfig } from '../lib/payment-link-domain.js';
 import { MigrationMissingError, recordStripePayment } from '../lib/record-payment.js';
 import { logWebhook } from '../lib/webhook-log.js';
 import { sendReceipt } from './payments.js';
 
 const router = Router();
 
+// Says only that the route exists. Whether a signing secret is configured is
+// shown to administrators in the payments diagnostics, not to anybody.
 router.get('/', (req, res) => {
-  res.json({
-    ok: true,
-    endpoint: 'Stripe webhook',
-    method: 'Stripe sends POST requests here',
-    signingSecretSet: Boolean(readPaymentLinkConfig().webhookSecret),
-    events: PAYMENT_EVENTS,
-  });
+  res.json({ ok: true });
 });
 
 router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {

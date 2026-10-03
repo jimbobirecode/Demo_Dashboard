@@ -9,7 +9,7 @@ import BookingsTable from '../components/BookingsTable.jsx';
 import BookingDrawer from '../components/BookingDrawer.jsx';
 import KpiTile from '../components/KpiTile.jsx';
 
-export default function Bookings() {
+export default function Bookings({ user }) {
   const { bookings, operators, error, loading, lastUpdated, refresh, replaceBooking, removeBooking } =
     useBookings();
 
@@ -238,13 +238,12 @@ export default function Bookings() {
               await refresh({ silent: true });
             })
           }
-          onDelete={(booking) =>
+          onDelete={user?.role === 'admin' ? (booking) =>
             mutate(async () => {
               await api.remove(booking.bookingId);
               removeBooking(booking.bookingId);
               setSelectedId(null);
-            })
-          }
+            }) : undefined}
         />
       )}
     </div>

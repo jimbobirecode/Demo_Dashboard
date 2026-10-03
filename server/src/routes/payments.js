@@ -13,7 +13,7 @@
  */
 import { Router } from 'express';
 import { query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { buildAuditSet, getBookingColumns } from '../lib/schema.js';
 import { BRAND, appBaseUrl } from '../lib/brand.js';
@@ -289,7 +289,9 @@ router.post('/sync', async (req, res, next) => {
  * against the real thing where possible — including asking Stripe which
  * webhook endpoints it actually has, rather than trusting the setup notes.
  */
-router.get('/diagnostics', async (req, res, next) => {
+// It describes how the Stripe account is wired up — which keys are set, which
+// endpoints Stripe has — so it is for administrators.
+router.get('/diagnostics', requireAdmin, async (req, res, next) => {
   const config = readPaymentLinkConfig();
   const checks = [];
   const add = (id, ok, label, detail, fix = null) => checks.push({ id, ok, label, detail, fix });

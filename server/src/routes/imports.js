@@ -17,7 +17,7 @@
 import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import { pool, query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { getBookingColumns, hasBookingSource } from '../lib/schema.js';
 import {
@@ -150,7 +150,8 @@ router.post('/commit', async (req, res, next) => {
  * worked on is theirs, not the importer's, and deleting it would throw away
  * work to tidy up a mistake.
  */
-router.delete('/:batchId', async (req, res, next) => {
+// Undoing an upload deletes bookings in bulk, so only an administrator may.
+router.delete('/:batchId', requireAdmin, async (req, res, next) => {
   try {
     const columns = await getBookingColumns();
     const guard = columns.has('updated_at') ? ' AND updated_at IS NULL' : '';

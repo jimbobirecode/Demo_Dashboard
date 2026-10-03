@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import { query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAdmin, requireAuth } from '../auth.js';
 import { csvLine } from '../lib/csv.js';
 import {
   ALLOWED_STATUSES,
@@ -307,7 +307,9 @@ router.patch('/:bookingId/tee-time', async (req, res, next) => {
   }
 });
 
-router.delete('/:bookingId', async (req, res, next) => {
+// Deleting is permanent and leaves no trail, so it is an administrator's
+// call; staff cancel instead, which keeps the row.
+router.delete('/:bookingId', requireAdmin, async (req, res, next) => {
   try {
     const { rowCount } = await query(
       'DELETE FROM public.bookings WHERE booking_id = $1 AND club = $2',
