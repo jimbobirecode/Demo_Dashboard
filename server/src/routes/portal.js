@@ -54,17 +54,16 @@ import {
   statementCsv,
 } from '../lib/portal-domain.js';
 import { loadBookings, loadOperators } from './operators.js';
+import { clientIp, maskForLog } from '../lib/request-guard.js';
 
 const router = Router();
 
 const COOKIE = 'teemail_operator';
+// Per address asked for and per client, independently, so varying either one
+// alone buys no fresh budget.
 const loginThrottle = createThrottle({ limit: 5, windowMs: 15 * 60_000 });
+const loginIpThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
 const redeemThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
-
-function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
-}
 
 function mailConfig() {
   return {
@@ -127,11 +126,12 @@ router.post('/login', async (req, res) => {
   res.json({ ok: true, message: PORTAL_NEUTRAL_REPLY });
 
   try {
-    if (!loginThrottle.check(`${email.toLowerCase()}|${clientIp(req)}`)) return;
+    const ipAllowed = loginIpThrottle.check(clientIp(req));
+    if (!loginThrottle.check(email.toLowerCase()) || !ipAllowed) return;
     if (!(await hasOperatorsTable())) return;
     const operator = operatorForEmail(email, await allActiveOperators());
     if (!operator) {
-      console.warn('[portal] sign-in asked for an address on no operator account:', email);
+      console.warn('[portal] sign-in asked for an address on no operator account:', maskForLog(email));
       return;
     }
     await ensurePortalSchema();
@@ -199,16 +199,46 @@ router.post('/logout', (req, res) => {
 
 /* ---------- signed in ---------- */
 
-function requireOperator(req, res, next) {
+/**
+ * A portal session is only as good as the account behind it. Each request
+ * re-reads the operator, so retiring the account — or taking the signed-in
+ * address off it (a domain removed, a contact changed) — ends the session at
+ * once rather than when the cookie expires.
+ */
+async function requireOperator(req, res, next) {
+  const ended = () => {
+    res.clearCookie(COOKIE);
+    res.status(401).json({ error: 'Your session has ended. Sign in again.' });
+  };
   const token = req.cookies?.[COOKIE];
   if (!token) return res.status(401).json({ error: 'Not signed in' });
+
+  let claims;
   try {
-    const claims = jwt.verify(token, JWT_SECRET);
+    claims = jwt.verify(token, JWT_SECRET);
     if (claims.kind !== 'operator' || !claims.operatorId || !claims.club) throw new Error('not a portal session');
+  } catch {
+    return ended();
+  }
+
+  try {
+    const { rows } = await query(
+      `SELECT id, club, name, contact_email, email_domains, active FROM public.tour_operators
+        WHERE id = $1 AND club = $2`,
+      [claims.operatorId, claims.club],
+    );
+    const operator = rows[0] && {
+      id: rows[0].id,
+      club: rows[0].club,
+      contactEmail: rows[0].contact_email,
+      emailDomains: rows[0].email_domains ?? [],
+      active: rows[0].active !== false,
+    };
+    if (!operator || operatorForEmail(claims.email, [operator])?.id !== operator.id) return ended();
     req.portal = claims;
     next();
-  } catch {
-    res.status(401).json({ error: 'Your session has ended. Sign in again.' });
+  } catch (err) {
+    next(err);
   }
 }
 

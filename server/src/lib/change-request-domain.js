@@ -176,6 +176,26 @@ export function buildChangeEmail({ outcome, booking, request = null, note = '', 
   return { subject: content.subject, text, html };
 }
 
+/**
+ * How long after the round a manage link still opens.
+ *
+ * The link itself cannot expire: its format (an HMAC of `club|booking`,
+ * base64url, 32 characters, keyed by BOOKING_LINK_SECRET) is shared with the
+ * booking service, which mints the same links, so changing it would break
+ * every link that service has already sent. Instead the page refuses a
+ * booking that was played long enough ago that nobody has a legitimate
+ * reason to open it — which is also when a forwarded or leaked email is most
+ * likely to be sitting in somebody else's inbox.
+ */
+export const MANAGE_LINK_GRACE_DAYS = 30;
+
+/** Whether a manage link for this booking is past use. Undated bookings never are. */
+export function manageLinkExpired(booking, today, { graceDays = MANAGE_LINK_GRACE_DAYS } = {}) {
+  if (!booking?.date) return false;
+  const days = daysUntilPlay(booking.date, today);
+  return days !== null && days < -graceDays;
+}
+
 /** Whole days from today to the round. Negative once it has been played. */
 export function daysUntilPlay(date, today) {
   const play = Date.parse(`${date}T00:00:00Z`);

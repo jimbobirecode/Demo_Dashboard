@@ -161,8 +161,19 @@ async function maybeSeedOnStart() {
   }
 }
 
+/** Configuration that works, but less safely than it should; said once at boot. */
+function warnAboutConfiguration() {
+  if (process.env.NODE_ENV === 'production' && !process.env.BOOKING_LINK_SECRET) {
+    console.warn(
+      '[api] WARNING: BOOKING_LINK_SECRET is not set — manage-booking links are signed with JWT_SECRET, ' +
+      'and the booking service cannot issue links at all. Set the same BOOKING_LINK_SECRET on both services.',
+    );
+  }
+}
+
 app.listen(PORT, async () => {
   console.log(`[api] listening on http://localhost:${PORT}`);
+  warnAboutConfiguration();
   await hashLegacyTempPasswords()
     .then((count) => count && console.log(`[auth] hashed ${count} plaintext temporary password(s)`))
     .catch((err) => console.warn('[auth] could not check temporary passwords:', err.message));

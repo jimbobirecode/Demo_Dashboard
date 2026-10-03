@@ -22,6 +22,7 @@ import {
   buildChangeEmail,
   describeOptions,
   linkSecret,
+  manageLinkExpired,
   manageUrlFor,
   readChangePolicy,
   serialiseChangeRequest,
@@ -29,6 +30,7 @@ import {
   verifyBookingToken,
 } from '../lib/change-request-domain.js';
 import { createThrottle } from '../lib/password-reset-domain.js';
+import { clientIp } from '../lib/request-guard.js';
 
 const router = Router();
 
@@ -87,6 +89,12 @@ async function loadBooking(bookingId, club) {
 /** An unauthenticated surface; one client should not be able to hammer it. */
 const lookupThrottle = createThrottle({ limit: 30, windowMs: 15 * 60_000 });
 const submitThrottle = createThrottle({ limit: 10, windowMs: 60 * 60_000 });
+// The same limits per booking reference, so guessing at one booking's token
+// from many addresses runs out as quickly as from one.
+const lookupRefThrottle = createThrottle({ limit: 30, windowMs: 15 * 60_000 });
+const submitRefThrottle = createThrottle({ limit: 10, windowMs: 60 * 60_000 });
+
+const refKey = (ref) => String(ref ?? '').trim().toUpperCase();
 
 /* ---------- the guest ---------- */
 
@@ -100,7 +108,8 @@ const submitThrottle = createThrottle({ limit: 10, windowMs: 60 * 60_000 });
  */
 router.get('/booking', async (req, res, next) => {
   try {
-    if (!lookupThrottle.check(clientIp(req))) {
+    const refAllowed = lookupRefThrottle.check(refKey(req.query.ref));
+    if (!lookupThrottle.check(clientIp(req)) || !refAllowed) {
       return res.status(429).json({ error: 'Too many attempts. Try again shortly.' });
     }
 
@@ -137,7 +146,8 @@ router.get('/booking', async (req, res, next) => {
 /** Ask for a change, or cancel where policy allows it. */
 router.post('/request', async (req, res, next) => {
   try {
-    if (!submitThrottle.check(clientIp(req))) {
+    const refAllowed = submitRefThrottle.check(refKey(req.body?.ref));
+    if (!submitThrottle.check(clientIp(req)) || !refAllowed) {
       return res.status(429).json({ error: 'Too many requests. Please ring the club.' });
     }
     if (!(await hasChangeRequests())) {
@@ -328,16 +338,26 @@ async function findByToken(ref, token) {
     `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1`,
     [bookingId],
   );
-  if (!rows.length) return refused;
 
-  const booking = serialiseBooking(rows[0]);
-  if (!verifyBookingToken(bookingId, token, secret, booking.club ?? '')) return refused;
+  // The token is scoped to the club, so it picks out the one row it was
+  // signed for even if two clubs happen to share a reference.
+  const booking = rows
+    .map(serialiseBooking)
+    .find((candidate) => verifyBookingToken(bookingId, token, secret, candidate.club ?? ''));
+  if (!booking) return refused;
+  if (manageLinkExpired(booking, today())) {
+    return {
+      ok: false,
+      status: 410,
+      error: 'This booking has finished, so it can no longer be managed online. Please contact the club.',
+    };
+  }
 
   const pending = (await hasChangeRequests())
     ? (await query(
         `SELECT * FROM public.booking_change_requests
-          WHERE booking_id = $1 AND status = 'Pending'`,
-        [bookingId],
+          WHERE booking_id = $1 AND club = $2 AND status = 'Pending'`,
+        [bookingId, booking.club],
       )).rows.map(serialiseChangeRequest)
     : [];
 
@@ -348,9 +368,5 @@ function today() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: BRAND.timeZone }).format(new Date());
 }
 
-function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
-}
 
 export default router;
