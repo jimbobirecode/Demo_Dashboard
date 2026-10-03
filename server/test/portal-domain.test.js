@@ -87,3 +87,11 @@ test('buildEnquiry writes an email the club can act on', () => {
   assert.match(out.body, /Buggies x2/);
   assert.match(out.summary, /\(Old Course\)/);
 });
+
+test('statementCsv defuses spreadsheet formulas but keeps amounts numeric', () => {
+  const csv = statementCsv([portalBooking({ ...booking, golfCourses: '=HYPERLINK("http://evil","x")', guestName: '@me' })]);
+  const row = csv.trim().split('\r\n')[1];
+  assert.match(row, /"'=HYPERLINK\(""http:\/\/evil"",""x""\)"/);
+  assert.doesNotMatch(row, /,=/);
+  assert.match(row, /3440\.00,1000\.00,2440\.00/);
+});

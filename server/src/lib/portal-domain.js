@@ -15,6 +15,7 @@ import { BRAND } from './brand.js';
 import { brandedEmail, escapeHtml } from './email-layout.js';
 import { cleanAddress, describeMinutes } from './password-reset-domain.js';
 import { emailDomain, isConsumerDomain } from './operators-domain.js';
+import { csvLine } from './csv.js';
 
 /** How long an emailed sign-in link works for. */
 export const PORTAL_LINK_TTL_MINUTES = 30;
@@ -123,11 +124,6 @@ export function isCurrent(booking, today) {
   return (booking.date && booking.date >= today) || (booking.outstanding ?? 0) > 0;
 }
 
-const csvCell = (value) => {
-  const text = value === null || value === undefined ? '' : String(value);
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-};
-
 /** The operator's statement: one row per booking, for their accounts team. */
 export function statementCsv(bookings, { currency = BRAND.currency } = {}) {
   const header = [
@@ -138,7 +134,7 @@ export function statementCsv(bookings, { currency = BRAND.currency } = {}) {
     b.bookingId, b.invoiceNumber, b.date, b.teeTime, b.players, b.course, b.status,
     b.total.toFixed(2), Number(b.paid).toFixed(2), Number(b.outstanding).toFixed(2), b.dueDate, b.daysOverdue || '',
   ]);
-  return [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
+  return [header, ...rows].map(csvLine).join('\r\n') + '\r\n';
 }
 
 /**

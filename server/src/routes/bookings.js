@@ -2,6 +2,7 @@ import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { csvLine } from '../lib/csv.js';
 import {
   ALLOWED_STATUSES,
   normaliseStatus,
@@ -438,18 +439,11 @@ export function applyFilters(bookings, { statuses, from, to } = {}) {
   return result;
 }
 
-function toCsv(bookings) {
-  const header = EXPORT_COLUMNS.map(([, label]) => label).join(',');
-  const lines = bookings.map((booking) =>
-    EXPORT_COLUMNS.map(([key]) => csvCell(booking[key])).join(','),
-  );
+/** Every cell goes through lib/csv.js, which defuses spreadsheet formulas. */
+export function toCsv(bookings) {
+  const header = csvLine(EXPORT_COLUMNS.map(([, label]) => label));
+  const lines = bookings.map((booking) => csvLine(EXPORT_COLUMNS.map(([key]) => booking[key])));
   return [header, ...lines].join('\n');
-}
-
-function csvCell(value) {
-  if (value === null || value === undefined) return '';
-  const text = String(value);
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 export default router;
