@@ -12,7 +12,7 @@
  */
 
 /** Every bookings column the dashboard reads. */
-export const BOOKING_COLUMNS = [
+const BOOKING_COLUMNS = [
   'id',
   'booking_id',
   'guest_email',
@@ -95,7 +95,7 @@ export const OPERATOR_COLUMNS = [
   'updated_by',
 ];
 
-export const USER_COLUMNS = [
+const USER_COLUMNS = [
   'id',
   'username',
   'email',
@@ -113,38 +113,14 @@ export const USER_COLUMNS = [
   'session_version',
 ];
 
-export const WAITLIST_COLUMNS = [
-  'id',
-  'waitlist_id',
-  'guest_email',
-  'guest_name',
-  'requested_date',
-  'preferred_time',
-  'time_flexibility',
-  'players',
-  'golf_course',
-  'status',
-  'priority',
-  'notes',
-  'notification_sent',
-  'notification_sent_at',
-  'created_at',
-  'updated_at',
-  'club',
-  'converted_booking_id',
-  'converted_at',
-];
-
-/** A quoted SELECT list, optionally qualified by a table alias. */
-export function selectList(columns, alias) {
-  const prefix = alias ? `${alias}.` : '';
-  return columns.map((column) => `${prefix}"${column}"`).join(', ');
+/** A quoted SELECT list. */
+function selectList(columns) {
+  return columns.map((column) => `"${column}"`).join(', ');
 }
 
 export const BOOKING_SELECT = selectList(BOOKING_COLUMNS);
 export const OPERATOR_SELECT = selectList(OPERATOR_COLUMNS);
 export const USER_SELECT = selectList(USER_COLUMNS);
-export const WAITLIST_SELECT = selectList(WAITLIST_COLUMNS);
 
 /**
  * The `updated_at` / `updated_by` half of an UPDATE's SET clause.
@@ -152,8 +128,7 @@ export const WAITLIST_SELECT = selectList(WAITLIST_COLUMNS);
  * `startIndex` is the first free placeholder number in the caller's query;
  * the returned `values` are meant to be spliced in at that position.
  */
-export function buildAuditSet(startIndex, username, ...legacy) {
-  if (typeof startIndex === 'object') [startIndex, username] = [username, legacy[0]]; // TRANSITIONAL
+export function buildAuditSet(startIndex, username) {
   const clauses = ['updated_at = NOW()'];
   const values = [];
   if (username) {
@@ -162,32 +137,3 @@ export function buildAuditSet(startIndex, username, ...legacy) {
   }
   return { clauses, values };
 }
-
-/* ---- TRANSITIONAL SHIMS: removed once every call site assumes the schema ---- */
-function staticColumns(columns) {
-  const present = new Set(columns);
-  return { has: (c) => present.has(c), present, missing: false, complete: true, selectList: selectList(columns) };
-}
-const CHANGE_REQUEST_COLUMNS_SHIM = [
-  'id', 'booking_id', 'club', 'kind', 'message', 'requested_date', 'requested_time',
-  'requested_players', 'status', 'auto_applied', 'days_before_play', 'resolved_at',
-  'resolved_by', 'resolution_note', 'guest_email', 'requested_ip', 'created_at',
-];
-const PASSWORD_RESET_COLUMNS_SHIM = ['id', 'user_id', 'token_hash', 'email', 'expires_at', 'used_at', 'requested_ip', 'created_at', 'purpose'];
-export const REQUIRED_COLUMNS = BOOKING_COLUMNS;
-export const OPTIONAL_COLUMNS = [];
-export const getBookingColumns = async () => staticColumns(BOOKING_COLUMNS);
-export const getUserColumns = async () => staticColumns(USER_COLUMNS);
-export const getOperatorColumns = async () => staticColumns(OPERATOR_COLUMNS);
-export const getWaitlistColumns = async () => staticColumns(WAITLIST_COLUMNS);
-export const getChangeRequestColumns = async () => staticColumns(CHANGE_REQUEST_COLUMNS_SHIM);
-export const getPasswordResetColumns = async () => staticColumns(PASSWORD_RESET_COLUMNS_SHIM);
-export const hasOperatorsTable = async () => true;
-export const hasBookingSource = async () => true;
-export const hasOperatorBookingColumns = async () => true;
-export const hasChangeRequests = async () => true;
-export const hasWaitlist = async () => true;
-export const hasPasswordReset = async () => true;
-export const hasUserManagement = async () => true;
-export const hasInvitePurpose = async () => true;
-export function resetSchemaCache() {}
