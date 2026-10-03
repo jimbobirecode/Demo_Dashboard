@@ -18,11 +18,11 @@ test('a token carries the session version it was issued at', () => {
   assert.equal(claims.sub, '7');
   assert.equal(claims.sv, 3);
   assert.equal(sessionClaims({ ...ROW, session_version: undefined }).sv, 0, 'pre-migration rows read as 0');
-  assert.equal(sessionClaims({ ...ROW, role: undefined }).role, 'admin', 'pre-roles installs');
+  assert.equal(sessionClaims({ ...ROW, role: undefined }).role, 'staff', 'a missing role fails closed');
 });
 
 test('a matching, active account passes, with authority read from the row', () => {
-  const verdict = evaluateSession({ sub: '7', sv: 3, role: 'admin', customerId: 'elsewhere' }, ROW, { hasVersion: true });
+  const verdict = evaluateSession({ sub: '7', sv: 3, role: 'admin', customerId: 'elsewhere' }, ROW);
   assert.equal(verdict.ok, true);
   assert.equal(verdict.user.role, 'staff', 'a demoted admin is staff on the next request');
   assert.equal(verdict.user.customerId, 'royal_dornoch', 'the club is the row\'s, not the token\'s');
@@ -30,19 +30,20 @@ test('a matching, active account passes, with authority read from the row', () =
 });
 
 test('a bumped version, a deactivation or a deletion ends the session', () => {
-  assert.equal(evaluateSession({ sv: 2 }, ROW, { hasVersion: true }).ok, false);
-  assert.equal(evaluateSession({ sv: 3 }, { ...ROW, is_active: false }, { hasVersion: true }).ok, false);
-  assert.equal(evaluateSession({ sv: 3 }, null, { hasVersion: true }).ok, false);
-  assert.equal(evaluateSession({ sv: 3 }, { ...ROW, customer_id: null }, { hasVersion: true }).ok, false);
+  assert.equal(evaluateSession({ sv: 2 }, ROW).ok, false);
+  assert.equal(evaluateSession({ sv: 3 }, { ...ROW, is_active: false }).ok, false);
+  assert.equal(evaluateSession({ sv: 3 }, null).ok, false);
+  assert.equal(evaluateSession({ sv: 3 }, { ...ROW, customer_id: null }).ok, false);
 });
 
-test('without the column, versions are ignored but the row still decides', () => {
-  assert.equal(evaluateSession({ sv: 99 }, ROW, { hasVersion: false }).ok, true);
-  assert.equal(evaluateSession({}, { ...ROW, is_active: false }, { hasVersion: false }).ok, false);
+test('a token from another version never passes, whatever the row says', () => {
+  assert.equal(evaluateSession({ sv: 99 }, ROW).ok, false);
+  assert.equal(evaluateSession({}, { ...ROW, is_active: false }).ok, false);
+  assert.equal(evaluateSession({ sv: 3 }, { ...ROW, role: undefined }).user.role, 'staff');
 });
 
 test('a token minted before versions existed matches a fresh column', () => {
-  assert.equal(evaluateSession({ sub: '7' }, { ...ROW, session_version: 0 }, { hasVersion: true }).ok, true);
+  assert.equal(evaluateSession({ sub: '7' }, { ...ROW, session_version: 0 }).ok, true);
 });
 
 test('a temporary-password session reaches only the password screens', () => {
@@ -52,7 +53,7 @@ test('a temporary-password session reaches only the password screens', () => {
   assert.equal(allowedDuringPasswordChange('/api/bookings'), false);
   assert.equal(allowedDuringPasswordChange('/api/users'), false);
   assert.equal(
-    evaluateSession({ sv: 3 }, { ...ROW, must_change_password: true }, { hasVersion: true }).user.mustChangePassword,
+    evaluateSession({ sv: 3 }, { ...ROW, must_change_password: true }).user.mustChangePassword,
     true,
   );
 });

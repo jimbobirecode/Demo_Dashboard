@@ -9,22 +9,10 @@ import jwt from 'jsonwebtoken';
 
 process.env.JWT_SECRET = 'test-secret';
 const { pool } = await import('../src/db.js');
-const { resetSchemaCache } = await import('../src/lib/schema.js');
 const auth = await import('../src/auth.js');
 
-const COLUMNS = [
-  'id', 'username', 'email', 'password_hash', 'temp_password', 'customer_id', 'full_name',
-  'is_active', 'must_change_password', 'last_login', 'role', 'created_at', 'created_by',
-  'invited_at', 'session_version',
-];
-
 let users;
-let withVersion;
 pool.query = async (text, params = []) => {
-  if (text.includes('information_schema.columns')) {
-    const cols = withVersion ? COLUMNS : COLUMNS.filter((c) => c !== 'session_version');
-    return { rows: cols.map((column_name) => ({ column_name })) };
-  }
   if (text.includes('session_version = session_version + 1') && text.trim().startsWith('UPDATE')) {
     const user = users.get(Number(params.at(-1)));
     if (user) user.session_version += 1;
@@ -54,9 +42,7 @@ pool.query = async (text, params = []) => {
   throw new Error(`unexpected query: ${text}`);
 };
 
-function reset({ version = true } = {}) {
-  withVersion = version;
-  resetSchemaCache();
+function reset() {
   users = new Map([[1, {
     id: 1, username: 'ann', email: 'ann@club.test', password_hash: null, temp_password: null,
     customer_id: 'royal_dornoch', full_name: 'Ann', is_active: true, must_change_password: false,
@@ -112,13 +98,19 @@ test('deactivating or deleting the account ends the session', async () => {
   assert.equal((await call(tokenFor({ id: 1, customer_id: 'royal_dornoch', session_version: 0 }))).passed, false);
 });
 
-test('without the session_version column the row still decides', async () => {
-  reset({ version: false });
+test('a token carrying another session version is refused', async () => {
+  reset();
   const token = tokenFor(users.get(1), { sv: 42 });
-  assert.equal((await call(token)).passed, true, 'versions are not compared');
+  assert.equal((await call(token)).passed, false);
+});
+
+test('deactivating an account ends its session', async () => {
+  reset();
+  const token = tokenFor(users.get(1));
+  assert.equal((await call(token)).passed, true);
   users.get(1).is_active = false;
   auth.forgetSessionUser(1);
-  assert.equal((await call(token)).passed, false, 'deactivation still bites');
+  assert.equal((await call(token)).passed, false);
 });
 
 test('a portal token is never a staff session', async () => {

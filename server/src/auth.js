@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from './db.js';
-import { getUserColumns } from './lib/schema.js';
+import { USER_SELECT } from './lib/schema.js';
 import {
   allowedDuringPasswordChange,
   evaluateSession,
@@ -71,12 +71,8 @@ async function loadSessionUser(userId) {
   const hit = sessionCache.get(id);
   if (hit && hit.expiresAt > Date.now()) return hit.value;
 
-  const columns = await getUserColumns();
-  const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.dashboard_users WHERE id = $1`,
-    [id],
-  );
-  const value = { row: rows[0] ?? null, hasVersion: columns.has('session_version') };
+  const { rows } = await query(`SELECT ${USER_SELECT} FROM public.dashboard_users WHERE id = $1`, [id]);
+  const value = rows[0] ?? null;
   sessionCache.set(id, { value, expiresAt: Date.now() + SESSION_CACHE_MS });
 
   // Expired entries go when they are next looked at; this keeps an idle
@@ -87,21 +83,11 @@ async function loadSessionUser(userId) {
   return value;
 }
 
-/**
- * End every session an account holds, everywhere.
- *
- * An install without the session_version column cannot do this — its tokens
- * carry no version to compare — so it only drops the cache, and requireAuth
- * still catches deactivation and deletion from the row itself.
- */
+/** End every session an account holds, everywhere. */
 export async function bumpSessionVersion(userId) {
-  const columns = await getUserColumns();
-  if (columns.has('session_version')) {
-    await query(
-      'UPDATE public.dashboard_users SET session_version = session_version + 1 WHERE id = $1',
-      [Number(userId)],
-    );
-  }
+  await query('UPDATE public.dashboard_users SET session_version = session_version + 1 WHERE id = $1', [
+    Number(userId),
+  ]);
   forgetSessionUser(userId);
 }
 
@@ -120,8 +106,8 @@ export async function requireAuth(req, res, next) {
   }
 
   try {
-    const { row, hasVersion } = await loadSessionUser(claims.sub);
-    const verdict = evaluateSession(claims, row, { hasVersion });
+    const row = await loadSessionUser(claims.sub);
+    const verdict = evaluateSession(claims, row);
     if (!verdict.ok) {
       clearSession(res);
       return res.status(401).json({ error: 'Session expired' });
@@ -169,12 +155,9 @@ export function requireAdmin(req, res, next) {
  * a permanent one.
  */
 export async function authenticateUser(identifier, password) {
-  const columns = await getUserColumns();
-  const byEmail = columns.has('email') ? ' OR LOWER(email) = LOWER($1)' : '';
-
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.dashboard_users
-      WHERE LOWER(username) = LOWER($1)${byEmail}
+    `SELECT ${USER_SELECT} FROM public.dashboard_users
+      WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)
       ORDER BY (LOWER(username) = LOWER($1)) DESC, id
       LIMIT 1`,
     [String(identifier ?? '').trim()],
@@ -182,8 +165,8 @@ export async function authenticateUser(identifier, password) {
 
   const user = rows[0];
   if (!user) return null;
-  // An install without an is_active column treats every account as active.
-  if (columns.has('is_active') && !user.is_active) return null;
+  // NULL is_active predates the column's default and has always meant active.
+  if (user.is_active === false) return null;
 
   if (user.must_change_password && user.temp_password) {
     if (await matchesTempPassword(user, password)) {
@@ -216,14 +199,8 @@ async function matchesTempPassword(user, password) {
   return true;
 }
 
-/**
- * Hash any temporary password still stored in plaintext. Run once at boot;
- * a database without the column, or without any such rows, costs one query.
- */
+/** Hash any temporary password still stored in plaintext. Run once at boot. */
 export async function hashLegacyTempPasswords() {
-  const columns = await getUserColumns();
-  if (!columns.has('temp_password')) return 0;
-
   const { rows } = await query(
     'SELECT id, temp_password FROM public.dashboard_users WHERE temp_password IS NOT NULL',
   );
@@ -243,11 +220,7 @@ export async function hashLegacyTempPasswords() {
 /** Whether `password` is this account's current one (permanent or temporary). */
 export async function verifyCurrentPassword(userId, password) {
   if (typeof password !== 'string' || !password) return false;
-  const columns = await getUserColumns();
-  const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.dashboard_users WHERE id = $1`,
-    [Number(userId)],
-  );
+  const { rows } = await query(`SELECT ${USER_SELECT} FROM public.dashboard_users WHERE id = $1`, [Number(userId)]);
   const user = rows[0];
   if (!user) return false;
   if (user.password_hash && (await bcrypt.compare(password, user.password_hash))) return true;
@@ -262,18 +235,13 @@ export async function verifyCurrentPassword(userId, password) {
  * should stay in.
  */
 export async function setPermanentPassword(userId, newPassword) {
-  const columns = await getUserColumns();
   const hash = await bcrypt.hash(newPassword, 12);
-
-  const sets = ['password_hash = $1'];
-  if (columns.has('temp_password')) sets.push('temp_password = NULL');
-  if (columns.has('must_change_password')) sets.push('must_change_password = FALSE');
-  if (columns.has('last_login')) sets.push('last_login = NOW()');
-  if (columns.has('session_version')) sets.push('session_version = session_version + 1');
-
   const { rows } = await query(
-    `UPDATE public.dashboard_users SET ${sets.join(', ')} WHERE id = $2
-     RETURNING ${columns.selectList}`,
+    `UPDATE public.dashboard_users
+        SET password_hash = $1, temp_password = NULL, must_change_password = FALSE,
+            last_login = NOW(), session_version = session_version + 1
+      WHERE id = $2
+     RETURNING ${USER_SELECT}`,
     [hash, userId],
   );
   forgetSessionUser(userId);
@@ -281,9 +249,6 @@ export async function setPermanentPassword(userId, newPassword) {
 }
 
 export async function updateLastLogin(userId) {
-  const columns = await getUserColumns();
-  // Older installs have no last_login column; recording it is optional.
-  if (!columns.has('last_login')) return;
   await query('UPDATE public.dashboard_users SET last_login = NOW() WHERE id = $1', [userId]);
 }
 

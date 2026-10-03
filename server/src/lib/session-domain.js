@@ -41,10 +41,8 @@ export function sessionClaims(user) {
     username: user.username,
     customerId: user.customer_id,
     fullName: user.full_name,
-    // An install that has not run migration_add_user_management.sql has no
-    // roles, and every account there can already do everything — so the
-    // absent column reads as 'admin' rather than locking the page away.
-    role: user.role ?? 'admin',
+    // role is NOT NULL in the schema; a missing value fails closed.
+    role: user.role ?? 'staff',
     sv: Number(user.session_version ?? 0),
   };
 }
@@ -54,19 +52,17 @@ export function sessionClaims(user) {
  * is *now*.
  *
  * `row` is the account as the database holds it (null when it has been
- * deleted). `hasVersion` says whether this install has the session_version
- * column; without it, revocation falls back to what the row itself says —
- * still active, still in the same club — which covers deactivation and role
- * changes, though not a sign-out elsewhere.
+ * deleted). The token's `sv` must match the row's session_version, so bumping
+ * the column ends every session issued before.
  *
  * Role and club come from the row, never from the token, so a demoted admin
  * is a member of staff on their very next request.
  */
-export function evaluateSession(claims, row, { hasVersion = false } = {}) {
+export function evaluateSession(claims, row) {
   if (!row) return { ok: false, reason: 'account no longer exists' };
   if (row.is_active === false) return { ok: false, reason: 'account deactivated' };
   if (!row.customer_id) return { ok: false, reason: 'account has no club' };
-  if (hasVersion && Number(claims?.sv ?? 0) !== Number(row.session_version ?? 0)) {
+  if (Number(claims?.sv ?? 0) !== Number(row.session_version ?? 0)) {
     return { ok: false, reason: 'session revoked' };
   }
 
@@ -77,7 +73,7 @@ export function evaluateSession(claims, row, { hasVersion = false } = {}) {
       username: row.username,
       customerId: row.customer_id,
       fullName: row.full_name,
-      role: row.role ?? 'admin',
+      role: row.role ?? 'staff',
       mustChangePassword: Boolean(row.must_change_password),
     },
   };
