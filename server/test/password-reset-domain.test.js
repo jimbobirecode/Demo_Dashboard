@@ -48,17 +48,12 @@ test('configuration names every missing piece', () => {
 });
 
 test('the public shape never carries the API key', () => {
-  const published = publicResetConfig(readResetConfig(ENV), { migrated: true });
+  const published = publicResetConfig(readResetConfig(ENV));
 
   assert.equal(published.apiKey, undefined);
   assert.equal(published.hasApiKey, true);
   assert.equal(published.available, true);
-  assert.equal(
-    publicResetConfig(readResetConfig(ENV), { migrated: false }).available,
-    false,
-    'an un-migrated install cannot offer reset however well SendGrid is configured',
-  );
-  assert.equal(publicResetConfig(readResetConfig({}), { migrated: true }).available, false);
+  assert.equal(publicResetConfig(readResetConfig({})).available, false);
 });
 
 test('the token is random, hashed, and never stored in the clear', () => {

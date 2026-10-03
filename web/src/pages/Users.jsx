@@ -66,12 +66,7 @@ export default function Users() {
 
       {error && <div className="banner error">{error}</div>}
       {notice && <div className="banner success">{notice}</div>}
-      {state.config && !state.config.migrated && (
-        <div className="banner error">
-          Run <code>migration_add_user_management.sql</code> before creating accounts.
-        </div>
-      )}
-      {state.config?.migrated && !state.config.canInvite && (
+      {state.config && !state.config.canInvite && (
         <div className="banner">
           <strong>Invitation email is not configured.</strong> An account can still be created, but
           nobody can be emailed a link until you set {state.config.missing.join(', ')}.
@@ -85,7 +80,7 @@ export default function Users() {
       )}
 
       <NewUserForm
-        disabled={!state.config?.migrated || busy !== null}
+        disabled={!state.config || busy !== null}
         onCreate={(user) =>
           act('create', async () => {
             const result = await api.createUser(user);

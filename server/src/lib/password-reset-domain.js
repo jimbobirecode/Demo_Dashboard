@@ -97,14 +97,13 @@ export function readResetConfig(env = process.env) {
 }
 
 /** Strips the API key, for anything that crosses the wire. */
-export function publicResetConfig(config, { migrated = true } = {}) {
-  const { apiKey, ...rest } = config;
+export function publicResetConfig(config) {
+  const { apiKey: _apiKey, ...rest } = config;
   return {
     ...rest,
-    migrated,
     // The login screen only offers the link when a click could actually
     // produce an email; otherwise it says what an administrator has to do.
-    available: migrated && config.missing.length === 0,
+    available: config.missing.length === 0,
   };
 }
 

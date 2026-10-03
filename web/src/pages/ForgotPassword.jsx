@@ -97,11 +97,6 @@ function UnavailableNotice({ config }) {
     <div className="banner">
       <strong>Reset email is not set up yet.</strong>
       <div style={{ marginTop: '0.35rem', fontSize: '0.8125rem' }}>
-        {!config.migrated && (
-          <div>
-            Run <code>migration_add_password_reset.sql</code> against the database.
-          </div>
-        )}
         {config.missing?.length > 0 && (
           <div>
             Set {config.missing.join(', ')} in the server environment.

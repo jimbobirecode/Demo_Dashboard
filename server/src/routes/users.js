@@ -16,11 +16,7 @@ import { query } from '../db.js';
 import { bumpSessionVersion, forgetSessionUser, requireAdmin, requireAuth } from '../auth.js';
 import { patchRevokesSessions } from '../lib/session-domain.js';
 import { clubDisplayName } from '../lib/bookings-domain.js';
-import {
-  getUserColumns,
-  hasInvitePurpose,
-  hasUserManagement,
-} from '../lib/schema.js';
+import { USER_SELECT } from '../lib/schema.js';
 import {
   buildUserUpdate,
   guardDelete,
@@ -41,8 +37,8 @@ const router = Router();
 router.use(requireAuth, requireAdmin);
 
 /**
- * What the Users page needs before it draws anything: whether the migration
- * has been run, and whether an invitation could actually be sent.
+ * What the Users page needs before it draws anything: whether an invitation
+ * could actually be sent.
  */
 router.get('/config', async (req, res, next) => {
   try {
@@ -50,8 +46,6 @@ router.get('/config', async (req, res, next) => {
     const invite = config.purposes.invite;
 
     res.json({
-      migrated: await hasUserManagement(),
-      invitePurpose: await hasInvitePurpose(),
       canInvite: config.hasApiKey && Boolean(config.fromEmail) && invite.configured && Boolean(config.appUrl),
       inviteTtlMinutes: invite.ttlMinutes,
       // Shown on the page, so a wrong address is obvious before anyone is invited.
@@ -80,19 +74,11 @@ router.get('/', async (req, res, next) => {
 /** Create an account and email its invitation. */
 router.post('/', async (req, res, next) => {
   try {
-    if (!(await hasUserManagement())) {
-      return res.status(409).json({
-        error: 'Run migration_add_user_management.sql before creating accounts',
-      });
-    }
-
     const check = validateNewUser(req.body);
     if (!check.ok) return res.status(400).json({ error: check.errors.join('. ') });
 
     const { username, email, fullName, role } = check.value;
-    const columns = await getUserColumns();
-
-    const clash = await findClash(username, email, columns);
+    const clash = await findClash(username, email);
     if (clash) return res.status(409).json({ error: clash });
 
     // No password and no temp password: the invitation link is the only way
@@ -158,7 +144,7 @@ router.patch('/:id', async (req, res, next) => {
     if (!guard.ok) return res.status(409).json({ error: guard.reason });
 
     if (check.patch.email) {
-      const clash = await findClash(null, check.patch.email, await getUserColumns(), target.id);
+      const clash = await findClash(null, check.patch.email, target.id);
       if (clash) return res.status(409).json({ error: clash });
     }
 
@@ -210,9 +196,8 @@ router.delete('/:id', async (req, res, next) => {
 /* ---------- helpers ---------- */
 
 async function loadClubUsers(club) {
-  const columns = await getUserColumns();
   return query(
-    `SELECT ${columns.selectList} FROM public.dashboard_users
+    `SELECT ${USER_SELECT} FROM public.dashboard_users
       WHERE customer_id = $1 ORDER BY LOWER(username)`,
     [club],
   );
@@ -245,7 +230,7 @@ async function countActiveAdmins(club) {
  * the whole table, so a clash with another club's login would otherwise fail
  * as an unhandled constraint violation and a 500.
  */
-async function findClash(username, email, columns, excludeId = null) {
+async function findClash(username, email, excludeId = null) {
   if (username) {
     const { rows } = await query(
       'SELECT id FROM public.dashboard_users WHERE LOWER(username) = LOWER($1)',
@@ -254,7 +239,7 @@ async function findClash(username, email, columns, excludeId = null) {
     if (rows.some((row) => row.id !== excludeId)) return 'That username is already taken';
   }
 
-  if (email && columns.has('email')) {
+  if (email) {
     const { rows } = await query(
       'SELECT id FROM public.dashboard_users WHERE LOWER(email) = LOWER($1)',
       [email],
@@ -294,9 +279,6 @@ async function sendInvite(user, actor) {
 
   try {
     const { token, tokenHash, expiresAt } = mintToken({ ttlMinutes: invite.ttlMinutes });
-    const purposeColumn = (await hasInvitePurpose()) ? ', purpose' : '';
-    const purposeValue = purposeColumn ? ", 'invite'" : '';
-
     // A fresh invitation supersedes any outstanding one, so a forwarded older
     // email stops working the moment a new link is sent.
     await query(
@@ -304,8 +286,8 @@ async function sendInvite(user, actor) {
       [user.id],
     );
     await query(
-      `INSERT INTO public.password_resets (user_id, token_hash, email, expires_at${purposeColumn})
-       VALUES ($1, $2, $3, $4${purposeValue})`,
+      `INSERT INTO public.password_resets (user_id, token_hash, email, expires_at, purpose)
+       VALUES ($1, $2, $3, $4, 'invite')`,
       [user.id, tokenHash, address, expiresAt],
     );
 
@@ -329,10 +311,7 @@ async function sendInvite(user, actor) {
     });
 
     if (result.ok) {
-      await query(
-        'UPDATE public.dashboard_users SET invited_at = NOW() WHERE id = $1',
-        [user.id],
-      ).catch(() => {}); // Pre-migration installs have no column; the email still went.
+      await query('UPDATE public.dashboard_users SET invited_at = NOW() WHERE id = $1', [user.id]);
       return { sent: true, message: `Invitation sent to ${address}`, email: address };
     }
     return { sent: false, message: result.message };

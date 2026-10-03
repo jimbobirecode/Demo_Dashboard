@@ -20,7 +20,7 @@ import {
   verifyCurrentPassword,
 } from '../auth.js';
 import { clubDisplayName } from '../lib/bookings-domain.js';
-import { getUserColumns, hasPasswordReset } from '../lib/schema.js';
+import { USER_SELECT } from '../lib/schema.js';
 import {
   NEUTRAL_REPLY,
   buildResetTemplateData,
@@ -174,18 +174,11 @@ router.post('/logout', async (req, res) => {
 
 /**
  * What the login screen needs to know before it offers a "forgot password"
- * link: whether the migration has been run and whether SendGrid is configured.
- * Unauthenticated by necessity, so it carries no key and no address.
+ * link: whether SendGrid is configured to send it. Unauthenticated by
+ * necessity, so it carries no key and no address.
  */
-router.get('/reset-config', async (req, res) => {
-  let migrated = false;
-  try {
-    migrated = await hasPasswordReset();
-  } catch {
-    // A database that cannot be reached is reported as "not available" rather
-    // than as an error; the login form itself still works.
-  }
-  res.json(publicResetConfig(readResetConfig(), { migrated }));
+router.get('/reset-config', (req, res) => {
+  res.json(publicResetConfig(readResetConfig()));
 });
 
 /**
@@ -209,11 +202,6 @@ router.post('/forgot-password', async (req, res) => {
       console.warn('[auth] password reset throttled for', maskForLog(identifier));
       return;
     }
-    if (!(await hasPasswordReset())) {
-      console.warn('[auth] password reset requested but migration_add_password_reset.sql has not been run');
-      return;
-    }
-
     const config = readResetConfig();
     if (!config.configured) {
       console.warn('[auth] password reset requested but not configured:', config.missing.join(', '));
@@ -279,7 +267,7 @@ router.post('/reset-password/check', async (req, res, next) => {
       username: found.row.username,
       // 'invite' means this account has never had a password, so the page
       // says "set" rather than "reset" and does not imply they forgot one.
-      purpose: found.row.purpose ?? 'reset',
+      purpose: found.row.purpose,
       fullName: found.row.full_name ?? '',
       clubName: clubDisplayName(found.row.customer_id),
     });
@@ -316,7 +304,7 @@ router.post('/reset-password', async (req, res, next) => {
     res.json({
       ok: true,
       username: found.row.username,
-      purpose: found.row.purpose ?? 'reset',
+      purpose: found.row.purpose,
     });
   } catch (err) {
     next(err);
@@ -325,19 +313,16 @@ router.post('/reset-password', async (req, res, next) => {
 
 /** By username or by the address on file; both are unique enough in practice. */
 async function findUserForReset(identifier) {
-  const columns = await getUserColumns();
-  const byEmail = columns.has('email') ? ' OR LOWER(email) = LOWER($1)' : '';
-
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.dashboard_users
-      WHERE LOWER(username) = LOWER($1)${byEmail}
+    `SELECT ${USER_SELECT} FROM public.dashboard_users
+      WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)
       ORDER BY id LIMIT 1`,
     [identifier],
   );
 
   const user = rows[0];
   if (!user) return null;
-  if (columns.has('is_active') && !user.is_active) return null;
+  if (user.is_active === false) return null;
   return user;
 }
 
@@ -346,10 +331,6 @@ async function findResetRow(token) {
   if (!token || typeof token !== 'string') {
     return { ok: false, reason: 'This reset link is not valid. Request a new one.' };
   }
-  if (!(await hasPasswordReset())) {
-    return { ok: false, reason: 'Password reset is not available on this install.' };
-  }
-
   const { rows } = await query(
     `SELECT r.*, u.username, u.full_name, u.customer_id, u.is_active
        FROM public.password_resets r
