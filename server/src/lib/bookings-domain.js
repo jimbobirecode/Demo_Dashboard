@@ -20,7 +20,7 @@ export const ALL_STATUSES = [...PIPELINE_STAGES, ...TERMINAL_STATUSES];
  */
 export const LEGACY_STATUSES = { pending: 'Inquiry', confirmed: 'Booked' };
 
-/** What a PATCH may set, and what `npm run check` treats as a status it understands. */
+/** What a PATCH may set: the live statuses plus the retired spellings older rows carry. */
 export const ALLOWED_STATUSES = [...ALL_STATUSES, 'Pending', 'Confirmed'];
 
 export function normaliseStatus(status) {
