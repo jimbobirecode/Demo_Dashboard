@@ -41,7 +41,7 @@ The dashboard learns of payments two ways: Stripe's webhook and its own sync (15
 
 1. Open the booking → **Check Stripe for payment** (`POST /api/payments/bookings/:id/check`). If Stripe reports it paid, it is recorded and the receipt sent; done.
 2. As admin, **Check payment setup** (`GET /api/payments/diagnostics`): secret key and mode, webhook secret, `APP_URL`, whether Stripe has an enabled endpoint at `<APP_URL>/api/stripe/webhook` for the right events, last webhook, last sync.
-3. Webhook log (drawer, or `GET /api/payments/config` → `webhooks`, since the last restart):
+3. Webhook log (drawer, or `GET /api/payments/config` → `webhooks`, since the last restart; each club sees its own deliveries plus club-less ones such as refused signatures):
    - nothing received → no endpoint in Stripe for this URL, or it was created in the **other mode** (test vs live);
    - `rejected: Signature mismatch` → `STRIPE_WEBHOOK_SECRET` belongs to a different endpoint or mode;
    - `rejected: STRIPE_WEBHOOK_SECRET is not set` → set it (Stripe keeps retrying for up to 3 days);
@@ -64,9 +64,9 @@ Symptom: deploy fails its health check; log shows `[migrate] could not bring the
 
 | Message | Cause | Fix |
 |---|---|---|
-| `must be owner of table …` | Database role does not own the table | `ALTER TABLE … OWNER TO <dashboard role>`, redeploy |
+| `must be owner of table …` | A migration must really change a table (a new column or index) that the role does not own. Already-complete objects never need ownership | `ALTER TABLE … OWNER TO <dashboard role>`, redeploy |
 | `canceling statement due to lock timeout` | A long transaction held a lock > 15 s | Find it (`pg_stat_activity`), let it finish, redeploy at a quiet time |
-| `violates check constraint` / `could not create unique index` | Existing rows break a new constraint | Fix the data (see the pre-flight queries in [DEPLOYMENT.md](DEPLOYMENT.md#first-deploy-of-the-migration-runner--checklist)), redeploy |
+| `WARNING … left NOT VALID` / `WARNING … unique index … was not created` (deploy succeeds) | Existing rows break a new constraint or index; nothing was deleted | Fix the data (pre-flight queries in [DEPLOYMENT.md](DEPLOYMENT.md#first-deploy-of-the-migration-runner--checklist)), then `ALTER TABLE … VALIDATE CONSTRAINT …` or add the index in a new migration |
 | `has changed since it was applied … (checksum mismatch)` | An applied migration file was edited | Revert the file; put the change in a new migration |
 | `version NNNN is also used by …` / naming / `remove BEGIN/COMMIT` | Bad migration file | Fix the file (it was never applied) |
 | `DATABASE_URL is not set` / connection errors | Configuration | Fix `DATABASE_URL` |
@@ -87,7 +87,8 @@ Run `npm run migrate:status` with the production `DATABASE_URL` to see what is a
 2. Logs: `[portal] sign-in asked for an address on no operator account: j***@…` → address/domain not on any active operator. `sign-in link not emailed` → SendGrid not configured or failed.
 3. Throttle: 5 requests per address / 20 per IP per 15 minutes (silently not sent).
 4. The link works once, for 30 minutes; "expired or already used" → request a new one. Redeeming is a POST the sign-in page makes with JavaScript, so a plain link pre-fetch does not use it up, but a corporate mail scanner that opens links in a full browser can; if that recurs, ask the operator to allow-list the dashboard's domain in their scanner.
-5. Signed in but then "Your session has ended" → the operator was retired or the address/domain was removed from the account.
+5. Signed in but then "Your session has ended" → the operator signed out elsewhere with the same cookie, the session expired (12 h), the operator was retired, or the address/domain was removed from the account. Portal cookies from before migration `0006` are refused once: sign in again.
+6. Each new sign-in request retires the address's earlier unused links: only the newest email works.
 
 ### Guests report "That link is not valid" on manage-booking
 
@@ -144,7 +145,7 @@ Roles: incident lead, communications, scribe — names and contacts **TO CONFIRM
 
 1. **Detect** – Render health/uptime alert, Sentry, staff or guest report.
 2. **Triage** – which service and component (dashboard API, core API, database, SendGrid, Stripe, Anthropic), personal-data impact, start time, severity.
-3. **Contain** – e.g. rotate a leaked secret ([DEPLOYMENT.md](DEPLOYMENT.md#secret-rotation)); rotate `JWT_SECRET` to end every staff and portal session; rotate `BOOKING_LINK_SECRET` (both services) to kill all guest links; deactivate a compromised staff account (ends its sessions immediately); retire an operator account (ends portal access); unset `STRIPE_SECRET_KEY` to stop new payment links and the sync; core API containment switches are in its runbook.
+3. **Contain** – e.g. rotate a leaked secret ([DEPLOYMENT.md](DEPLOYMENT.md#secret-rotation)); rotate `JWT_SECRET` to end every staff and portal session (or `UPDATE operator_portal_sessions SET revoked_at = NOW() WHERE revoked_at IS NULL` for the portal alone); rotate `BOOKING_LINK_SECRET` (both services) to kill all guest links; deactivate a compromised staff account (ends its sessions immediately); retire an operator account (ends portal access); unset `STRIPE_SECRET_KEY` to stop new payment links and the sync; core API containment switches are in its runbook.
 4. **Eradicate / recover** – fix, deploy (dashboard before core API), run the post-deploy checks; restore from backup only if data is corrupted.
 5. **Communicate** – club staff, affected guests/operators, and regulators where required (**TO CONFIRM (owner)**).
 6. **Review** – blameless post-mortem within **TO CONFIRM (owner)** days: timeline, root cause, actions with owners; update these runbooks.

@@ -80,7 +80,7 @@ Every route served by the Express app (`server/src/app.js`, routers in `server/s
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/` | `?status=open\|replied\|dismissed\|all` — inbound emails for review |
+| GET | `/` | `?status=open\|replied\|dismissed\|all` — inbound emails for review, with counts. Rows the core API is still handling (`routed_to` `queued`/`processing`) are left out of every status and count except `all`, where they are labelled `Queued` / `Being processed` |
 | GET | `/booking/:bookingId` | A booking's whole conversation |
 | POST | `/booking/:bookingId/send` | `{subject, body}` — email the booking's guest (address taken from the booking, not the request); logged in `email_messages` |
 | POST | `/preview` | `{body, replyToId}` — render the HTML a reply would send |
@@ -98,9 +98,9 @@ Outgoing staff emails include the booking's signed manage link when the email is
 | GET | `/` | Entries, demand and conversion figures, suggested conversions |
 | POST | `/` | Create an entry (validated) |
 | PATCH | `/:waitlistId` | `{status, priority, notes, notificationSent}`; `Converted` is refused here |
-| POST | `/:waitlistId/convert` | `{teeTime, date, total}` — creates a `Booked` booking and links it, in one transaction |
+| POST | `/:waitlistId/convert` | `{teeTime, date, total}` — creates a `Booked` booking (reference in the core API format, `lib/booking-ref.js`) and links it, in one transaction |
 | POST | `/:waitlistId/link` | `{bookingId}` — record that an existing booking was this entry's conversion |
-| DELETE | `/:waitlistId` | Delete an unconverted entry (409 for a converted one) |
+| DELETE | `/:waitlistId` | **Admin**. Delete an unconverted entry (409 for a converted one) |
 
 ## `/api/operators` (`routes/operators.js`) — **Staff**
 
@@ -110,7 +110,7 @@ Outgoing staff emails include the booking's signed manage link when the email is
 | GET | `/:id` | One account with its bookings |
 | POST | `/` | Create (validated; consumer email domains refused in `email_domains`) |
 | PATCH | `/:id` | Update |
-| DELETE | `/:id` | Delete, or **retire** (`active = false`) when bookings are attached. Staff, not admin-only |
+| DELETE | `/:id` | **Admin**. Delete, or **retire** (`active = false`) when bookings are attached |
 | GET | `/suggestions/unmatched` | `?threshold=` — business domains seen repeatedly with no account; bookings naming an operator in text |
 | POST | `/assign` | `{bookingIds[], operatorId\|null}` — attach/detach bookings; the operator must belong to the club |
 
@@ -143,20 +143,20 @@ Outgoing staff emails include the booking's signed manage link when the email is
 
 | Method | Path | Auth | Purpose / responses |
 |---|---|---|---|
-| GET | `/config` | Staff | What is configured (secrets stripped) and the in-memory log of the last 20 webhook deliveries |
+| GET | `/config` | Staff | What is configured (secrets stripped) and the in-memory log of recent webhook deliveries, **filtered to the caller's club** (entries that belong to no club, such as a refused signature, are shown without a booking reference) |
 | POST | `/bookings/:bookingId/link` | Staff | `{amount}` — creates a Stripe Payment Link, emails it to the booking's guest, marks payment `Pending`; deactivates the previous link. 409 if Stripe/SendGrid not configured; 502 if the email fails (the new link is deactivated) |
 | POST | `/bookings/:bookingId/receipt` | Staff | Resend the receipt for the last payment |
 | POST | `/bookings/:bookingId/check` | Staff | Ask Stripe whether the link was paid; records it if so |
-| POST | `/sync` | Staff | Check every pending link now (all clubs on this deployment) |
+| POST | `/sync` | Staff | Check every pending link now (the run covers every club on the deployment); the answer lists only the caller's club's bookings and counts |
 | GET | `/diagnostics` | **Admin** | End-to-end check of keys, mode, `APP_URL`, Stripe webhook endpoints (queried from Stripe), last webhook and last sync |
 
 ## `/api/portal` (`routes/portal.js`) — tour operator portal
 
 | Method | Path | Auth | Limits | Purpose / responses |
 |---|---|---|---|---|
-| POST | `/login` | Public | 5/15 min per address, 20/15 min per IP (silently dropped) | `{email}`. 400 if empty, otherwise always 200 with a neutral message; when the address is an operator's contact or on one of its (non-free-mail) domains, emails a one-time link valid 30 min |
-| POST | `/session` | Token in body | 20/15 min per IP → 429 | `{token}`. Claims the link atomically (single use), checks the operator is active, sets the `teemail_operator` cookie (12 h). 400 for any bad link |
-| POST | `/logout` | Public | – | Clears the cookie |
+| POST | `/login` | Public | 5/15 min per address, 20/15 min per IP (silently dropped) | `{email}`. 400 if empty, otherwise always 200 with a neutral message; when the address is an operator's contact or on one of its (non-free-mail) domains, retires that address's unused links and emails a new one-time link valid 30 min |
+| POST | `/session` | Token in body | 20/15 min per IP → 429 | `{token}`. Claims the link atomically (single use), checks the operator is active, records a session (`operator_portal_sessions`) and sets the `teemail_operator` cookie (12 h) carrying its id. 400 for any bad link |
+| POST | `/logout` | Public (reads the cookie) | – | Revokes the session row and clears the cookie; a copy of the cookie no longer works |
 | GET | `/me` | Portal | – | Operator, terms and account summary |
 | GET | `/bookings` | Portal | – | Only this operator's bookings, with what each owes |
 | GET | `/statement.csv` | Portal | – | The same as CSV (formula-defused) |
@@ -164,7 +164,7 @@ Outgoing staff emails include the booking's signed manage link when the email is
 | POST | `/bookings/:bookingId/pay` | Portal | – | Creates a Stripe link for the **server-computed** outstanding balance; returns `{url, amount}`. 409 if payments not configured |
 | POST | `/enquiries` | Portal | – | New tee-time request → `email_messages` row in the club's Inbox |
 
-Every portal request re-reads the operator: retiring the account or removing the signed-in address/domain ends the session (401).
+Every portal request checks the session row (`operator_portal_sessions`: not revoked, not expired, same operator and club) and re-reads the operator: signing out, retiring the account or removing the signed-in address/domain ends the session (401).
 
 ## SPA routes (not API)
 

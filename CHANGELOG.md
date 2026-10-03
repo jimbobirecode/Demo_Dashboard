@@ -18,11 +18,23 @@ Notable changes to the TeeMail dashboard. The project has no version tags; entri
 - Uploaded workbooks read as a stream with row/column ceilings.
 - Dependencies: helmet added, react-router-dom 7, `uuid` override; `npm audit` clean.
 - Ad-hoc booking-deletion and debug SQL scripts removed from the repository.
+- Sign-in spends one bcrypt comparison on unknown, deactivated and password-less accounts, so timing does not reveal which accounts exist.
+- Tour operator portal sessions are rows (`operator_portal_sessions`, migration 0006): sign-out revokes them and a copied cookie stops working; a new sign-in request retires the address's unused links.
+- Stripe webhook log and payment-sync results are filtered to the caller's club.
+- `APP_URL` missing in production is logged as an error at boot; only a configured `APP_URL` is trusted by the CSRF origin check.
+- Sentry events and breadcrumbs are scrubbed (no query strings, cookies, headers, bodies or user; addresses masked).
+- TLS required for every non-local database host; certificate verification with `PGSSLROOTCERT`, `sslmode=verify-full` or `DATABASE_SSL_VERIFY=true`.
+- Operator and waitlist deletes are administrator-only (hidden from staff in the SPA).
+- `.xlsx` exports defuse formula-like strings too.
+- Booking references the dashboard issues use the core API's format and the CSPRNG (`BOOKING_REF_PREFIX-YYYYMMDD-XXXXXXXXXX`), so guest replies quoting them are linked.
 
 ### Quality
 
-- Versioned schema migrations (`db/migrations/0001`–`0005`) applied before the server listens, with checksums, an advisory lock and one transaction per file; `npm run migrate`, `npm run migrate:status`. The old `migration_*.sql` files, runtime schema probes and the `npm run check` preflight are retired; every route assumes the migrated schema.
+- Versioned schema migrations (`db/migrations/0001`–`0007`) applied before the server listens, with checksums, an advisory lock and one transaction per file; `npm run migrate`, `npm run migrate:status`. The old `migration_*.sql` files, runtime schema probes and the `npm run check` preflight are retired; every route assumes the migrated schema.
 - Static column lists instead of runtime column detection.
+- Migrations check the catalog before every DDL statement (`pg_temp` guard helpers): no-ops on an existing schema need no table ownership; CHECK constraints are added `NOT VALID` then validated, and unique indexes that existing duplicates block are skipped with a warning, never failing the deploy or deleting data.
+- Migration 0007: `email_messages.message_id` with a unique inbound index, and an index for rows the core API is still processing; the Inbox labels `queued`/`processing` rows and never counts them as needing a person.
+- Every entry point loads the repository-root `.env` (`server/src/env.js`), so `npm run dev` needs no extra setup; `.env.example` defaults to `NODE_ENV=development`.
 - One small logger (`LOG_FORMAT=json`, `LOG_LEVEL`) with optional Sentry; `.env.example` and `render.yaml` completed.
 - HTTP route tests for the security-critical paths against real Postgres; migration runner tests; Vitest for the SPA; coverage floors.
 - ESLint (flat config) and Prettier, every finding fixed; dead code removed.

@@ -22,8 +22,7 @@ fnm use                         # reads .node-version; or: nvm install 22
 npm ci
 
 # 2. Environment
-cp .env.example .env            # set DATABASE_URL and JWT_SECRET at least; NODE_ENV=development locally
-ln -s ../.env server/.env       # `npm run dev` starts the API from server/, where dotenv looks for .env
+cp .env.example .env            # set DATABASE_URL and JWT_SECRET at least (NODE_ENV=development is the default)
 
 # 3. Database
 createdb teemail_dev            # DATABASE_URL=postgresql://localhost/teemail_dev
@@ -38,7 +37,7 @@ npm run dev                     # API on :3001 (node --watch) + Vite on :5173 (p
 npm run build && npm start
 ```
 
-`npm start` and `npm run migrate` run from the repository root and read the root `.env`; `npm run dev` runs the API inside `server/`, hence the symlink. Without SendGrid, Stripe or Club Vero settings the pages that need them say what is missing and do not send.
+Every entry point (`npm run dev`, `npm start`, `npm run migrate`, `npm run seed`) reads the repository-root `.env` (`server/src/env.js`); variables already in the environment win. Without SendGrid, Stripe or Club Vero settings the pages that need them say what is missing and do not send.
 
 ## Tests, lint and format
 
@@ -76,7 +75,7 @@ Never point `TEST_DATABASE_URL` at real data: the tests create, truncate and dro
 
 | Path | Purpose |
 |---|---|
-| `server/src/index.js` | Boot: Sentry, migrations, listen, start-up checks, Stripe payment sync |
+| `server/src/index.js` | Boot: `.env` (`env.js`), Sentry, migrations, listen, start-up checks, Stripe payment sync |
 | `server/src/app.js` | Express app: helmet/CSP, body limits, CSRF check, routers, SPA fallback, error handler |
 | `server/src/auth.js` | Staff sessions (JWT cookie re-checked against the database), sign-in, password hashing |
 | `server/src/routes/` | One router per area: `auth`, `users`, `bookings`, `analytics`, `changes` (guest manage-booking + approvals), `inbox`, `waitlist`, `operators`, `emails` (guest campaigns), `reminders` (operator emails), `imports`, `payments`, `stripe-webhook`, `portal` |
@@ -93,7 +92,7 @@ Never point `TEST_DATABASE_URL` at real data: the tests create, truncate and dro
 
 ## Features
 
-- **Bookings**: list and filters over the `Inquiry → Requested → Booked` pipeline (plus `Rejected`, `Cancelled`); edit status, note, tee time; CSV/XLSX export with formula-defused cells; delete (administrators).
+- **Bookings**: list and filters over the `Inquiry → Requested → Booked` pipeline (plus `Rejected`, `Cancelled`); edit status, note, tee time; CSV/XLSX export with formula-defused cells; delete (administrators). References the dashboard issues use the core API's format (`TMG-YYYYMMDD-XXXXXXXXXX`, prefix `BOOKING_REF_PREFIX`).
 - **Inbox**: emails the core API held for a person, with what the language model understood and a drafted reply; reply (quoting the guest, booking reference in the subject), dismiss, or attach to a booking. Every booking shows its whole email conversation.
 - **Guest Requests**: guests (via a signed manage link) and operators ask to amend or cancel; nothing changes until staff approve. Approving a cancellation cancels the booking; approving an amendment leaves the edit to staff. Guests are emailed at each step.
 - **Payments**: Stripe Payment Links emailed from the booking drawer; the webhook and a periodic sync record payments once, move `Inquiry`/`Requested` bookings to `Booked`, start the pre-play clock and email a receipt. Manual payment fields and trade credit terms per booking.

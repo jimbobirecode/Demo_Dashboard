@@ -39,7 +39,7 @@ CI runs the same steps (plus migrations and seeds on Postgres 16) on every push 
 
 - Schema changes only through a new file `db/migrations/NNNN_lower_snake_name.sql`, one above the highest version ([docs/MIGRATIONS.md](docs/MIGRATIONS.md)).
 - **Never edit a migration that has been applied anywhere**; fix forward with a new file. The runner refuses to start on a checksum mismatch.
-- No `BEGIN`/`COMMIT` in the file (the runner wraps it); prefer idempotent DDL; data changes must be safe and quick on production as it is.
+- No `BEGIN`/`COMMIT` in the file (the runner wraps it); every DDL statement through the `pg_temp` guard helpers so it is a no-op (needing no table ownership) when the object exists; CHECK constraints via `ensure_check` (`NOT VALID` first), unique indexes via `ensure_unique_index`; never delete data to make a constraint fit; data changes must be safe and quick on production as it is ([docs/MIGRATIONS.md](docs/MIGRATIONS.md#guarded-ddl)).
 - Run it twice against a scratch database (`npm run migrate`; the second run must say `schema up to date`) and run the DB integration tests.
 - No runtime DDL in application code.
 

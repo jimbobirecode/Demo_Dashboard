@@ -23,7 +23,7 @@ Controller/processor roles (golf club vs TeeMail) and the lawful basis for proce
 | Booking details (dates, times, players, courses, lodging, prices, payment status, amounts) | Guest / operator | Both | `bookings` | SendGrid, Stripe (amount, booking reference), Club Vero (date, course, tee time, players, spend) |
 | Payment | Guest / operator | Stripe (hosted page) | `bookings` holds Stripe ids, amounts and dates only; **no card data** | – |
 | Operator contact name, email, phone, email domains | Operator contact | Staff | `tour_operators` | SendGrid (reminders, portal links) |
-| Portal sign-in address, IP | Operator contact | Dashboard | `operator_portal_links.email/requested_ip` | SendGrid (link) |
+| Portal sign-in address, IP | Operator contact | Dashboard | `operator_portal_links.email/requested_ip`, `operator_portal_sessions.email/requested_ip` | SendGrid (link) |
 | Staff username, email, full name, password hash, last login | Staff | Dashboard | `dashboard_users` | SendGrid (invite/reset email) |
 | Reset/invite request IP | Staff | Dashboard | `password_resets.requested_ip` | – |
 | Change-request IP | Guest / operator | Dashboard | `booking_change_requests.requested_ip` | – |
@@ -79,7 +79,7 @@ Inbound email lifecycle, booking-form flow and exactly what goes to Anthropic: c
 | **Stripe** | Dashboard | Payment Links, payment events, receipts data | Amount, currency, booking reference and club (metadata), guest email (prefill); the guest gives card and billing details to Stripe directly | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | **TO CONFIRM (owner)** |
 | **Render** | Both | Hosting, environment variables, log stream | All data in transit; logs (masked addresses, references, ids, error texts) | Render services | Region: **TO CONFIRM (owner)**; log retention: **TO CONFIRM (owner)** |
 | **Postgres provider** | Both | Shared database | Everything stored | `DATABASE_URL` | Provider in production, region, encryption at rest, backups: **TO CONFIRM (owner)** (see [OPERATIONS.md](OPERATIONS.md#backup-and-restore)) |
-| **Sentry** (optional) | Both | Error reporting | Dashboard: exception messages and stacks, request URL (may include query string), no cookies/IP (`sendDefaultPii: false`). Core API: scrubbed events (see its SECURITY.md) | `SENTRY_DSN` per service | Whether enabled in production, region, retention: **TO CONFIRM (owner)** |
+| **Sentry** (optional) | Both | Error reporting | Dashboard: exception messages and stacks, scrubbed by `lib/sentry-scrub.js` (request reduced to method and URL without query string; no cookies, headers, bodies, user or IP; email addresses masked). Core API: scrubbed events (see its SECURITY.md) | `SENTRY_DSN` per service | Whether enabled in production, region, retention: **TO CONFIRM (owner)** |
 | **Club Vero** (optional) | Dashboard | Post-play feedback surveys | Booking reference, play date, course, tee time, players, spend, guest name, email, phone | `VERO_BASE_URL`, `VERO_PARTNER_KEY`, `VERO_PARTNER_SOURCE`, `VERO_SITE` | Operated by **TO CONFIRM (owner)** (described as "the same club's other product"); region, retention: **TO CONFIRM (owner)** |
 | **Google Fonts** | Dashboard (browser) | Web fonts allowed by the CSP | Staff/guest/operator browser IP and user agent when fonts are fetched | `web/index.html`, CSP `style-src`/`font-src` | n/a |
 | **rGuest** (optional) | Core API | Live availability | No guest data | Club profile | n/a unless enabled |
@@ -97,7 +97,7 @@ Neither service deletes data on a schedule; there is no retention job. Deletions
 | `waitlist` | **TO CONFIRM (owner)** |
 | `tour_operators` | **TO CONFIRM (owner)** |
 | `dashboard_users` (incl. deactivated accounts) | **TO CONFIRM (owner)** |
-| `password_resets`, `operator_portal_links` (used/expired rows and IPs are never purged) | **TO CONFIRM (owner)** |
+| `password_resets`, `operator_portal_links`, `operator_portal_sessions` (used/expired/revoked rows and IPs are never purged) | **TO CONFIRM (owner)** |
 | Render logs | **TO CONFIRM (owner)** |
 | Sentry events | **TO CONFIRM (owner)** |
 | SendGrid inbound/activity data | **TO CONFIRM (owner)** |

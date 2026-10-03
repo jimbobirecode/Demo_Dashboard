@@ -77,11 +77,11 @@ Both services scope rows by club: the core API uses its `CLUB_ID` (club profile)
 | Issued by | Format | Code |
 |---|---|---|
 | Core API (enquiries) | `PREFIX-YYYYMMDD-XXXXXXXXXX`: profile prefix (`RDG`, `TMG`), date, 10 chars `[A-Z0-9]` from `secrets` (older rows: 4 chars) | `db.generate_booking_reference`, `club_config.booking_ref_pattern` (core API) |
-| Dashboard, waitlist conversion | `BOOK-YYYYMMDD-XXXX` (4 hex chars, `Math.random`) | `server/src/routes/waitlist.js` `mintConvertedBookingId` |
-| Dashboard, tee-sheet import | `IMP-YYYYMMDD-XXXX-NNNN` (batch id + line number), unless the sheet carries its own reference | `server/src/lib/import-domain.js` |
+| Dashboard (waitlist conversion; tee-sheet row without its own reference) | The same format: `BOOKING_REF_PREFIX` (default `TMG`; must be one of the core API's profile prefixes), date in the club time zone, 10 chars `[A-Z0-9]` from `crypto.randomInt` | `server/src/lib/booking-ref.js` `mintBookingReference` |
+| Dashboard, older rows | `BOOK-YYYYMMDD-XXXX`, `IMP-YYYYMMDD-XXXX-NNNN` (before October 2026) | – |
 | Seeds (sample data) | `RD-DEMO-…` | `scripts/seed.mjs`, `db/seeds/*.sql` |
 
-`bookings.booking_id` is `UNIQUE`. Dashboard-issued references do not match the core API's reference pattern, so a guest email quoting one is not recognised as a reply to that booking by the core API (see [SECURITY.md](SECURITY.md#known-issues-and-residual-risks)).
+`bookings.booking_id` is `UNIQUE`. The core API recognises a reference in a guest's email by its pattern (any profile prefix), so references the dashboard issues now link replies too; the older `BOOK-`/`IMP-` ones do not match and are only found through their manage link or by staff. Import batches keep their own id (`IMP-YYYYMMDD-XXXXXX`, `bookings.import_batch`), which is not a booking reference.
 
 ### Signed booking links (`BOOKING_LINK_SECRET`)
 
@@ -125,8 +125,8 @@ stateDiagram-v2
 
 ### `email_messages` (conversation log and Inbox)
 
-- **Core API** inserts every inbound email on arrival (`routed_to = 'queued'`, SPF/DKIM results in `extraction->'inbound'`), then updates it with the Anthropic triage result (`intent`, `summary`, `extraction`, `draft_reply`) and the route; held emails get `routed_to = 'inbox'`, `review_status = 'open'`, `review_reason`. It also inserts each outbound email it sends.
-- **Dashboard** reads them for the Inbox and each booking's conversation, updates `review_status` (`replied`/`dismissed`/`open`), `handled_at/by` and `booking_id` (link), inserts every email it sends (`server/src/lib/email-log.js`) and inserts portal enquiries as `inbound` rows with `intent = 'operator_request'`.
+- **Core API** inserts every inbound email on arrival (`routed_to = 'queued'`, `message_id` = its Message-ID — unique per club among inbound rows, migration `0007` — SPF/DKIM results in `extraction->'inbound'`), claims it (`processing`), then updates it with the Anthropic triage result (`intent`, `summary`, `extraction`, `draft_reply`) and the route; held emails get `routed_to = 'inbox'`, `review_status = 'open'`, `review_reason`. It also inserts each outbound email it sends.
+- **Dashboard** reads them for the Inbox (rows still `queued`/`processing` are labelled but never counted or listed as needing a person) and each booking's conversation, updates `review_status` (`replied`/`dismissed`/`open`), `handled_at/by` and `booking_id` (link), inserts every email it sends (`server/src/lib/email-log.js`) and inserts portal enquiries as `inbound` rows with `intent = 'operator_request'`.
 
 ### `booking_change_requests`
 

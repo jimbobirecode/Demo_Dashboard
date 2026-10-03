@@ -4,7 +4,7 @@
 
 | Suite | Location | Runner | Needs |
 |---|---|---|---|
-| Server unit tests | `server/test/*.test.js` (24 files) | `node --test` | Nothing: domain modules are pure functions; `session-auth.test.js` drives `requireAuth` with a stubbed `pool.query` |
+| Server unit tests | `server/test/*.test.js` (29 files) | `node --test` | Nothing: domain modules are pure functions; `session-auth.test.js` drives `requireAuth` with a stubbed `pool.query` |
 | Server DB integration | `server/test/integration/*.test.js` | `node --test` | `TEST_DATABASE_URL` (skipped when unset) |
 | Web (SPA) | `web/src/**/*.test.{js,jsx}` (4 files) | Vitest + jsdom + Testing Library (`web/vite.config.js`, setup `web/src/test/setup.js`) | Nothing |
 
@@ -12,17 +12,17 @@ Server unit files by area:
 
 | Area | Files |
 |---|---|
-| Sessions, auth, CSRF, throttles | `session-domain`, `session-auth`, `request-guard`, `throttle`, `password-reset-domain`, `users-domain` |
+| Sessions, auth, CSRF, throttles | `session-domain`, `session-auth` (incl. equal bcrypt work for unknown accounts), `request-guard` (incl. no default `APP_URL` origin), `throttle`, `password-reset-domain`, `users-domain` |
 | Guests and links | `change-request-domain`, `guest-change-emails`, `portal-domain` |
-| Payments | `payment-link-domain` (incl. Stripe signature verification, idempotency rules) |
-| Exports and imports | `csv` (formula defusing), `import-domain`, `sheet-reader` (row/column caps) |
+| Payments | `payment-link-domain` (incl. Stripe signature verification, idempotency rules), `payment-scope` (webhook log and sync results per club) |
+| Exports and imports | `csv` (formula defusing, CSV and `.xlsx` rows), `import-domain`, `sheet-reader` (row/column caps), `booking-ref` (core API reference format, CSPRNG) |
 | Bookings, analytics, operators, waitlist, email | `bookings-domain`, `analytics-domain`, `operators-domain`, `operator-emails-domain`, `waitlist-domain`, `email-domain`, `email-layout`, `inbox-domain`, `vero-domain`, `currency` |
-| Infrastructure | `logger`, `app-loads` (the app module imports and mounts) |
+| Infrastructure | `logger`, `sentry-scrub` (no query strings, cookies, bodies or addresses), `db-ssl` (TLS for remote databases), `app-loads` (the app module imports and mounts) |
 
 Integration suites:
 
-- `migrate.test.js` — reads migrations in order with stable checksums; CRLF-insensitive checksums; refuses bad names, duplicate versions and files with their own transaction; applies every migration to an empty database then finds nothing to do; re-running the baseline SQL by hand changes nothing; two concurrent runners apply each file once; an edited applied migration is refused; a failing migration rolls back and is not recorded.
-- `routes.test.js` — real Express app against a migrated scratch database: sign-in (uniform 401, lockout after 5 failures), `requireAuth` (garbage/foreign signatures, revoked `session_version`, club taken from the account not the token, portal token refused), CSRF header and Origin, club scoping (IDOR) for bookings and users, admin-only routes, operator portal isolation and session end on retirement, manage-booking links (uniform refusal, cross-club token refused, private fields withheld).
+- `migrate.test.js` — reads migrations in order with stable checksums; CRLF-insensitive checksums; refuses bad names, duplicate versions and files with their own transaction; applies every migration to an empty database then finds nothing to do; re-running the baseline SQL by hand changes nothing; two concurrent runners apply each file once; an edited applied migration is refused; a failing migration rolls back and is not recorded; a role that owns no table can run every migration on an existing schema (all no-ops); rows that break a new CHECK or unique index leave it `NOT VALID` / skipped, with nothing deleted and new rows still checked.
+- `routes.test.js` — real Express app against a migrated scratch database: sign-in (uniform 401, lockout after 5 failures), `requireAuth` (garbage/foreign signatures, revoked `session_version`, club taken from the account not the token, portal token refused), CSRF header and Origin, club scoping (IDOR) for bookings and users, admin-only routes, operator portal isolation and session end on retirement, manage-booking links (uniform refusal, cross-club token refused, private fields withheld); portal sign-out revoking the session, forged portal tokens without a session row, new sign-in links retiring older ones; admin-only operator/waitlist deletes; the payment webhook log per club; in-flight inbound emails kept out of the Inbox and the inbound Message-ID unique index.
 
 Each integration test creates and drops its own databases next to `TEST_DATABASE_URL` (`helpers.js`), so that URL must point at a **disposable server** whose user may `CREATE DATABASE`. Never point it at real data.
 
@@ -39,7 +39,7 @@ export TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 npm run test:coverage
 ```
 
-At the time of writing: 305 server tests with `TEST_DATABASE_URL` (282 without), 16 web tests, all passing. The route tests in `integration/routes.test.js` use `supertest` against the real app.
+At the time of writing: 328 server tests with `TEST_DATABASE_URL` (298 without), 16 web tests, all passing. The route tests in `integration/routes.test.js` use `supertest` against the real app.
 
 Tests set no production secrets and call no external service: SendGrid, Stripe and Club Vero clients take an injected `fetch`, and tests inject a fake.
 
@@ -49,9 +49,9 @@ Tests set no production secrets and call no external service: SendGrid, Stripe a
 
 | Metric | Floor | Measured with DB | Measured without DB |
 |---|---|---|---|
-| Lines | 68% | 75.2% | 70.3% |
-| Branches | 84% | 85.3% | 86.3% |
-| Functions | 72% | 80.2% | 75.1% |
+| Lines | 68% | 76.7% | 70.7% |
+| Branches | 84% | 85.7% | 86.9% |
+| Functions | 72% | 82.0% | 76.0% |
 
 The floors hold without a database, which is how the CI `test` job runs them; the `database` job runs them again with the integration suites. Route handlers outside the security-critical paths (analytics, campaigns, inbox, waitlist, Stripe webhook handler) have low line coverage; their logic lives in the domain modules, which are covered.
 

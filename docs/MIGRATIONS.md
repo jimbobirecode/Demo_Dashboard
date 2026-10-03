@@ -11,8 +11,10 @@ Current files:
 | 0003 | `0003_baseline_operator_portal.sql` | `operator_portal_links` |
 | 0004 | `0004_baseline_guest_requests_and_inbox.sql` | `booking_change_requests`, `email_messages` |
 | 0005 | `0005_retire_legacy_statuses.sql` | `Pending` → `Inquiry`, `Confirmed` → `Booked` |
+| 0006 | `0006_operator_portal_sessions.sql` | `operator_portal_sessions` (revocable portal sessions) |
+| 0007 | `0007_email_messages_message_id.sql` | `email_messages.message_id`, unique inbound Message-ID index, pending-row index (core API) |
 
-`0001`–`0004` are a **baseline**: they reproduce the schema production was running on when versioned migrations were introduced (folding in the retired `migration_*.sql` files and the core API's old runtime DDL), idempotently, so they are no-ops on a database that already has it. What they change on the existing production database, and the first-deploy checklist: [DEPLOYMENT.md](DEPLOYMENT.md#first-deploy-of-the-migration-runner--checklist). Resulting tables: [DATA_MODEL.md](DATA_MODEL.md).
+`0001`–`0004` are a **baseline**: they reproduce the schema production was running on when versioned migrations were introduced (folding in the retired `migration_*.sql` files and the core API's old runtime DDL), idempotently, so they are no-ops on a database that already has it — without needing to own its tables (see [Guarded DDL](#guarded-ddl)). What they change on the existing production database, and the first-deploy checklist: [DEPLOYMENT.md](DEPLOYMENT.md#first-deploy-of-the-migration-runner--checklist). Resulting tables: [DATA_MODEL.md](DATA_MODEL.md).
 
 ## How the runner works
 
@@ -24,6 +26,23 @@ Current files:
 - **Concurrency**: `pg_advisory_lock(7311420042)` around the whole run. A second instance booting at the same time waits, then finds nothing to do.
 - **Unknown versions**: a version in `schema_migrations` with no file (e.g. after rolling code back) is a warning, not an error.
 - **Warnings**: `RAISE WARNING` from a migration is logged at `warn` level (used by `0002` when duplicate accounts prevent a unique index).
+
+## Guarded DDL
+
+`ALTER TABLE … ADD COLUMN IF NOT EXISTS`, `COMMENT ON` and `CREATE INDEX IF NOT EXISTS` all require ownership of the table even when they would change nothing, and the production tables may be owned by another role. So each file defines a few helpers in `pg_temp` (session-local, dropped at the end of the file) and every DDL statement goes through them:
+
+| Helper | Does | When the object exists |
+|---|---|---|
+| `pg_temp.has_column(table, column)` | catalog lookup (`pg_attribute`) | – |
+| `pg_temp.ensure_column(table, column, definition)` | `ALTER TABLE … ADD COLUMN` | nothing |
+| `pg_temp.ensure_index(name, ddl)` | runs the `CREATE INDEX` | nothing |
+| `pg_temp.ensure_unique_index(name, ddl)` | runs the `CREATE UNIQUE INDEX`; duplicates → `WARNING`, index skipped | nothing |
+| `pg_temp.ensure_check(table, name, expr)` | `ADD CONSTRAINT … CHECK (…) NOT VALID`, then `VALIDATE`; violating rows → `WARNING`, left `NOT VALID` (still enforced for new rows) | nothing |
+| `pg_temp.ensure_comment(table, column, text)` | `COMMENT ON` when missing or different; not the owner → `WARNING`, skipped | nothing |
+
+Tables are created inside `DO` blocks guarded by `to_regclass(…) IS NULL`; one-off backfills are tied to the creation of their column (`IF NOT pg_temp.has_column(…)`). Data safety comes first: no migration deletes or rewrites rows to make a constraint or index fit.
+
+Proved by `server/test/integration/migrate.test.js` ("a role that owns no table can run them", "a CHECK is left NOT VALID and a unique index skipped") and by migrating a database rebuilt from the retired `migration_*.sql` files: its schema dump equals a fresh database's, and a second run is a no-op.
 
 ## Commands
 
@@ -38,7 +57,7 @@ Both take the advisory lock and verify checksums. `npm run migrate:status` also 
 
 1. Create `db/migrations/NNNN_short_name.sql`, one above the highest existing version (e.g. `0006_add_booking_flags.sql`). Lower-case snake case only.
 2. Plain SQL. **No `BEGIN`/`COMMIT`** — the runner wraps the file. Consequently no `CREATE INDEX CONCURRENTLY` or other statements that cannot run in a transaction.
-3. Prefer idempotent DDL (`IF NOT EXISTS`; `DO` blocks catching `duplicate_object` for constraints). Tie one-off backfills to the creation of their column (see the `DO` blocks in `0001`/`0002`) so they run once on any database.
+3. Use the guard helpers for every DDL statement (copy the helper block from the latest file and drop the helpers at the end). Tie one-off backfills to the creation of their column so they run once on any database. Add CHECK constraints through `ensure_check` (never a plain `ADD CONSTRAINT`), and unique indexes through `ensure_unique_index`.
 4. Data changes must be safe on production as it is today, and fast: long statements hold locks the core API waits on.
 5. If the core API reads or writes the new column, add it to the core API's `REQUIRED_BOOKING_COLUMNS` / fixtures in the same release, and deploy this repository first.
 6. Test: `npm run migrate` against a scratch database twice (the second run must print `schema up to date`), then `TEST_DATABASE_URL=… npm run test:server` (the integration suite applies every migration to a fresh database and checks idempotency, concurrency and rollback; [TESTING.md](TESTING.md)).

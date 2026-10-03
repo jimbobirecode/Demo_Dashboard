@@ -1,6 +1,6 @@
 # Data model
 
-The schema of the Postgres database shared by the dashboard and the core API, as defined by [`db/migrations/`](../db/migrations) (`0001`–`0005`). This repository owns it; see [MIGRATIONS.md](MIGRATIONS.md) for how it changes.
+The schema of the Postgres database shared by the dashboard and the core API, as defined by [`db/migrations/`](../db/migrations) (`0001`–`0007`). This repository owns it; see [MIGRATIONS.md](MIGRATIONS.md) for how it changes.
 
 **PII** marks columns that hold personal data about guests, tour-operator contacts or staff. All tables live in the `public` schema.
 
@@ -17,6 +17,7 @@ erDiagram
     bookings ||..o{ email_messages : "booking_id + club"
     bookings ||..o| waitlist : "converted_booking_id"
     tour_operators ||..o{ operator_portal_links : "operator_id + club"
+    tour_operators ||..o{ operator_portal_sessions : "operator_id + club"
     email_messages ||..o| booking_change_requests : "change_request_id / email_message_id"
 
     bookings {
@@ -96,6 +97,16 @@ erDiagram
         timestamptz expires_at
         text requested_ip "PII"
     }
+    operator_portal_sessions {
+        serial id PK
+        text sid_hash UK "SHA-256"
+        text club
+        int operator_id
+        text email "PII"
+        timestamptz expires_at
+        timestamptz revoked_at
+        text requested_ip "PII"
+    }
     booking_change_requests {
         serial id PK
         text booking_id
@@ -111,6 +122,7 @@ erDiagram
         serial id PK
         text club
         text direction "inbound or outbound"
+        text message_id "Message-ID (inbound)"
         text booking_id
         text from_email "PII"
         text to_email "PII"
@@ -142,7 +154,8 @@ Who reads (R) and writes (W: insert/update/delete) each table, from `grep` of bo
 | `tour_operators` | `0001` | R/W (`routes/operators.js`, `portal.js`, `bookings.js`, `analytics.js`, `scripts/seed.mjs`) | — | |
 | `dashboard_users` | `0002` | R/W (`auth.js`, `routes/auth.js`, `routes/users.js`, `index.js`, `scripts/seed.mjs`) | — | |
 | `password_resets` | `0002` | R/W (`routes/auth.js`, `routes/users.js`) | — | |
-| `operator_portal_links` | `0003` | W (`routes/portal.js`; redeemed by `UPDATE … RETURNING`) | — | |
+| `operator_portal_links` | `0003` | W (`routes/portal.js`; redeemed by `UPDATE … RETURNING`, older unused links retired on a new request) | — | |
+| `operator_portal_sessions` | `0006` | R/W (`routes/portal.js`: created on sign-in, checked per request, revoked on sign-out) | — | |
 | `schema_migrations` | `server/src/db/migrate.js` | R/W (migration runner only) | — | |
 
 ## Tables
@@ -187,13 +200,17 @@ Outstanding reset and invitation links: `user_id` (FK, cascade), `token_hash` (S
 
 One-time portal sign-in links: `club`, `operator_id` (no FK), `email` (**PII**), `token_hash` (SHA-256), `expires_at` (30 min), `used_at`, `requested_ip` (**PII**), `created_at`.
 
+### `operator_portal_sessions`
+
+Revocable portal sessions (migration `0006`): `sid_hash` (SHA-256 of the random session id carried in the signed cookie; unique), `club`, `operator_id`, `email` (**PII**), `created_at`, `expires_at` (12 h), `revoked_at` (set on sign-out), `requested_ip` (**PII**). Index on `(club, operator_id)`.
+
 ### `booking_change_requests`
 
 Guest/operator requests to amend or cancel: `booking_id`, `club`, `kind` (`cancel`/`amend`, CHECK), `message` (**PII**, free text; email-sourced requests carry up to 5,000 chars incl. summary), `requested_date/time/players`, `status` (`Pending`/`Approved`/`Declined`/`Applied`, CHECK), `auto_applied` (always false now), `days_before_play`, `resolved_at/by`, `resolution_note`, `guest_email` and `requested_ip` (**PII**), `source` (`link`/`email`), `email_message_id`, `created_at`.
 
 ### `email_messages`
 
-Every guest email in and out; `review_status = 'open'` is the Inbox. `club`, `direction`, `booking_id`; `from_email`, `to_email`, `subject`, `body_text` (inbound bodies up to 100,000 chars) — **PII**; `intent`, `summary`, `extraction` (JSONB: the Anthropic extraction and inbound metadata incl. SPF/DKIM, From header, Message-ID) — **PII**; `routed_to`; `change_request_id`; `review_status`, `review_reason`, `draft_reply` (**PII**), `handled_at/by`; `sent_by` (`bot`, `Stripe`, a username or `portal:<email>`), `kind`, `in_reply_to` (FK), `created_at`.
+Every guest email in and out; `review_status = 'open'` is the Inbox. `club`, `direction`, `booking_id`; `message_id` (inbound Message-ID; unique per club among inbound rows via `uq_email_messages_inbound_message_id`, migration `0007`); `from_email`, `to_email`, `subject`, `body_text` (inbound bodies up to 100,000 chars) — **PII**; `intent`, `summary`, `extraction` (JSONB: the Anthropic extraction and inbound metadata incl. SPF/DKIM, From header, Message-ID) — **PII**; `routed_to` (`queued`/`processing` while the core API handles it; index `idx_email_messages_pending`); `change_request_id`; `review_status`, `review_reason`, `draft_reply` (**PII**), `handled_at/by`; `sent_by` (`bot`, `Stripe`, a username or `portal:<email>`), `kind`, `in_reply_to` (FK), `created_at`.
 
 ### `schema_migrations`
 
