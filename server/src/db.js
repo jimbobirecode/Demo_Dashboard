@@ -1,10 +1,13 @@
 import fs from 'node:fs';
 import pg from 'pg';
+import { logger } from './lib/logger.js';
+
+const log = logger.child('db');
 
 const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
-  console.warn('[db] DATABASE_URL is not set — database queries will fail.');
+  log.warn('DATABASE_URL is not set — database queries will fail.');
 }
 
 // TLS is driven by the connection string (append ?sslmode=require for managed
@@ -26,7 +29,7 @@ export const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-  console.error('[db] idle client error:', err.message);
+  log.error('idle client error:', err.message);
 });
 
 export function query(text, params) {

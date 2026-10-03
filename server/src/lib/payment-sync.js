@@ -21,6 +21,9 @@ import { serialiseBooking } from './bookings-domain.js';
 import { paidSessionsForLink } from './stripe.js';
 import { readPaymentLinkConfig } from './payment-link-domain.js';
 import { recordStripePayment } from './record-payment.js';
+import { logger } from './logger.js';
+
+const log = logger.child('payment-sync');
 
 /** Links older than this are no longer polled; the drawer can still check one by hand. */
 const LOOKBACK_DAYS = 60;
@@ -88,17 +91,17 @@ async function runSync(reason, sendReceipt) {
             receipt = outcome.ok ? 'sent' : `not sent: ${outcome.message}`;
           }
           result.recorded.push({ bookingId: row.booking_id, result: recorded.result, receipt });
-          console.log(`[payment-sync] ${row.booking_id}: ${recorded.result}; receipt ${receipt}`);
+          log.info(`${row.booking_id}: ${recorded.result}; receipt ${receipt}`);
         }
       } catch (err) {
         result.errors.push({ bookingId: row.booking_id, error: err.message });
-        console.warn(`[payment-sync] ${row.booking_id}: ${err.message}`);
+        log.warn(`${row.booking_id}: ${err.message}`);
       }
     }
     return result;
   } catch (err) {
     result.errors.push({ bookingId: null, error: err.message });
-    console.error('[payment-sync] run failed:', err.message);
+    log.error('run failed:', err.message);
     return result;
   } finally {
     result.finishedAt = new Date().toISOString();
@@ -115,7 +118,7 @@ export function startPaymentSync({ sendReceipt, env = process.env } = {}) {
   const every = setInterval(() => syncPendingPayments({ reason: 'schedule', sendReceipt }), minutes * 60_000);
   first.unref?.();
   every.unref?.();
-  console.log(`[payment-sync] checking Stripe for pending payments every ${minutes} min`);
+  log.info(`checking Stripe for pending payments every ${minutes} min`);
   return () => {
     clearTimeout(first);
     clearInterval(every);

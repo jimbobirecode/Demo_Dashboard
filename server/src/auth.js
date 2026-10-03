@@ -9,6 +9,9 @@ import {
   isBcryptHash,
   sessionClaims,
 } from './lib/session-domain.js';
+import { logger } from './lib/logger.js';
+
+const log = logger.child('auth');
 
 // Renaming this signs everybody out once: a browser holding the old cookie is
 // simply not sent the new one, and the next request reads as unauthenticated.
@@ -21,7 +24,7 @@ export const JWT_SECRET =
   process.env.JWT_SECRET ?? crypto.randomBytes(32).toString('hex');
 
 if (!process.env.JWT_SECRET) {
-  console.warn('[auth] JWT_SECRET not set — using an ephemeral secret; sessions drop on restart.');
+  log.warn('JWT_SECRET not set — using an ephemeral secret; sessions drop on restart.');
 }
 
 export function issueSession(res, user) {
@@ -195,7 +198,7 @@ async function matchesTempPassword(user, password) {
   await query(
     'UPDATE public.dashboard_users SET temp_password = $1 WHERE id = $2',
     [await bcrypt.hash(String(password), 12), user.id],
-  ).catch((err) => console.warn('[auth] could not hash a legacy temp password:', err.message));
+  ).catch((err) => log.warn('could not hash a legacy temp password:', err.message));
   return true;
 }
 

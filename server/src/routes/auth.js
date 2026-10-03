@@ -37,6 +37,9 @@ import {
 } from '../lib/password-reset-domain.js';
 import { sendTemplateEmail } from '../lib/sendgrid.js';
 import { clientIp, maskForLog } from '../lib/request-guard.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('auth');
 
 const router = Router();
 
@@ -166,7 +169,7 @@ router.post('/logout', async (req, res) => {
   clearSession(res);
   if (claims?.sub) {
     await bumpSessionVersion(claims.sub).catch((err) => {
-      console.warn('[auth] could not end sessions on sign-out:', err.message);
+      log.warn('could not end sessions on sign-out:', err.message);
     });
   }
   res.json({ ok: true });
@@ -199,12 +202,12 @@ router.post('/forgot-password', async (req, res) => {
     // nobody a fresh budget.
     const ipAllowed = requestIpThrottle.check(clientIp(req));
     if (!requestThrottle.check(identifier.toLowerCase()) || !ipAllowed) {
-      console.warn('[auth] password reset throttled for', maskForLog(identifier));
+      log.warn('password reset throttled for', maskForLog(identifier));
       return;
     }
     const config = readResetConfig();
     if (!config.configured) {
-      console.warn('[auth] password reset requested but not configured:', config.missing.join(', '));
+      log.warn('password reset requested but not configured:', config.missing.join(', '));
       return;
     }
 
@@ -213,7 +216,7 @@ router.post('/forgot-password', async (req, res) => {
 
     const address = resolveResetEmail(user);
     if (!address) {
-      console.warn('[auth] no email address on file for user', user.id);
+      log.warn('no email address on file for user', user.id);
       return;
     }
 
@@ -246,9 +249,9 @@ router.post('/forgot-password', async (req, res) => {
       }),
     });
 
-    if (!result.ok) console.error('[auth] reset email failed:', result.message);
+    if (!result.ok) log.error('reset email failed:', result.message);
   } catch (err) {
-    console.error('[auth] password reset failed:', err.message);
+    log.error('password reset failed:', err.message);
   }
 });
 

@@ -8,6 +8,9 @@
  * function here resolves, logging rather than throwing.
  */
 import { query } from '../db.js';
+import { logger } from './logger.js';
+
+const log = logger.child('email-log');
 
 const COLUMNS = [
   'club', 'direction', 'booking_id', 'from_email', 'to_email', 'subject', 'body_text',
@@ -25,7 +28,7 @@ export async function logEmail(fields) {
     );
     return rows[0]?.id ?? null;
   } catch (err) {
-    console.warn('[email-log] could not record email:', err.message);
+    log.warn('could not record email:', err.message);
     return null;
   }
 }

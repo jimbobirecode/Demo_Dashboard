@@ -32,6 +32,9 @@ import {
   resetLink,
 } from '../lib/password-reset-domain.js';
 import { sendTemplateEmail } from '../lib/sendgrid.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('users');
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -316,7 +319,7 @@ async function sendInvite(user, actor) {
     }
     return { sent: false, message: result.message };
   } catch (err) {
-    console.error('[users] invitation failed:', err.message);
+    log.error('invitation failed:', err.message);
     return { sent: false, message: 'The account was created but the invitation could not be sent' };
   }
 }

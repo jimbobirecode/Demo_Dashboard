@@ -31,6 +31,9 @@ import {
 } from '../lib/change-request-domain.js';
 import { createThrottle } from '../lib/password-reset-domain.js';
 import { clientIp } from '../lib/request-guard.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('changes');
 
 const router = Router();
 
@@ -56,7 +59,7 @@ async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request
       html: email.html,
     });
     if (!outcomeOf.ok) {
-      console.error('[changes] guest email failed:', outcomeOf.message);
+      log.error('guest email failed:', outcomeOf.message);
       return false;
     }
     await logEmail({
@@ -72,7 +75,7 @@ async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request
     });
     return true;
   } catch (err) {
-    console.error('[changes] guest email failed:', err.message);
+    log.error('guest email failed:', err.message);
     return false;
   }
 }

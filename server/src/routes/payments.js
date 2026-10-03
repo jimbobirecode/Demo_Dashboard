@@ -35,6 +35,9 @@ import {
   readPaymentLinkConfig,
 } from '../lib/payment-link-domain.js';
 import { withAccount } from './bookings.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('payments');
 
 const router = Router();
 router.use(requireAuth);
@@ -91,7 +94,7 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
     if (!outcome.ok) {
       // Nobody has the link, so it must not stay payable.
       await deactivatePaymentLink({ secretKey: config.secretKey, linkId: link.id }).catch((err) =>
-        console.error('[payments] could not deactivate unsent link', link.id, err.message),
+        log.error('could not deactivate unsent link', link.id, err.message),
       );
       return res.status(502).json({ error: `The email was not sent: ${outcome.message}` });
     }
@@ -100,7 +103,7 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
     // guest cannot pay both. Best effort — the new link is already out.
     if (booking.paymentLinkId && booking.paymentLinkId !== link.id) {
       await deactivatePaymentLink({ secretKey: config.secretKey, linkId: booking.paymentLinkId }).catch(
-        (err) => console.error('[payments] could not deactivate previous link', booking.paymentLinkId, err.message),
+        (err) => log.error('could not deactivate previous link', booking.paymentLinkId, err.message),
       );
     }
 

@@ -55,6 +55,9 @@ import {
 } from '../lib/portal-domain.js';
 import { loadBookings, loadOperators } from './operators.js';
 import { clientIp, maskForLog } from '../lib/request-guard.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('portal');
 
 const router = Router();
 
@@ -78,7 +81,7 @@ async function sendMail(toEmail, email) {
   const config = mailConfig();
   if (!config.apiKey || !config.fromEmail) return false;
   const outcome = await sendHtmlEmail({ ...config, toEmail, subject: email.subject, text: email.text, html: email.html });
-  if (!outcome.ok) console.error('[portal] email failed:', outcome.message);
+  if (!outcome.ok) log.error('email failed:', outcome.message);
   return outcome.ok;
 }
 
@@ -114,7 +117,7 @@ router.post('/login', async (req, res) => {
     if (!loginThrottle.check(email.toLowerCase()) || !ipAllowed) return;
     const operator = operatorForEmail(email, await allActiveOperators());
     if (!operator) {
-      console.warn('[portal] sign-in asked for an address on no operator account:', maskForLog(email));
+      log.warn('sign-in asked for an address on no operator account:', maskForLog(email));
       return;
     }
     const { token, tokenHash, expiresAt } = mintToken({ ttlMinutes: PORTAL_LINK_TTL_MINUTES });
@@ -127,9 +130,9 @@ router.post('/login', async (req, res) => {
       email,
       buildPortalSignInEmail({ operatorName: operator.name, link: portalSignInLink(appBaseUrl(), token) }),
     );
-    if (!sent) console.warn('[portal] sign-in link not emailed (SendGrid not configured or failed)');
+    if (!sent) log.warn('sign-in link not emailed (SendGrid not configured or failed)');
   } catch (err) {
-    console.error('[portal] sign-in failed:', err.message);
+    log.error('sign-in failed:', err.message);
   }
 });
 

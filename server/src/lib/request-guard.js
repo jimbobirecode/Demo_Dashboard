@@ -6,6 +6,9 @@
  * without starting Express.
  */
 import { maskAddress } from './password-reset-domain.js';
+import { logger } from './logger.js';
+
+const log = logger.child('api');
 
 /**
  * The address a request came from.
@@ -93,7 +96,7 @@ export function csrfProtection(env = process.env) {
       allowedOrigins: allowedOriginsFor(req, env),
     });
     if (verdict.ok) return next();
-    console.warn(`[api] refused ${req.method} ${req.originalUrl.split('?')[0]}: ${verdict.reason}`);
+    log.warn(`refused ${req.method} ${req.originalUrl.split('?')[0]}: ${verdict.reason}`);
     res.status(403).json({ error: 'This request was refused. Reload the page and try again.' });
   };
 }

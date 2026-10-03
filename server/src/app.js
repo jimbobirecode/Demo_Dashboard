@@ -25,6 +25,9 @@ import portalRoutes from './routes/portal.js';
 import stripeWebhookRoutes from './routes/stripe-webhook.js';
 import { pool } from './db.js';
 import { contentSecurityDirectives, csrfProtection } from './lib/request-guard.js';
+import { logger } from './lib/logger.js';
+
+const log = logger.child('api');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -72,7 +75,7 @@ app.get('/api/health', async (req, res) => {
   } catch (err) {
     // The reason stays in the log: a public health check should not describe
     // the database to whoever asks.
-    console.error('[api] health check failed:', err.message);
+    log.error('health check failed:', err.message);
     res.status(503).json({ ok: false, status: 'degraded' });
   }
 });
@@ -112,7 +115,7 @@ app.use((err, req, res, _next) => {
       error: err.type === 'entity.too.large' ? 'That request is too large' : 'The request could not be read',
     });
   }
-  console.error('[api]', err);
+  log.error(`${req.method} ${req.originalUrl.split('?')[0]} failed`, err);
   res.status(500).json({ error: 'Internal server error' });
 });
 

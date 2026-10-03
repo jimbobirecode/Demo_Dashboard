@@ -19,6 +19,9 @@ import { paidSessionFromEvent, readPaymentLinkConfig } from '../lib/payment-link
 import { recordStripePayment } from '../lib/record-payment.js';
 import { logWebhook } from '../lib/webhook-log.js';
 import { sendReceipt } from './payments.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('stripe');
 
 const router = Router();
 
@@ -31,14 +34,14 @@ router.get('/', (req, res) => {
 router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const { webhookSecret } = readPaymentLinkConfig();
   if (!webhookSecret) {
-    console.error('[stripe] webhook received but STRIPE_WEBHOOK_SECRET is not set');
+    log.error('webhook received but STRIPE_WEBHOOK_SECRET is not set');
     logWebhook({ outcome: 'rejected', detail: 'STRIPE_WEBHOOK_SECRET is not set on the server' });
     return res.status(503).json({ error: 'Webhook not configured' });
   }
 
   const check = verifyWebhookSignature(req.body, req.get('stripe-signature'), webhookSecret);
   if (!check.ok) {
-    console.warn('[stripe] rejected webhook:', check.reason);
+    log.warn('rejected webhook:', check.reason);
     logWebhook({
       outcome: 'rejected',
       detail:
@@ -65,10 +68,10 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
   let recorded;
   try {
     recorded = await recordStripePayment(session);
-    console.log(`[stripe] ${event.type} ${session.id}: ${recorded.result}`);
+    log.info(`${event.type} ${session.id}: ${recorded.result}`);
   } catch (err) {
     const detail = `Database error: ${err.message}`;
-    console.error('[stripe] could not record payment', session.id, err);
+    log.error('could not record payment', session.id, err);
     logWebhook({ outcome: 'failed', type: event.type, bookingId: session.metadata?.booking_id ?? null, detail });
     return res.status(503).json({ error: 'Could not record the payment yet' });
   }
@@ -83,7 +86,7 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
       message: err.message,
     }));
     receipt = outcome.ok ? 'sent' : `not sent: ${outcome.message}`;
-    console.log(`[stripe] receipt for ${recorded.booking.bookingId}: ${receipt}`);
+    log.info(`receipt for ${recorded.booking.bookingId}: ${receipt}`);
   }
 
   logWebhook({
