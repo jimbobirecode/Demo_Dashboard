@@ -198,11 +198,7 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
         </div>
       )}
 
-      {!config.migrated ? (
-        <div className="secondary" style={{ fontSize: '0.8125rem' }}>
-          Run <code>{config.migration}</code> on the database to enable payment links.
-        </div>
-      ) : !config.configured ? (
+      {!config.configured ? (
         <div className="secondary" style={{ fontSize: '0.8125rem' }}>
           Payment links are not set up. The server needs: {config.missing.join(', ')}.
         </div>

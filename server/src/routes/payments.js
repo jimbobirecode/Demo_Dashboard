@@ -15,7 +15,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { buildAuditSet, getBookingColumns } from '../lib/schema.js';
+import { BOOKING_SELECT, buildAuditSet } from '../lib/schema.js';
 import { BRAND, appBaseUrl } from '../lib/brand.js';
 import { sendPaymentEmail } from '../lib/payment-mailer.js';
 import { createPaymentLink, deactivatePaymentLink, listWebhookEndpoints, paidSessionsForLink, prefilledLinkUrl } from '../lib/stripe.js';
@@ -39,20 +39,11 @@ import { withAccount } from './bookings.js';
 const router = Router();
 router.use(requireAuth);
 
-const MIGRATION = 'migration_add_stripe_payment_links.sql';
-
-router.get('/config', async (req, res, next) => {
-  try {
-    const columns = await getBookingColumns();
-    res.json({
-      ...publicPaymentLinkConfig(readPaymentLinkConfig()),
-      migrated: columns.has('stripe_payment_link_id'),
-      migration: MIGRATION,
-      webhooks: recentWebhooks(),
-    });
-  } catch (err) {
-    next(err);
-  }
+router.get('/config', (req, res) => {
+  res.json({
+    ...publicPaymentLinkConfig(readPaymentLinkConfig()),
+    webhooks: recentWebhooks(),
+  });
 });
 
 router.post('/bookings/:bookingId/link', async (req, res, next) => {
@@ -65,17 +56,9 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
   }
 
   try {
-    const columns = await getBookingColumns();
-    if (!columns.has('stripe_payment_link_id')) {
-      return res.status(409).json({
-        error: `Run ${MIGRATION} first — the dashboard picks it up within 30 seconds, with no restart.`,
-        migration: MIGRATION,
-      });
-    }
-
     const club = req.user.customerId;
     const { rows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+      `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
       [req.params.bookingId, club],
     );
     if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
@@ -128,19 +111,19 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
       payment_link_sent_by: req.user.username,
       payment_status: PENDING_PAYMENT_STATUS,
     };
-    const names = Object.keys(updates).filter((name) => columns.has(name));
+    const names = Object.keys(updates);
     const params = names.map((name) => updates[name]);
     const sets = names.map((name, index) => `"${name}" = $${index + 1}`);
-    if (columns.has('payment_link_sent_at')) sets.push('payment_link_sent_at = NOW()');
+    sets.push('payment_link_sent_at = NOW()');
 
-    const audit = buildAuditSet(columns, params.length + 1, req.user.username);
+    const audit = buildAuditSet(params.length + 1, req.user.username);
     params.push(...audit.values, booking.bookingId, club);
 
     const updated = await query(
       `UPDATE public.bookings
           SET ${[...sets, ...audit.clauses].join(', ')}
         WHERE booking_id = $${params.length - 1} AND club = $${params.length}
-      RETURNING ${columns.selectList}`,
+      RETURNING ${BOOKING_SELECT}`,
       params,
     );
 
@@ -163,7 +146,6 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
  * receipt that did not go out must not undo a payment that did.
  */
 export async function sendReceipt(booking, config, sentBy = 'Stripe') {
-  const columns = await getBookingColumns();
   if (!booking.guestEmail) return { ok: false, message: 'No guest email address' };
   if (!config.sendgridKey || !config.fromEmail) return { ok: false, message: 'SendGrid is not configured' };
 
@@ -181,7 +163,7 @@ export async function sendReceipt(booking, config, sentBy = 'Stripe') {
     record: { club: booking.club, bookingId: booking.bookingId, kind: 'receipt', sentBy },
   });
 
-  if (outcome.ok && columns.has('payment_receipt_sent_at')) {
+  if (outcome.ok) {
     await query(
       `UPDATE public.bookings SET payment_receipt_sent_at = NOW() WHERE booking_id = $1 AND club = $2`,
       [booking.bookingId, booking.club],
@@ -193,10 +175,9 @@ export async function sendReceipt(booking, config, sentBy = 'Stripe') {
 router.post('/bookings/:bookingId/receipt', async (req, res, next) => {
   const config = readPaymentLinkConfig();
   try {
-    const columns = await getBookingColumns();
     const club = req.user.customerId;
     const { rows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+      `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
       [req.params.bookingId, club],
     );
     if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
@@ -210,7 +191,7 @@ router.post('/bookings/:bookingId/receipt', async (req, res, next) => {
     if (!outcome.ok) return res.status(502).json({ error: `The receipt was not sent: ${outcome.message}` });
 
     const fresh = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+      `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
       [booking.bookingId, club],
     );
     res.json({
@@ -236,10 +217,9 @@ router.post('/bookings/:bookingId/check', async (req, res, next) => {
   if (!config.secretKey) return res.status(409).json({ error: 'STRIPE_SECRET_KEY is not set' });
 
   try {
-    const columns = await getBookingColumns();
     const club = req.user.customerId;
     const load = async () =>
-      (await query(`SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
+      (await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
         req.params.bookingId,
         club,
       ])).rows[0];
@@ -302,14 +282,6 @@ router.get('/diagnostics', requireAdmin, async (req, res, next) => {
     add('secret_key', Boolean(config.secretKey), 'Stripe secret key',
       config.secretKey ? `Set (${config.testMode ? 'test' : 'live'} mode)` : 'STRIPE_SECRET_KEY is not set',
       config.secretKey ? null : 'Set STRIPE_SECRET_KEY on the dashboard service in Render.');
-
-    const columns = await getBookingColumns();
-    const migrated = columns.has('stripe_payment_link_id') && columns.has('stripe_checkout_session_id');
-    add('migration_links', migrated, 'Payment-link database columns',
-      migrated ? 'Present' : 'Missing', migrated ? null : 'Run migration_add_stripe_payment_links.sql.');
-    const receipts = columns.has('pre_play_clock_started_at') && columns.has('payment_receipt_sent_at');
-    add('migration_receipts', receipts, 'Receipt database columns',
-      receipts ? 'Present' : 'Missing', receipts ? null : 'Run migration_add_payment_receipts.sql.');
 
     add('webhook_secret', Boolean(config.webhookSecret), 'Webhook signing secret',
       config.webhookSecret ? 'Set' : 'STRIPE_WEBHOOK_SECRET is not set',

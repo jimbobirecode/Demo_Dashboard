@@ -18,7 +18,6 @@
  */
 import { query } from '../db.js';
 import { serialiseBooking } from './bookings-domain.js';
-import { getBookingColumns } from './schema.js';
 import { paidSessionsForLink } from './stripe.js';
 import { readPaymentLinkConfig } from './payment-link-domain.js';
 import { recordStripePayment } from './record-payment.js';
@@ -68,19 +67,11 @@ async function runSync(reason, sendReceipt) {
       result.skipped = 'STRIPE_SECRET_KEY is not set';
       return result;
     }
-    const columns = await getBookingColumns();
-    if (!columns.has('stripe_payment_link_id') || !columns.has('stripe_checkout_session_id')) {
-      result.skipped = 'migration_add_stripe_payment_links.sql has not been run';
-      return result;
-    }
-
-    const sentFilter = columns.has('payment_link_sent_at')
-      ? `AND (payment_link_sent_at IS NULL OR payment_link_sent_at > NOW() - INTERVAL '${LOOKBACK_DAYS} days')`
-      : '';
     const { rows } = await query(
       `SELECT booking_id, club, stripe_payment_link_id FROM public.bookings
-        WHERE stripe_payment_link_id IS NOT NULL AND payment_status = 'Pending' ${sentFilter}
-        ORDER BY ${columns.has('payment_link_sent_at') ? 'payment_link_sent_at DESC NULLS LAST' : 'booking_id'}
+        WHERE stripe_payment_link_id IS NOT NULL AND payment_status = 'Pending'
+          AND (payment_link_sent_at IS NULL OR payment_link_sent_at > NOW() - INTERVAL '${LOOKBACK_DAYS} days')
+        ORDER BY payment_link_sent_at DESC NULLS LAST
         LIMIT ${MAX_PER_RUN}`,
     );
 

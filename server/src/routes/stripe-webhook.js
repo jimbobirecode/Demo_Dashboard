@@ -7,8 +7,8 @@
  * re-serialised JSON would never verify.
  *
  * A verified event we have handled, or have no use for, is answered 2xx.
- * Anything that means the payment could not be recorded yet — the secret or a
- * migration missing, the database down — is answered 5xx on purpose, so Stripe
+ * Anything that means the payment could not be recorded yet — the secret
+ * missing, the database down — is answered 5xx on purpose, so Stripe
  * keeps retrying (for up to three days) until it can be.
  *
  * Every delivery is noted in the webhook log the drawer shows.
@@ -16,7 +16,7 @@
 import express, { Router } from 'express';
 import { verifyWebhookSignature } from '../lib/stripe.js';
 import { paidSessionFromEvent, readPaymentLinkConfig } from '../lib/payment-link-domain.js';
-import { MigrationMissingError, recordStripePayment } from '../lib/record-payment.js';
+import { recordStripePayment } from '../lib/record-payment.js';
 import { logWebhook } from '../lib/webhook-log.js';
 import { sendReceipt } from './payments.js';
 
@@ -67,7 +67,7 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
     recorded = await recordStripePayment(session);
     console.log(`[stripe] ${event.type} ${session.id}: ${recorded.result}`);
   } catch (err) {
-    const detail = err instanceof MigrationMissingError ? err.message : `Database error: ${err.message}`;
+    const detail = `Database error: ${err.message}`;
     console.error('[stripe] could not record payment', session.id, err);
     logWebhook({ outcome: 'failed', type: event.type, bookingId: session.metadata?.booking_id ?? null, detail });
     return res.status(503).json({ error: 'Could not record the payment yet' });
