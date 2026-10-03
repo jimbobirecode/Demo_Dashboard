@@ -40,6 +40,16 @@ const CHASEABLE_STATUSES = COMMITTED_STATUSES;
  * Domains that identify a person, not a business. A booking from one of these
  * is a direct guest however many of them there are, so they are never offered
  * as a new operator.
+ *
+ * This list also guards the tour operator portal. An operator's people may
+ * sign in from any address on one of its email domains (a product
+ * requirement: operators do not want to register every member of their
+ * desk), and only club staff can add a domain to an operator — operators
+ * cannot edit their own account. A free-mail domain typed onto an operator by
+ * mistake would let anybody with a free address in, so these are refused for
+ * domain sign-in however they got there. Err on the side of listing a domain:
+ * the cost of a false positive is that one operator signs in with its
+ * contact address instead.
  */
 export const CONSUMER_EMAIL_DOMAINS = new Set([
   'gmail.com', 'googlemail.com', 'hotmail.com', 'hotmail.co.uk', 'outlook.com',
@@ -49,7 +59,60 @@ export const CONSUMER_EMAIL_DOMAINS = new Set([
   'gmx.com', 'gmx.co.uk', 'mail.com', 'yandex.com', 'comcast.net', 'verizon.net',
   'sbcglobal.net', 'att.net', 'cox.net', 'shaw.ca', 'rogers.com', 'bigpond.com',
   'optusnet.com.au', 'xtra.co.nz',
+
+  // Privacy and paid personal mail.
+  'pm.me', 'protonmail.ch', 'tutanota.com', 'tutanota.de', 'tutamail.com', 'tuta.io', 'tuta.com',
+  'keemail.me', 'fastmail.com', 'fastmail.fm', 'hey.com', 'duck.com', 'mailbox.org',
+  'posteo.de', 'posteo.net', 'hushmail.com', 'zoho.com', 'zohomail.com', 'zohomail.eu',
+  'email.com', 'usa.com', 'inbox.com', 'lycos.com', 'rocketmail.com', 'aim.com', 'msn.co.uk',
+  'windowslive.com', 'passport.com',
+
+  // UK and Ireland.
+  'btopenworld.com', 'ntlworld.com', 'blueyonder.co.uk', 'tiscali.co.uk', 'virgin.net',
+  'talk21.com', 'plus.com', 'eircom.net', 'iol.ie', 'vodafone.ie',
+
+  // Continental Europe.
+  'web.de', 't-online.de', 'freenet.de', 'arcor.de', 'gmx.de', 'gmx.net', 'gmx.at', 'gmx.ch',
+  'orange.fr', 'wanadoo.fr', 'free.fr', 'sfr.fr', 'laposte.net', 'neuf.fr', 'bbox.fr',
+  'libero.it', 'virgilio.it', 'tin.it', 'alice.it', 'tiscali.it', 'telefonica.net',
+  'terra.es', 'bluewin.ch', 'telenet.be', 'skynet.be', 'ziggo.nl', 'kpnmail.nl', 'planet.nl',
+  'hetnet.nl', 'home.nl', 'telia.com', 'online.no', 'seznam.cz', 'wp.pl', 'o2.pl',
+  'interia.pl', 'onet.pl', 'mail.ru', 'inbox.ru', 'list.ru', 'bk.ru', 'rambler.ru', 'ya.ru',
+
+  // North America and Oceania.
+  'earthlink.net', 'optonline.net', 'charter.net', 'frontier.com', 'juno.com', 'netzero.net',
+  'rr.com', 'telus.net', 'sympatico.ca', 'bell.net', 'videotron.ca', 'iinet.net.au',
+  'tpg.com.au', 'westnet.com.au', 'internode.on.net', 'telstra.com', 'spark.co.nz',
+
+  // Asia.
+  'qq.com', 'foxmail.com', '163.com', '126.com', 'yeah.net', 'sina.com', 'sina.cn', 'sohu.com',
+  'aliyun.com', 'naver.com', 'daum.net', 'hanmail.net', 'rediffmail.com', 'yahoo.co.jp',
 ]);
+
+/**
+ * Providers with a domain per country — yahoo.fr, hotmail.it, gmx.de,
+ * outlook.com.au — matched by name rather than listed one by one. A domain
+ * matches when the provider's name is followed by nothing but a country-style
+ * suffix (`.fr`, `.co.uk`, `.com.br`), so `live.golfbreaks.com` is not caught
+ * by "live".
+ */
+export const CONSUMER_DOMAIN_FAMILIES = [
+  'gmail', 'googlemail', 'yahoo', 'ymail', 'hotmail', 'outlook', 'live', 'msn', 'windowslive',
+  'aol', 'gmx', 'yandex', 'fastmail', 'tutanota', 'proton', 'protonmail', 'icloud', 'zoho',
+  'zohomail', 'mail', 'orange', 'wanadoo', 'libero', 'virgilio', 'web', 'rediffmail', 'sina',
+];
+
+const COUNTRY_SUFFIX = /^((co|com|net|org|ne|or)\.)?[a-z]{2,3}$/;
+
+export function isConsumerDomain(domain) {
+  if (!domain) return false;
+  const clean = String(domain).trim().toLowerCase();
+  if (CONSUMER_EMAIL_DOMAINS.has(clean)) return true;
+
+  const dot = clean.indexOf('.');
+  if (dot === -1) return false;
+  return CONSUMER_DOMAIN_FAMILIES.includes(clean.slice(0, dot)) && COUNTRY_SUFFIX.test(clean.slice(dot + 1));
+}
 
 /** How many bookings a domain needs before it is worth proposing. */
 export const SUGGESTION_THRESHOLD = 2;
@@ -97,9 +160,6 @@ export function emailDomain(email) {
   return domain.includes('.') ? domain : null;
 }
 
-export function isConsumerDomain(domain) {
-  return domain ? CONSUMER_EMAIL_DOMAINS.has(domain) : false;
-}
 
 /**
  * A lookup built once per request and reused across every booking — matching

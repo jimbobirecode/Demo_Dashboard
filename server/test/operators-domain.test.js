@@ -9,6 +9,7 @@ import {
   domainList,
   emailDomain,
   identify,
+  isConsumerDomain,
   nameFromDomain,
   paymentState,
   portfolioTotals,
@@ -438,3 +439,26 @@ test('terms are written out as a sentence for the screen and the email', () => {
 function pick(match) {
   return { name: match.operator?.name, source: match.source };
 }
+
+test('isConsumerDomain knows free mail across providers and countries', () => {
+  for (const domain of [
+    'gmail.com', 'proton.me', 'protonmail.com', 'gmx.de', 'gmx.net', 'mail.com', 'yandex.ru',
+    'zoho.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'live.ie', 'live.com.au', 'msn.com',
+    'yahoo.fr', 'yahoo.co.jp', 'hotmail.it', 'hotmail.co.uk', 'outlook.de', 'outlook.com.br',
+    'googlemail.com', 'fastmail.com', 'tutanota.com', 'hey.com', 'qq.com', '163.com', 'web.de',
+    't-online.de', 'orange.fr', 'free.fr', 'btinternet.com', 'sky.com', 'virginmedia.com',
+    'eircom.net', 'GMAIL.COM',
+  ]) {
+    assert.equal(isConsumerDomain(domain), true, domain);
+  }
+});
+
+test('isConsumerDomain leaves business domains alone', () => {
+  for (const domain of [
+    'linkstours.com', 'golfbreaks.com', 'live.golfbreaks.com', 'yahootours.com', 'outlookgolf.ie',
+    'mailchimp.com', 'webgolf.co.uk', 'gmx.example.com',
+  ]) {
+    assert.equal(isConsumerDomain(domain), false, domain);
+  }
+  assert.equal(isConsumerDomain(null), false);
+});
