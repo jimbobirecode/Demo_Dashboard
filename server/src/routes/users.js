@@ -13,7 +13,8 @@
  */
 import { Router } from 'express';
 import { query } from '../db.js';
-import { requireAdmin, requireAuth } from '../auth.js';
+import { bumpSessionVersion, forgetSessionUser, requireAdmin, requireAuth } from '../auth.js';
+import { patchRevokesSessions } from '../lib/session-domain.js';
 import { clubDisplayName } from '../lib/bookings-domain.js';
 import {
   getUserColumns,
@@ -169,6 +170,10 @@ router.patch('/:id', async (req, res, next) => {
       [...values, target.id, req.user.customerId],
     );
 
+    // Losing access or a role ends the sessions the account already has,
+    // rather than leaving them to run out their 12 hours.
+    if (patchRevokesSessions(check.patch)) await bumpSessionVersion(target.id);
+
     res.json({ user: serialiseUser(rows[0]) });
   } catch (err) {
     next(err);
@@ -193,6 +198,9 @@ router.delete('/:id', async (req, res, next) => {
       'DELETE FROM public.dashboard_users WHERE id = $1 AND customer_id = $2',
       [target.id, req.user.customerId],
     );
+    // A session naming a deleted account fails its next check anyway; this
+    // makes that immediate rather than when the cached row expires.
+    forgetSessionUser(target.id);
     res.json({ ok: true, deleted: serialiseUser(target) });
   } catch (err) {
     next(err);

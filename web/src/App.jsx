@@ -130,6 +130,9 @@ function StaffApp() {
               {user.clubName}
             </div>
           </div>
+          <NavLink to="/account/password" className={navClass}>
+            Change password
+          </NavLink>
           <button type="button" onClick={logout}>
             Sign out
           </button>
@@ -144,6 +147,10 @@ function StaffApp() {
                 they are often the one checking it. */}
             <Route path="/manage-booking" element={<ManageBooking />} />
             <Route path="/import" element={<Import />} />
+            <Route
+              path="/account/password"
+              element={<ChangePassword requireCurrent onSubmit={completePasswordChange} />}
+            />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/requests" element={<Requests />} />
             <Route path="/inbox" element={<Inbox onCountChange={setInboxCount} />} />

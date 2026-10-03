@@ -123,6 +123,9 @@ const USER_COLUMNS = [
   'created_at',
   'created_by',
   'invited_at',
+
+  // migration_add_session_version.sql
+  'session_version',
 ];
 
 /**

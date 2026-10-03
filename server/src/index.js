@@ -22,11 +22,16 @@ import inboxRoutes from './routes/inbox.js';
 import portalRoutes from './routes/portal.js';
 import stripeWebhookRoutes from './routes/stripe-webhook.js';
 import { pool } from './db.js';
+import { hashLegacyTempPasswords } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
 
+// Render puts exactly one proxy in front of the app. Trusting one hop makes
+// req.ip the address that proxy saw — the real client — and makes anything a
+// client writes into X-Forwarded-For itself irrelevant.
+app.set('trust proxy', 1);
 // Stripe signs the raw request body, so its webhook is mounted before the JSON
 // parser can consume it.
 app.use('/api/stripe/webhook', stripeWebhookRoutes);
@@ -142,7 +147,11 @@ async function maybeSeedOnStart() {
     const result = await seed({ client, reset: force });
     console.log(`[seed] club "${result.club}": ${result.inserted} booking(s) inserted.`);
     if (result.password) {
-      console.log(`[seed] sign in with ${process.env.SEED_USERNAME ?? 'demo'} / ${result.password}`);
+      // Never the password itself: hosted logs are kept, and shared.
+      console.log(
+        `[seed] created user "${process.env.SEED_USERNAME ?? 'demo'}". Its password is SEED_PASSWORD if set; ` +
+        'otherwise give it an email address and use "Forgot password" to set one.',
+      );
     }
   } catch (err) {
     // Seeding must never stop the dashboard from coming up.
@@ -154,6 +163,9 @@ async function maybeSeedOnStart() {
 
 app.listen(PORT, async () => {
   console.log(`[api] listening on http://localhost:${PORT}`);
+  await hashLegacyTempPasswords()
+    .then((count) => count && console.log(`[auth] hashed ${count} plaintext temporary password(s)`))
+    .catch((err) => console.warn('[auth] could not check temporary passwords:', err.message));
   await maybeSeedOnStart();
   await reportContents();
   // Stripe payments are fetched, not only waited for: see lib/payment-sync.js.

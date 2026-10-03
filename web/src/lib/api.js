@@ -42,8 +42,9 @@ export const api = {
   login: (email, password) =>
     request('/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => request('/auth/logout', { method: 'POST' }),
-  changePassword: (newPassword) =>
-    request('/auth/change-password', { method: 'POST', body: { newPassword } }),
+  // currentPassword is required except on the forced first change.
+  changePassword: (newPassword, currentPassword) =>
+    request('/auth/change-password', { method: 'POST', body: { newPassword, currentPassword } }),
 
   // Password reset. All three are reachable signed out, which is the point.
   resetConfig: () => request('/auth/reset-config'),

@@ -252,34 +252,9 @@ export function validatePassword(password, confirm) {
   return { ok: true };
 }
 
-/**
- * A crude per-key throttle, in memory.
- *
- * It exists so one script cannot mail a user hundreds of links, not to survive
- * a restart or to coordinate across instances — a real rate limiter belongs in
- * front of the app. Keys are dropped as they expire, so the map does not grow
- * without bound.
- */
-export function createThrottle({ limit = 5, windowMs = 15 * 60_000 } = {}) {
-  const hits = new Map();
-
-  return {
-    /** True when this key may proceed; the call itself counts as an attempt. */
-    check(key, now = Date.now()) {
-      const recent = (hits.get(key) ?? []).filter((time) => now - time < windowMs);
-      recent.push(now);
-      hits.set(key, recent);
-
-      for (const [other, times] of hits) {
-        if (!times.some((time) => now - time < windowMs)) hits.delete(other);
-      }
-      return recent.length <= limit;
-    },
-    reset() {
-      hits.clear();
-    },
-  };
-}
+// The throttle used to live here; it is shared by every unauthenticated
+// surface now, so it has a module of its own. Re-exported for older imports.
+export { createThrottle } from './throttle.js';
 
 /** '45 minutes', '1 hour', '7 days' — an invitation lives too long to read in hours. */
 export function describeMinutes(minutes) {

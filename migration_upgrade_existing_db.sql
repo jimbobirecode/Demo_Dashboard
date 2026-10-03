@@ -61,12 +61,21 @@ CREATE TABLE IF NOT EXISTS waitlist (
 );
 
 -- Demo login for the dashboard (customer_id must match CLUB_PROFILE's club id)
-INSERT INTO dashboard_users (username, temp_password, customer_id, full_name, is_active, must_change_password)
-VALUES ('dornoch_demo', 'Dornoch2026!', 'royal_dornoch', 'Royal Dornoch Golf Office', TRUE, TRUE)
+--
+-- Created with no usable password. A credential committed to the repository is
+-- a credential anyone with read access has, so none is set here. Give the
+-- account one of these ways before signing in:
+--
+--   * give it an email address (UPDATE dashboard_users SET email = '...'
+--     WHERE username = 'dornoch_demo') and use "Forgot password" on the
+--     login page, or have an administrator send it an invitation from the
+--     Users page;
+--   * or set a bcrypt hash by hand: UPDATE dashboard_users SET password_hash
+--     = '<bcrypt hash>' WHERE username = 'dornoch_demo'.
+--
+-- Re-running this file never touches an existing account's password.
+INSERT INTO dashboard_users (username, customer_id, full_name, is_active, must_change_password)
+VALUES ('dornoch_demo', 'royal_dornoch', 'Royal Dornoch Golf Office', TRUE, FALSE)
 ON CONFLICT (username) DO UPDATE
-    SET temp_password = EXCLUDED.temp_password,
-        customer_id = EXCLUDED.customer_id,
-        full_name = EXCLUDED.full_name,
-        is_active = TRUE,
-        must_change_password = TRUE,
-        password_hash = NULL;
+    SET customer_id = EXCLUDED.customer_id,
+        full_name = EXCLUDED.full_name;

@@ -10,11 +10,14 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import {
   authenticateUser,
+  bumpSessionVersion,
   clearSession,
   issueSession,
+  readSessionClaims,
   requireAuth,
   setPermanentPassword,
   updateLastLogin,
+  verifyCurrentPassword,
 } from '../auth.js';
 import { clubDisplayName } from '../lib/bookings-domain.js';
 import { getUserColumns, hasPasswordReset } from '../lib/schema.js';
@@ -33,6 +36,7 @@ import {
   validatePassword,
 } from '../lib/password-reset-domain.js';
 import { sendTemplateEmail } from '../lib/sendgrid.js';
+import { clientIp, maskForLog } from '../lib/request-guard.js';
 
 const router = Router();
 
@@ -42,7 +46,26 @@ const router = Router();
  * tokens. Neither survives a restart — see the note in the domain module.
  */
 const requestThrottle = createThrottle({ limit: 5, windowMs: 15 * 60_000 });
+const requestIpThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
 const redeemThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
+
+/**
+ * Sign-in failures, counted per account and per address, in memory (one
+ * Render instance; see lib/throttle.js). The account limit stops a password
+ * list being worked against one login from many addresses; the address limit
+ * stops one client spraying a common password across every login. Only
+ * failures count, and signing in successfully clears the account's tally.
+ */
+const loginAccountThrottle = createThrottle({ limit: 5, windowMs: 15 * 60_000 });
+const loginIpThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
+
+function refuseThrottled(res, seconds) {
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  res.set('Retry-After', String(seconds));
+  return res.status(429).json({
+    error: `Too many sign-in attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+  });
+}
 
 router.post('/login', async (req, res, next) => {
   // `username` is still read so an older client keeps working; either field
@@ -54,12 +77,26 @@ router.post('/login', async (req, res, next) => {
     return res.status(400).json({ error: 'Email address and password are required' });
   }
 
+  const accountKey = String(identifier).trim().toLowerCase();
+  const ip = clientIp(req);
+  if (loginAccountThrottle.blocked(accountKey) || loginIpThrottle.blocked(ip)) {
+    return refuseThrottled(res, Math.max(
+      loginAccountThrottle.retryAfterSeconds(accountKey),
+      loginIpThrottle.retryAfterSeconds(ip),
+    ));
+  }
+
   try {
     const result = await authenticateUser(identifier, password);
     // The same answer whether the account does not exist or the password is
     // wrong: a different one would say which addresses have accounts here.
-    if (!result) return res.status(401).json({ error: 'Invalid email address or password' });
+    if (!result) {
+      loginAccountThrottle.fail(accountKey);
+      loginIpThrottle.fail(ip);
+      return res.status(401).json({ error: 'Invalid email address or password' });
+    }
 
+    loginAccountThrottle.clear(accountKey);
     const { user, mustChangePassword } = result;
     issueSession(res, user);
     if (!mustChangePassword) await updateLastLogin(user.id);
@@ -70,13 +107,35 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+/**
+ * Change your own password.
+ *
+ * The current one is required, so a session left open on a shared PC is not
+ * enough to take the account over — except on the forced first change, where
+ * the temporary password was proved moments ago at sign-in. Every other
+ * session the account had ends; this one is re-issued so the person changing
+ * it stays signed in.
+ */
 router.post('/change-password', requireAuth, async (req, res, next) => {
-  const { newPassword } = req.body ?? {};
+  const { currentPassword, newPassword } = req.body ?? {};
   const valid = validatePassword(newPassword);
   if (!valid.ok) return res.status(400).json({ error: valid.reason });
 
+  const accountKey = `id:${req.user.sub}`;
   try {
-    await setPermanentPassword(Number(req.user.sub), newPassword);
+    if (!req.user.mustChangePassword) {
+      if (loginAccountThrottle.blocked(accountKey)) {
+        return refuseThrottled(res, loginAccountThrottle.retryAfterSeconds(accountKey));
+      }
+      if (!(await verifyCurrentPassword(req.user.sub, currentPassword))) {
+        loginAccountThrottle.fail(accountKey);
+        return res.status(400).json({ error: 'Your current password is not correct' });
+      }
+      loginAccountThrottle.clear(accountKey);
+    }
+
+    const user = await setPermanentPassword(Number(req.user.sub), newPassword);
+    if (user) issueSession(res, user);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -93,11 +152,23 @@ router.get('/me', requireAuth, (req, res) => {
       clubName: clubDisplayName(req.user.customerId),
       role: req.user.role ?? 'admin',
     },
+    mustChangePassword: Boolean(req.user.mustChangePassword),
   });
 });
 
-router.post('/logout', (req, res) => {
+/**
+ * Sign out — everywhere. Clearing the cookie only helps the browser that
+ * asked; bumping the account's session version ends a copy of the cookie
+ * wherever else it is.
+ */
+router.post('/logout', async (req, res) => {
+  const claims = readSessionClaims(req);
   clearSession(res);
+  if (claims?.sub) {
+    await bumpSessionVersion(claims.sub).catch((err) => {
+      console.warn('[auth] could not end sessions on sign-out:', err.message);
+    });
+  }
   res.json({ ok: true });
 });
 
@@ -131,8 +202,11 @@ router.post('/forgot-password', async (req, res) => {
   // Everything past here is best-effort and must never change the answer
   // above, so failures are logged rather than surfaced.
   try {
-    if (!requestThrottle.check(`${identifier}|${clientIp(req)}`)) {
-      console.warn('[auth] password reset throttled for', identifier);
+    // Per account and per address, independently: varying either alone gets
+    // nobody a fresh budget.
+    const ipAllowed = requestIpThrottle.check(clientIp(req));
+    if (!requestThrottle.check(identifier.toLowerCase()) || !ipAllowed) {
+      console.warn('[auth] password reset throttled for', maskForLog(identifier));
       return;
     }
     if (!(await hasPasswordReset())) {
@@ -151,7 +225,7 @@ router.post('/forgot-password', async (req, res) => {
 
     const address = resolveResetEmail(user);
     if (!address) {
-      console.warn('[auth] no email address on file for', user.username);
+      console.warn('[auth] no email address on file for user', user.id);
       return;
     }
 
@@ -291,12 +365,6 @@ async function findResetRow(token) {
 
   const usable = resetRowUsable(rows[0]);
   return usable.ok ? { ok: true, row: rows[0] } : usable;
-}
-
-/** Behind a proxy the socket address is the proxy's, so trust the header. */
-function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 function publicUser(user) {

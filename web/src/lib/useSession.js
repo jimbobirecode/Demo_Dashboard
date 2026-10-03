@@ -19,7 +19,11 @@ export function useSession() {
     api
       .me()
       .then((payload) => {
-        if (!cancelled) setUser(payload.user);
+        if (cancelled) return;
+        setUser(payload.user);
+        // A temporary-password session survives a reload; the server refuses
+        // everything else until it is changed, so the screen must too.
+        setMustChangePassword(Boolean(payload.mustChangePassword));
       })
       .catch(() => {
         if (!cancelled) setUser(null);
@@ -49,8 +53,8 @@ export function useSession() {
     }
   }, []);
 
-  const completePasswordChange = useCallback(async (newPassword) => {
-    await api.changePassword(newPassword);
+  const completePasswordChange = useCallback(async (newPassword, currentPassword) => {
+    await api.changePassword(newPassword, currentPassword);
     setMustChangePassword(false);
     // The temp-password login carries no club name, so re-read the session.
     const payload = await api.me().catch(() => null);
