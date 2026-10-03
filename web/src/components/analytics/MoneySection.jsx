@@ -70,8 +70,8 @@ export default function MoneySection({ payments, trade }) {
             </div>
           ) : (
             <NotRecorded>
-              Payment state arrives with <code>migration_add_tour_operators.sql</code>, and is
-              recorded on the booking drawer.
+              Nothing in this period records a payment. Payment state is recorded on the
+              booking drawer.
             </NotRecorded>
           )}
         </ChartCard>

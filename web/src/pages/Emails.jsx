@@ -78,7 +78,6 @@ export default function Emails() {
   const bookings = pending?.bookings ?? [];
   const unsentCount = useMemo(() => bookings.filter((b) => !b.sentAt).length, [bookings]);
   const ready = Boolean(config?.campaigns?.[campaignId]?.configured && config?.hasApiKey && config?.fromEmail);
-  const untracked = config && config.tracking?.[campaignId] === false;
   const vero = config?.vero ?? null;
   // Connected AND switched on for the campaign on screen. Those are different
   // questions: pre-arrival deliberately carries no survey link even when the
@@ -137,9 +136,7 @@ export default function Emails() {
             // Named separately from the failures, because it is not one: these
             // guests asked not to be contacted and were not.
             payload.skipped ? `, ${payload.skipped} skipped (unsubscribed)` : ''
-          }.${
-            payload.tracked === false ? ' Sends could not be recorded — run the email tracking migration.' : ''
-          }`,
+          }.`,
         });
         await load();
       }
@@ -183,13 +180,6 @@ export default function Emails() {
         <div className="banner error">
           Club Vero is meant to carry the survey link on this campaign, but it is not configured.
           Set {vero.missing.join(', ')} in the environment, then restart the dashboard.
-        </div>
-      )}
-
-      {untracked && (
-        <div className="banner error">
-          This database has no email tracking columns, so sends cannot be recorded and a guest
-          could be emailed twice. Run <code>migration_add_journey_emails.sql</code> to fix it.
         </div>
       )}
 
@@ -401,14 +391,13 @@ export default function Emails() {
  * rather than push the rest at SendGrid anyway.
  */
 async function sendInBatches(campaignId, ids, dryRun) {
-  const merged = { dryRun, sent: 0, failed: 0, skipped: 0, tracked: true, results: [] };
+  const merged = { dryRun, sent: 0, failed: 0, skipped: 0, results: [] };
 
   for (let index = 0; index < ids.length; index += BATCH_SIZE) {
     const payload = await api.sendCampaign(campaignId, ids.slice(index, index + BATCH_SIZE), { dryRun });
     merged.sent += payload.sent;
     merged.failed += payload.failed;
     merged.skipped += payload.skipped ?? 0;
-    if (payload.tracked === false) merged.tracked = false;
     merged.results.push(...payload.results);
   }
 

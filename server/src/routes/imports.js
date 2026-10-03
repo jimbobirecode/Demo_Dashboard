@@ -18,7 +18,7 @@ import { Router } from 'express';
 import { pool, query } from '../db.js';
 import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { getBookingColumns, hasBookingSource } from '../lib/schema.js';
+import { BOOKING_SELECT } from '../lib/schema.js';
 import {
   markDuplicates,
   mintBatchId,
@@ -36,10 +36,8 @@ const MAX_ROWS = 5000;
 router.get('/config', async (req, res, next) => {
   try {
     res.json({
-      available: await hasBookingSource(),
-      reason: 'Run migration_add_booking_source.sql to upload a tee sheet',
       maxRows: MAX_ROWS,
-      batches: (await hasBookingSource()) ? await loadBatches(req.user.customerId) : [],
+      batches: await loadBatches(req.user.customerId),
     });
   } catch (err) {
     next(err);
@@ -74,10 +72,6 @@ router.post('/preview', async (req, res, next) => {
 router.post('/commit', async (req, res, next) => {
   const client = await pool.connect();
   try {
-    if (!(await hasBookingSource())) {
-      return res.status(409).json({ error: 'Run migration_add_booking_source.sql first' });
-    }
-
     const rows = await readRows(req.body);
     if (rows.error) return res.status(400).json({ error: rows.error });
 
@@ -95,7 +89,6 @@ router.post('/commit', async (req, res, next) => {
     }
 
     const batchId = mintBatchId();
-    const columns = await getBookingColumns();
     const wanted = fresh.slice(0, MAX_ROWS);
 
     // One transaction: a half-written batch would be neither importable again
@@ -133,7 +126,6 @@ router.post('/commit', async (req, res, next) => {
       skippedDuplicates: duplicates.length,
       rejected: parsed.rejected.length,
       truncated: fresh.length > MAX_ROWS ? fresh.length - MAX_ROWS : 0,
-      columns: columns.has('source'),
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -153,12 +145,9 @@ router.post('/commit', async (req, res, next) => {
 // Undoing an upload deletes bookings in bulk, so only an administrator may.
 router.delete('/:batchId', requireAdmin, async (req, res, next) => {
   try {
-    const columns = await getBookingColumns();
-    const guard = columns.has('updated_at') ? ' AND updated_at IS NULL' : '';
-
     const { rowCount } = await query(
       `DELETE FROM public.bookings
-        WHERE import_batch = $1 AND club = $2 AND source = 'imported'${guard}`,
+        WHERE import_batch = $1 AND club = $2 AND source = 'imported' AND updated_at IS NULL`,
       [req.params.batchId, req.user.customerId],
     );
 
@@ -250,9 +239,8 @@ async function loadComparableBookings(parsed, club) {
   const dates = parsed.map((booking) => booking.date).filter(Boolean).sort();
   if (!dates.length) return [];
 
-  const columns = await getBookingColumns();
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings
+    `SELECT ${BOOKING_SELECT} FROM public.bookings
       WHERE club = $1 AND date BETWEEN $2::date AND $3::date`,
     [club, dates[0], dates.at(-1)],
   );

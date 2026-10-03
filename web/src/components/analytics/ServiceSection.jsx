@@ -121,9 +121,8 @@ export default function ServiceSection({ caddies, requestThemes, emailCoverage }
             </div>
           ) : (
             <NotRecorded>
-              Nothing in this period records a send. Journey emails need{' '}
-              <code>migration_add_journey_emails.sql</code> and are sent from the Guest Emails
-              page.
+              Nothing in this period records a send. Journey emails are sent from the Guest
+              Emails page.
             </NotRecorded>
           )}
         </ChartCard>

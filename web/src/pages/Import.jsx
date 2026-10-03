@@ -49,15 +49,6 @@ export default function Import({ user }) {
     }
   }
 
-  if (config && !config.available) {
-    return (
-      <div className="stack">
-        <h1>Upload tee sheet</h1>
-        <div className="banner error">{config.reason}</div>
-      </div>
-    );
-  }
-
   return (
     <div className="stack">
       <header>

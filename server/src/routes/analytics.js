@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { getBookingColumns, getOperatorColumns, hasOperatorsTable } from '../lib/schema.js';
+import { BOOKING_SELECT } from '../lib/schema.js';
 import { GRANULARITIES, buildAnalytics } from '../lib/analytics-domain.js';
 
 const router = Router();
@@ -10,15 +10,12 @@ router.use(requireAuth);
 
 router.get('/', async (req, res, next) => {
   try {
-    const columns = await getBookingColumns();
-    const { rows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE club = $1`,
-      [req.user.customerId],
-    );
+    const { rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE club = $1`, [
+      req.user.customerId,
+    ]);
 
     const all = rows.map(serialiseBooking);
-    // Trade mix reads better as account names than as ids. An install without
-    // the operators table simply has none, and every booking reads as direct.
+    // Trade mix reads better as account names than as ids.
     const operatorNames = await loadOperatorNames(req.user.customerId);
     const { from, to, granularity } = req.query;
 
@@ -43,16 +40,10 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-/** id → account name, or an empty map where the table is not there. */
+/** id → account name for this club's operators. */
 async function loadOperatorNames(club) {
   try {
-    if (!(await hasOperatorsTable())) return new Map();
-    const columns = await getOperatorColumns();
-    const clause = columns.has('club') ? ' WHERE club = $1' : '';
-    const { rows } = await query(
-      `SELECT id, name FROM public.tour_operators${clause}`,
-      clause ? [club] : [],
-    );
+    const { rows } = await query('SELECT id, name FROM public.tour_operators WHERE club = $1', [club]);
     return new Map(rows.map((row) => [row.id, row.name]));
   } catch {
     // Names are a nicety; the report is worth more than the labels.

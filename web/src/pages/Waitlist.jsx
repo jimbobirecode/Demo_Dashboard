@@ -50,15 +50,6 @@ export default function Waitlist() {
 
   if (!data) return <div className="empty">{error ?? 'Loading waitlist…'}</div>;
 
-  if (!data.available) {
-    return (
-      <div className="stack">
-        <h1>Waitlist</h1>
-        <div className="banner error">{data.reason}</div>
-      </div>
-    );
-  }
-
   const { conversion } = data;
   const entries = showOpen ? data.entries.filter((entry) => entry.open) : data.entries;
 

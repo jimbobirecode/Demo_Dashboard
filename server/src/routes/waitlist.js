@@ -10,7 +10,7 @@ import { Router } from 'express';
 import { pool, query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { getBookingColumns, hasWaitlist } from '../lib/schema.js';
+import { BOOKING_SELECT } from '../lib/schema.js';
 import {
   WAITLIST_STATUSES,
   buildWaitlistConversion,
@@ -25,17 +25,9 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-/** Everything the page needs, including whether the table is there at all. */
+/** Everything the page needs. */
 router.get('/', async (req, res, next) => {
   try {
-    if (!(await hasWaitlist())) {
-      return res.json({
-        available: false,
-        reason: 'Run migration_add_waitlist_conversion.sql to use the waitlist',
-        entries: [],
-      });
-    }
-
     const entries = await loadEntries(req.user.customerId);
     const bookings = await loadConvertedBookings(entries, req.user.customerId);
     // Conversions made outside the dashboard leave no link, so they are found
@@ -46,7 +38,6 @@ router.get('/', async (req, res, next) => {
     );
 
     res.json({
-      available: true,
       entries,
       statuses: WAITLIST_STATUSES,
       conversion: buildWaitlistConversion(entries, bookings),
@@ -60,10 +51,6 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    if (!(await hasWaitlist())) {
-      return res.status(409).json({ error: 'Run migration_add_waitlist_conversion.sql first' });
-    }
-
     const check = validateWaitlistEntry(req.body);
     if (!check.ok) return res.status(400).json({ error: check.errors.join('. ') });
 
@@ -227,9 +214,8 @@ router.post('/:waitlistId/link', async (req, res, next) => {
     const bookingId = String(req.body?.bookingId ?? '').trim();
     if (!bookingId) return res.status(400).json({ error: 'A booking reference is required' });
 
-    const columns = await getBookingColumns();
     const { rows: bookingRows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+      `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
       [bookingId, req.user.customerId],
     );
     if (!bookingRows.length) return res.status(404).json({ error: 'No such booking at this club' });
@@ -298,9 +284,8 @@ async function loadConvertedBookings(entries, club) {
   const ids = entries.map((entry) => entry.convertedBookingId).filter(Boolean);
   if (!ids.length) return [];
 
-  const columns = await getBookingColumns();
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings
+    `SELECT ${BOOKING_SELECT} FROM public.bookings
       WHERE club = $1 AND booking_id = ANY($2::text[])`,
     [club, ids],
   );
@@ -320,9 +305,8 @@ async function loadCandidateBookings(entries, club) {
   const dates = open.map((entry) => entry.requestedDate).filter(Boolean).sort();
   if (!dates.length) return [];
 
-  const columns = await getBookingColumns();
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings
+    `SELECT ${BOOKING_SELECT} FROM public.bookings
       WHERE club = $1
         AND LOWER(guest_email) = ANY($2::text[])
         AND date BETWEEN $3::date - 7 AND $4::date + 7`,

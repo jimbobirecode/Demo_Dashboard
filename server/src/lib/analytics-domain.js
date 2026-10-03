@@ -498,16 +498,15 @@ export function buildBusiestDays(bookings) {
   }));
 }
 
-/* ---------- the fields later migrations added ---------- */
+/* ---------- payments, trade, lodging and journey emails ---------- */
 
 /**
  * Where the money actually is, on the bookings this club has committed to.
  *
- * `total` is what the booking is worth, `amountPaid` what has landed. Neither
- * an invoice number nor a due date means anything on an install that has not
- * run `migration_add_tour_operators.sql`, so `tracked` says whether any row in
- * the period carries payment state at all — the page shows the section only
- * when there is something real behind it.
+ * `total` is what the booking is worth, `amountPaid` what has landed. A club
+ * that never records payments here has nothing behind these numbers, so
+ * `tracked` says whether any row in the period carries payment state at all —
+ * the page shows the section only when there is something real behind it.
  */
 export function buildPaymentHealth(bookings, { today = todayIso() } = {}) {
   const committed = bookings.filter((booking) => COMMITTED.has(booking.status));
@@ -931,8 +930,8 @@ export function buildEmailCoverage(bookings, { today = todayIso() } = {}) {
   ];
 
   return {
-    // An install without migration_add_journey_emails.sql has no column to
-    // read, so every row looks unsent; saying nothing beats saying zero.
+    // A club that sends no journey emails from here would see every row as
+    // unsent; saying nothing beats saying zero.
     tracked: bookings.some((booking) => booking.preArrivalEmailSentAt || booking.postPlayEmailSentAt),
     campaigns: rows,
   };
@@ -956,10 +955,9 @@ export function buildAnalytics(
     popularTeeTimes: buildPopularTeeTimes(bookings),
     busiestDays: buildBusiestDays(bookings),
 
-    // Everything the later migrations made available. Each section carries its
-    // own "is there anything here" flag, so an install that does not use tour
-    // operators, lodging detail or the journey emails is told that rather than
-    // shown a wall of zeroes.
+    // Each of these carries its own "is there anything here" flag, so a club
+    // that does not use tour operators, lodging detail or the journey emails is
+    // told that rather than shown a wall of zeroes.
     payments: buildPaymentHealth(bookings, { today }),
     trade: buildTradeMix(bookings, { names: operatorNames }),
     lodging: buildLodging(bookings),
