@@ -1,6 +1,6 @@
 /**
- * Writing to `email_messages` — the conversation log both services share (see
- * migration_add_email_inbox.sql). The core API records what the bot sends and
+ * Writing to `email_messages` — the conversation log both services share. The
+ * core API records what the bot sends and
  * receives; this records what is sent from the dashboard.
  *
  * Best effort by design: an email that has gone out has gone out, and failing
@@ -8,20 +8,6 @@
  * function here resolves, logging rather than throwing.
  */
 import { query } from '../db.js';
-
-let tableKnown = false;
-
-/** Whether the table exists. A yes is cached; a no is re-asked, so running the migration takes effect live. */
-export async function hasEmailLog() {
-  if (tableKnown) return true;
-  try {
-    const { rows } = await query(`SELECT to_regclass('public.email_messages') IS NOT NULL AS ok`);
-    tableKnown = Boolean(rows[0]?.ok);
-  } catch {
-    tableKnown = false;
-  }
-  return tableKnown;
-}
 
 const COLUMNS = [
   'club', 'direction', 'booking_id', 'from_email', 'to_email', 'subject', 'body_text',
@@ -31,7 +17,6 @@ const COLUMNS = [
 /** Record one email. Resolves to the new row's id, or null. */
 export async function logEmail(fields) {
   try {
-    if (!(await hasEmailLog())) return null;
     const names = COLUMNS.filter((name) => fields[name] !== undefined && fields[name] !== null);
     const { rows } = await query(
       `INSERT INTO public.email_messages (${names.join(', ')})

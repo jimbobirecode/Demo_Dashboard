@@ -53,15 +53,6 @@ export default function Requests() {
   }
 
   if (!data) return <div className="empty">{error ?? 'Loading requests…'}</div>;
-  if (!data.available) {
-    return (
-      <div className="stack">
-        <h1>Guest requests</h1>
-        <div className="banner error">{data.reason}</div>
-      </div>
-    );
-  }
-
   const open = data.requests.filter((request) => request.open);
   const shown = showAll ? data.requests : open;
 

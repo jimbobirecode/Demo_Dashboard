@@ -13,20 +13,20 @@ import EmailComposer, { composerContext } from './EmailComposer.jsx';
  * on any earlier email points the composer at that one instead.
  */
 export default function BookingConversation({ booking }) {
-  const [state, setState] = useState({ loading: true, available: true, thread: [] });
+  const [state, setState] = useState({ loading: true, thread: [] });
   const [target, setTarget] = useState(null); // inbound message id, 'new', or null for the default
   const [notice, setNotice] = useState(null);
   const scroller = useRef(null);
 
   useEffect(() => {
     let live = true;
-    setState({ loading: true, available: true, thread: [] });
+    setState({ loading: true, thread: [] });
     setTarget(null);
     setNotice(null);
     api
       .bookingThread(booking.bookingId)
-      .then((payload) => live && setState({ loading: false, available: payload.available, thread: payload.thread ?? [] }))
-      .catch((err) => live && setState({ loading: false, available: true, thread: [], error: err.message }));
+      .then((payload) => live && setState({ loading: false, thread: payload.thread ?? [] }))
+      .catch((err) => live && setState({ loading: false, thread: [], error: err.message }));
     return () => {
       live = false;
     };
@@ -39,8 +39,6 @@ export default function BookingConversation({ booking }) {
     if (box) box.scrollTop = box.scrollHeight;
   }, [state.loading, state.thread.length]);
 
-  if (!state.available) return null;
-
   const thread = state.thread;
   const latestInbound = [...thread].reverse().find((message) => message.direction === 'inbound') ?? null;
   const replyingTo =
@@ -50,7 +48,7 @@ export default function BookingConversation({ booking }) {
   const firstName = context.firstName;
 
   function sent(result) {
-    setState({ loading: false, available: true, thread: result.thread });
+    setState({ loading: false, thread: result.thread });
     setNotice({ kind: 'success', text: result.notice ?? result.message });
     setTarget(null);
   }

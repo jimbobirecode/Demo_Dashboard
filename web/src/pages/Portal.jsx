@@ -136,7 +136,7 @@ function PortalHome() {
     );
   }
 
-  const { operator, account, canPayOnline, canEnquire, canRequestChanges, email } = me.data;
+  const { operator, account, canPayOnline, email } = me.data;
   const today = list?.today ?? '';
   const bookings = list?.bookings ?? [];
   const shown = view === 'current'
@@ -228,11 +228,9 @@ function PortalHome() {
             </div>
             <div className="row" style={{ gap: '0.5rem' }}>
               <a className="button-link btn-sm" href={portalStatementUrl} download>Download statement (CSV)</a>
-              {canEnquire && (
-                <button type="button" className="btn-sm btn-primary" onClick={() => setEnquiring(!enquiring)}>
-                  {enquiring ? 'Close' : 'Request new tee times'}
-                </button>
-              )}
+              <button type="button" className="btn-sm btn-primary" onClick={() => setEnquiring(!enquiring)}>
+                {enquiring ? 'Close' : 'Request new tee times'}
+              </button>
             </div>
           </div>
 
@@ -266,7 +264,6 @@ function PortalHome() {
                       booking={b}
                       today={today}
                       canPayOnline={canPayOnline}
-                      canRequest={canRequestChanges}
                       paying={paying === b.bookingId}
                       open={open?.bookingId === b.bookingId ? open.kind : null}
                       onOpen={(kind) => setOpen(kind ? { bookingId: b.bookingId, kind } : null)}
@@ -289,7 +286,7 @@ function PortalHome() {
   );
 }
 
-function BookingRow({ booking: b, today, canPayOnline, canRequest, paying, open, onOpen, onPay, onDone }) {
+function BookingRow({ booking: b, today, canPayOnline, paying, open, onOpen, onPay, onDone }) {
   const played = b.date && b.date < today;
   const live = !['Cancelled', 'Rejected'].includes(b.status) && !played;
   const teeTimes = Array.isArray(b.teeTimes) && b.teeTimes.length ? b.teeTimes.join(', ') : b.teeTime;
@@ -332,7 +329,7 @@ function BookingRow({ booking: b, today, canPayOnline, canRequest, paying, open,
                 {paying ? 'Opening…' : `Pay ${formatCurrency(b.outstanding)}`}
               </button>
             )}
-            {canRequest && live && !b.pendingRequest && (
+            {live && !b.pendingRequest && (
               <>
                 <button type="button" className="btn-sm" aria-pressed={open === 'amend'} onClick={() => onOpen(open === 'amend' ? null : 'amend')}>
                   Change

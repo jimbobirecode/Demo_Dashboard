@@ -21,8 +21,8 @@ import { query } from '../db.js';
 import { JWT_SECRET } from '../auth.js';
 import { BRAND, appBaseUrl } from '../lib/brand.js';
 import { sendHtmlEmail } from '../lib/sendgrid.js';
-import { hasEmailLog, logEmail } from '../lib/email-log.js';
-import { buildAuditSet, getBookingColumns, hasChangeRequests, hasOperatorsTable } from '../lib/schema.js';
+import { logEmail } from '../lib/email-log.js';
+import { buildAuditSet } from '../lib/schema.js';
 import { todayInClubZone } from '../lib/email-domain.js';
 import { createThrottle, hashToken, mintToken } from '../lib/password-reset-domain.js';
 import {
@@ -112,7 +112,6 @@ router.post('/login', async (req, res) => {
   try {
     const ipAllowed = loginIpThrottle.check(clientIp(req));
     if (!loginThrottle.check(email.toLowerCase()) || !ipAllowed) return;
-    if (!(await hasOperatorsTable())) return;
     const operator = operatorForEmail(email, await allActiveOperators());
     if (!operator) {
       console.warn('[portal] sign-in asked for an address on no operator account:', maskForLog(email));
@@ -237,7 +236,7 @@ async function loadAccount(req) {
     .map((booking) => ({ ...booking, payment: paymentState(booking, operator, { today }) }));
 
   let pending = new Map();
-  if (bookings.length && (await hasChangeRequests())) {
+  if (bookings.length) {
     const { rows } = await query(
       `SELECT * FROM public.booking_change_requests
         WHERE club = $1 AND status = 'Pending' AND booking_id = ANY($2)`,
@@ -268,8 +267,6 @@ router.get('/me', async (req, res, next) => {
       },
       account: summarise(operator, bookings, { today }),
       canPayOnline: account.payable,
-      canEnquire: await hasEmailLog(),
-      canRequestChanges: await hasChangeRequests(),
     });
   } catch (err) {
     next(err);
@@ -313,9 +310,6 @@ function ownBooking(account, bookingId) {
 
 router.post('/bookings/:bookingId/request', async (req, res, next) => {
   try {
-    if (!(await hasChangeRequests())) {
-      return res.status(503).json({ error: 'Requests are not available online yet. Please email the club.' });
-    }
     const account = await loadAccount(req);
     if (!account) return res.status(401).json({ error: 'This account is no longer active.' });
     const booking = ownBooking(account, req.params.bookingId);
@@ -367,10 +361,6 @@ router.post('/bookings/:bookingId/pay', async (req, res, next) => {
   try {
     const config = readPaymentLinkConfig();
     if (!config.configured) return res.status(409).json({ error: 'Online payment is not available. Please contact the club.' });
-    const columns = await getBookingColumns();
-    if (!columns.has('stripe_payment_link_id')) {
-      return res.status(409).json({ error: 'Online payment is not available. Please contact the club.' });
-    }
     const account = await loadAccount(req);
     if (!account) return res.status(401).json({ error: 'This account is no longer active.' });
     const booking = ownBooking(account, req.params.bookingId);
@@ -404,11 +394,11 @@ router.post('/bookings/:bookingId/pay', async (req, res, next) => {
       payment_link_sent_by: `portal:${req.portal.email}`,
       payment_status: PENDING_PAYMENT_STATUS,
     };
-    const names = Object.keys(updates).filter((name) => columns.has(name));
+    const names = Object.keys(updates);
     const params = names.map((name) => updates[name]);
     const sets = names.map((name, index) => `"${name}" = $${index + 1}`);
-    if (columns.has('payment_link_sent_at')) sets.push('payment_link_sent_at = NOW()');
-    const audit = buildAuditSet(columns, params.length + 1, `portal:${req.portal.email}`);
+    sets.push('payment_link_sent_at = NOW()');
+    const audit = buildAuditSet(params.length + 1, `portal:${req.portal.email}`);
     params.push(...audit.values, booking.bookingId, booking.club);
     await query(
       `UPDATE public.bookings SET ${[...sets, ...audit.clauses].join(', ')}
@@ -424,9 +414,6 @@ router.post('/bookings/:bookingId/pay', async (req, res, next) => {
 
 router.post('/enquiries', async (req, res, next) => {
   try {
-    if (!(await hasEmailLog())) {
-      return res.status(503).json({ error: 'Online requests are not available yet. Please email the club.' });
-    }
     const account = await loadAccount(req);
     if (!account) return res.status(401).json({ error: 'This account is no longer active.' });
     const enquiry = buildEnquiry(req.body, account.operator, req.portal.email);

@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { getBookingColumns, hasChangeRequests } from '../lib/schema.js';
+import { BOOKING_SELECT } from '../lib/schema.js';
 import { BRAND } from '../lib/brand.js';
 import { sendHtmlEmail } from '../lib/sendgrid.js';
 import { logEmail } from '../lib/email-log.js';
@@ -78,9 +78,8 @@ async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request
 }
 
 async function loadBooking(bookingId, club) {
-  const columns = await getBookingColumns();
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+    `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
     [bookingId, club],
   );
   return rows[0] ? serialiseBooking(rows[0]) : null;
@@ -150,10 +149,6 @@ router.post('/request', async (req, res, next) => {
     if (!submitThrottle.check(clientIp(req)) || !refAllowed) {
       return res.status(429).json({ error: 'Too many requests. Please ring the club.' });
     }
-    if (!(await hasChangeRequests())) {
-      return res.status(503).json({ error: 'Online changes are not available. Please ring the club.' });
-    }
-
     const found = await findByToken(req.body?.ref, req.body?.token);
     if (!found.ok) return res.status(found.status).json({ error: found.error });
 
@@ -209,10 +204,6 @@ router.post('/request', async (req, res, next) => {
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    if (!(await hasChangeRequests())) {
-      return res.json({ available: false, reason: 'Run migration_add_change_requests.sql', requests: [] });
-    }
-
     const { rows } = await query(
       `SELECT r.*, b.date AS play_date, b.tee_time, b.players AS booked_players, b.guest_name
          FROM public.booking_change_requests r
@@ -224,7 +215,6 @@ router.get('/', requireAuth, async (req, res, next) => {
     );
 
     res.json({
-      available: true,
       policy: readChangePolicy(),
       requests: rows.map((row) => ({
         ...serialiseChangeRequest(row),
@@ -269,15 +259,10 @@ router.post('/:id/:decision', requireAuth, async (req, res, next) => {
     const cancelling = approving && request.kind === 'cancel';
 
     if (cancelling) {
-      const columns = await getBookingColumns();
       await query(
-        `UPDATE public.bookings SET status = 'Cancelled'
-           ${columns.has('updated_at') ? ', updated_at = NOW()' : ''}
-           ${columns.has('updated_by') ? ', updated_by = $3' : ''}
+        `UPDATE public.bookings SET status = 'Cancelled', updated_at = NOW(), updated_by = $3
          WHERE booking_id = $1 AND club = $2`,
-        columns.has('updated_by')
-          ? [request.booking_id, req.user.customerId, req.user.username]
-          : [request.booking_id, req.user.customerId],
+        [request.booking_id, req.user.customerId, req.user.username],
       );
     }
 
@@ -333,9 +318,8 @@ async function findByToken(ref, token) {
 
   if (!bookingId || !secret) return refused;
 
-  const columns = await getBookingColumns();
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1`,
+    `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1`,
     [bookingId],
   );
 
@@ -353,13 +337,13 @@ async function findByToken(ref, token) {
     };
   }
 
-  const pending = (await hasChangeRequests())
-    ? (await query(
-        `SELECT * FROM public.booking_change_requests
-          WHERE booking_id = $1 AND club = $2 AND status = 'Pending'`,
-        [bookingId, booking.club],
-      )).rows.map(serialiseChangeRequest)
-    : [];
+  const pending = (
+    await query(
+      `SELECT * FROM public.booking_change_requests
+        WHERE booking_id = $1 AND club = $2 AND status = 'Pending'`,
+      [bookingId, booking.club],
+    )
+  ).rows.map(serialiseChangeRequest);
 
   return { ok: true, booking, pending };
 }

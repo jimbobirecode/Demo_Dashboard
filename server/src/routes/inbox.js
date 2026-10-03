@@ -18,8 +18,7 @@ import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { BRAND } from '../lib/brand.js';
 import { sendHtmlEmail } from '../lib/sendgrid.js';
-import { hasEmailLog, logEmail } from '../lib/email-log.js';
-import { getBookingColumns } from '../lib/schema.js';
+import { logEmail } from '../lib/email-log.js';
 import { LOGO_CID, inlineLogoAttachment } from '../lib/email-layout.js';
 import { manageUrlFor } from '../lib/change-request-domain.js';
 import {
@@ -32,12 +31,6 @@ import {
 
 const router = Router();
 router.use(requireAuth);
-
-const MIGRATION = 'migration_add_email_inbox.sql';
-
-function unavailable(res) {
-  return res.json({ available: false, migration: MIGRATION, messages: [], counts: {} });
-}
 
 function mailConfig() {
   return {
@@ -105,7 +98,6 @@ async function sendAndRecord(req, { to, subject, body, bookingId = null, origina
 
 router.get('/', async (req, res, next) => {
   try {
-    if (!(await hasEmailLog())) return unavailable(res);
     const status = String(req.query.status ?? 'open');
     const club = req.user.customerId;
 
@@ -116,12 +108,11 @@ router.get('/', async (req, res, next) => {
           ? `m.direction = 'inbound' AND m.review_status = '${status}'`
           : `m.direction = 'inbound' AND m.review_status = 'open'`;
     // The guest's name from their booking, so the list reads as people rather
-    // than addresses. Installs without the column simply show the address.
-    const guestName = (await getBookingColumns()).has('guest_name') ? 'b.guest_name' : 'NULL';
+    // than addresses.
 
     const [list, counts] = await Promise.all([
       query(
-        `SELECT m.*, ${guestName} AS booking_guest_name
+        `SELECT m.*, b.guest_name AS booking_guest_name
            FROM public.email_messages m
            LEFT JOIN public.bookings b ON b.booking_id = m.booking_id AND b.club = m.club
           WHERE m.club = $1 AND ${where}
@@ -136,7 +127,6 @@ router.get('/', async (req, res, next) => {
     ]);
 
     res.json({
-      available: true,
       status,
       counts: Object.fromEntries(counts.rows.map((row) => [row.review_status, row.n])),
       messages: list.rows.map(serialiseMessage),
@@ -148,7 +138,6 @@ router.get('/', async (req, res, next) => {
 
 router.get('/booking/:bookingId', async (req, res, next) => {
   try {
-    if (!(await hasEmailLog())) return res.json({ available: false, migration: MIGRATION, thread: [] });
     const club = req.user.customerId;
     const { rows } = await query(
       'SELECT guest_email FROM public.bookings WHERE booking_id = $1 AND club = $2',
@@ -156,7 +145,7 @@ router.get('/booking/:bookingId', async (req, res, next) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
     const thread = await loadThread(club, { bookingId: req.params.bookingId, guestEmail: rows[0].guest_email });
-    res.json({ available: true, thread });
+    res.json({ thread });
   } catch (err) {
     next(err);
   }
@@ -191,10 +180,6 @@ router.post('/booking/:bookingId/send', async (req, res, next) => {
 });
 
 async function loadMessage(req, res) {
-  if (!(await hasEmailLog())) {
-    res.status(409).json({ error: `Run ${MIGRATION} first`, migration: MIGRATION });
-    return null;
-  }
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: 'Bad message id' });
@@ -245,7 +230,7 @@ router.post('/preview', async (req, res, next) => {
     const body = String(req.body?.body ?? '');
     let original = null;
     const replyToId = Number.parseInt(req.body?.replyToId, 10);
-    if (Number.isFinite(replyToId) && (await hasEmailLog())) {
+    if (Number.isFinite(replyToId)) {
       const { rows } = await query('SELECT * FROM public.email_messages WHERE id = $1 AND club = $2', [
         replyToId,
         req.user.customerId,

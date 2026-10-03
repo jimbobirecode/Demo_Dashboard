@@ -82,18 +82,6 @@ export default function Inbox({ onCountChange }) {
   }, [load]);
 
   if (!data) return <div className="empty">{error ?? 'Loading inbox…'}</div>;
-  if (!data.available) {
-    return (
-      <div className="stack">
-        <h1>Inbox</h1>
-        <div className="banner error">
-          Run <code>{data.migration}</code> on the database to turn the Inbox on. Until then, emails the bot cannot
-          answer are handled the old way.
-        </div>
-      </div>
-    );
-  }
-
   const messages = data.messages;
   const selected = messages.find((m) => m.id === selectedId) ?? null;
 
