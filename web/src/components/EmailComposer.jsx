@@ -285,7 +285,7 @@ export default function EmailComposer({
           {preview.loading ? (
             <div className="muted" style={{ padding: '1rem', color: '#555' }}>Building the preview…</div>
           ) : (
-            <iframe title="Email preview" srcDoc={preview.html} style={{ width: '100%', height: '32rem', border: 0, display: 'block' }} />
+            <iframe title="Email preview" sandbox="" srcDoc={preview.html} style={{ width: '100%', height: '32rem', border: 0, display: 'block' }} />
           )}
         </div>
       ) : (

@@ -8,6 +8,13 @@
  */
 const BASE = '/api';
 
+/**
+ * Sent on every call. The server refuses a state-changing request without it
+ * (see server/src/lib/request-guard.js): a page on another site cannot add a
+ * custom header to a request the browser will send with our cookie.
+ */
+const CSRF_HEADERS = { 'X-Requested-With': 'teemail' };
+
 class ApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -22,7 +29,7 @@ async function request(path, { method = 'GET', body } = {}) {
     response = await fetch(`${BASE}${path}`, {
       method,
       credentials: 'include',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      headers: body === undefined ? CSRF_HEADERS : { ...CSRF_HEADERS, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
