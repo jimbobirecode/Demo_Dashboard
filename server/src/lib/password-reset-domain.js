@@ -45,8 +45,6 @@ export const TOKEN_PURPOSES = {
   },
 };
 
-export const PURPOSES = Object.keys(TOKEN_PURPOSES);
-
 /** The shortest password the dashboard accepts, matching the change-password screen. */
 export const MIN_PASSWORD_LENGTH = 8;
 

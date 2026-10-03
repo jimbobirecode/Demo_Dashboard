@@ -79,15 +79,6 @@ export function linkProblem(booking, amount) {
   return null;
 }
 
-/** The amount the dashboard offers by default: whatever is still owed. */
-export function suggestedAmount(booking) {
-  const outstanding = booking?.payment?.outstanding;
-  if (Number.isFinite(outstanding) && outstanding > 0) return outstanding;
-  const total = Number(booking?.total) || 0;
-  const paid = Number(booking?.amountPaid) || 0;
-  return Math.max(Math.round((total - paid) * 100) / 100, 0);
-}
-
 export function formatMoney(amount, currency = BRAND.currency) {
   return new Intl.NumberFormat(BRAND.locale, { style: 'currency', currency }).format(Number(amount) || 0);
 }

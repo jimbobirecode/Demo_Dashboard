@@ -93,44 +93,6 @@ export async function requestSurveyLink({
   }
 }
 
-/**
- * Whether the integration is actually wired up, from Vero's own point of view.
- *
- * Answers the questions a settings screen is really asking — does the key
- * work, which club does it reach, is there a course for a round to be filed
- * against — before the first guest is emailed rather than after.
- */
-export async function checkVero({ baseUrl, apiKey, source, site, fetchImpl = fetch }) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  try {
-    const url = new URL(`${baseUrl}/api/partner/health`);
-    if (site) url.searchParams.set('site', site);
-
-    const response = await fetchImpl(url, {
-      headers: { 'x-partner-key': apiKey, 'x-partner-source': source },
-      signal: controller.signal,
-    });
-
-    const payload = await readJson(response);
-    if (!response.ok) {
-      return { ok: false, message: payload?.error ?? `Club Vero answered ${response.status}` };
-    }
-    return {
-      ok: Boolean(payload?.ok),
-      club: payload?.club ?? null,
-      outlet: payload?.outlet?.name ?? null,
-      message: payload?.error ?? null,
-    };
-  } catch (err) {
-    const message = err?.name === 'AbortError' ? 'Club Vero timed out' : err.message;
-    return { ok: false, message };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function readJson(response) {
   try {
     return await response.json();
