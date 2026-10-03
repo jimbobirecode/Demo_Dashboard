@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import pg from 'pg';
 import { MIGRATIONS_DIR, MigrationError, checksum, migrate, readMigrations } from '../../src/db/migrate.js';
-import { createScratchDatabase, skip } from './helpers.js';
+import { TEST_DATABASE_URL, createScratchDatabase, skip } from './helpers.js';
 
 function tempMigrations(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrations-'));
@@ -83,6 +83,95 @@ describe('migrate against Postgres', { skip }, () => {
     } finally {
       await client.end();
     }
+  });
+});
+
+async function sql(url, text) {
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    return await client.query(text);
+  } finally {
+    await client.end();
+  }
+}
+
+describe('migrations on a database that already has the schema', { skip }, () => {
+  const role = `migrate_nonowner_${process.pid}`;
+  let db;
+  before(async () => {
+    db = await createScratchDatabase('migrate_existing');
+  });
+  after(async () => {
+    await db?.drop();
+    await sql(TEST_DATABASE_URL, `DROP ROLE IF EXISTS ${role}`).catch(() => {});
+  });
+
+  test('a role that owns no table can run them: every statement is a no-op', async () => {
+    // Production meets the runner with its tables in place, owned by whoever
+    // created them, and no schema_migrations table yet.
+    await migrate({ connectionString: db.url });
+    await sql(db.url, 'DROP TABLE schema_migrations');
+    await sql(TEST_DATABASE_URL, `DROP ROLE IF EXISTS ${role}`);
+    await sql(TEST_DATABASE_URL, `CREATE ROLE ${role} LOGIN PASSWORD 'nonowner'`);
+    await sql(
+      db.url,
+      `GRANT USAGE, CREATE ON SCHEMA public TO ${role};
+       GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES ON ALL TABLES IN SCHEMA public TO ${role};
+       GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ${role};`,
+    );
+
+    const url = new URL(db.url);
+    url.username = role;
+    url.password = 'nonowner';
+    const applied = await migrate({ connectionString: url.toString() });
+    assert.deepEqual(
+      applied,
+      readMigrations().map((m) => m.file),
+    );
+    assert.deepEqual(await migrate({ connectionString: url.toString() }), []);
+
+    // Hand the database back so it can be dropped with its role.
+    await sql(db.url, `DROP OWNED BY ${role}`);
+  });
+});
+
+describe('migrations meeting rows that break a new constraint', { skip }, () => {
+  let db;
+  before(async () => {
+    db = await createScratchDatabase('migrate_bad_rows');
+  });
+  after(async () => {
+    await db?.drop();
+  });
+
+  test('a CHECK is left NOT VALID and a unique index skipped, nothing deleted, deploy not failed', async () => {
+    // A database that has the tables but not yet the constraint or the index,
+    // and rows that would break them.
+    await migrate({ connectionString: db.url });
+    await sql(
+      db.url,
+      `DROP TABLE schema_migrations;
+       ALTER TABLE bookings DROP CONSTRAINT bookings_source_check;
+       DROP INDEX idx_tour_operators_club_name;
+       INSERT INTO bookings (booking_id, source) VALUES ('A-1', 'legacy');
+       INSERT INTO tour_operators (club, name) VALUES ('c', 'Acme'), ('c', 'ACME');`,
+    );
+
+    await migrate({ connectionString: db.url });
+
+    const check = await sql(db.url, "SELECT convalidated FROM pg_constraint WHERE conname = 'bookings_source_check'");
+    assert.equal(check.rows[0].convalidated, false);
+    const index = await sql(db.url, "SELECT to_regclass('public.idx_tour_operators_club_name') AS i");
+    assert.equal(index.rows[0].i, null);
+    const rows = await sql(
+      db.url,
+      'SELECT (SELECT COUNT(*) FROM bookings)::int AS b, (SELECT COUNT(*) FROM tour_operators)::int AS o',
+    );
+    assert.deepEqual(rows.rows[0], { b: 1, o: 2 });
+
+    // New rows are held to the constraint all the same.
+    await assert.rejects(sql(db.url, "INSERT INTO bookings (booking_id, source) VALUES ('A-2', 'other')"), /check/);
   });
 });
 
