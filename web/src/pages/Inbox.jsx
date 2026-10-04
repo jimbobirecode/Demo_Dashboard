@@ -301,7 +301,15 @@ function InboxDetail({ id, onChanged, onHandled }) {
       {message.routedTo === 'membership' || message.intent === 'membership_enquiry' ? (
         <div className="context-strip">
           <span className="muted">Membership enquiry</span>
-          <span>Answered automatically and filed on the Membership page.</span>
+          {/* Membership correspondence is read on the Membership page and is
+              not listed here at all. One that reaches the Inbox got no
+              application to be filed against — membership itself is not
+              working — so it says so rather than claiming it was answered. */}
+          <span>
+            {message.routedTo === 'membership'
+              ? 'Answered automatically and filed on the Membership page.'
+              : 'Not answered automatically, and no application was created — see the reason above.'}
+          </span>
           <Link to="/membership" className="btn-sm button-link">
             Open Membership
           </Link>

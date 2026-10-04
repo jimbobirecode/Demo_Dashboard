@@ -323,6 +323,38 @@ describe('membership routes against Postgres', { skip }, () => {
       );
     });
 
+    test('the detail carries the whole conversation and what the team still owes the applicant', async () => {
+      // Membership email is not in the Inbox, so a later reply has to be
+      // readable here - with what the core API could not finish.
+      // The applicant wrote in from isla@example.com and gave a different
+      // address on the form; both halves of the conversation belong here.
+      const applicant = (await staffA.get(`/api/membership/applications/${ids.submitted}`)).body.application.email;
+      await pool.query(
+        `INSERT INTO email_messages (club, direction, from_email, to_email, subject, body_text, intent, routed_to, review_reason)
+         VALUES ('club_a', 'inbound', $1, 'memberships@club.test', 'Re: Membership',
+                 'Any news on my application?', 'membership_enquiry', 'membership',
+                 'Reply about membership application MEM-20261001-AAAAAAAA (submitted) - for the team to answer.')`,
+        [applicant],
+      );
+
+      const res = await staffA.get(`/api/membership/applications/${ids.submitted}`);
+      assert.equal(res.status, 200);
+      assert.deepEqual(
+        res.body.thread.map((m) => m.body),
+        ['I would like to join the club.', 'Any news on my application?'],
+      );
+      assert.match(res.body.needsReply, /for the team to answer/);
+
+      // Another club's email with the same address is not in it.
+      await pool.query(
+        `INSERT INTO email_messages (club, direction, from_email, subject, body_text, routed_to)
+         VALUES ('club_b', 'inbound', $1, 'Membership', 'club b email', 'membership')`,
+        [applicant],
+      );
+      const again = await staffA.get(`/api/membership/applications/${ids.submitted}`);
+      assert.ok(!again.body.thread.some((m) => m.body === 'club b email'));
+    });
+
     test('another club’s application is a 404 everywhere (no IDOR)', async () => {
       assert.equal((await adminB.get(`/api/membership/applications/${ids.submitted}`)).status, 404);
       assert.equal(

@@ -45,10 +45,31 @@ export const ROUTE_LABELS = {
 /** Routes of inbound emails the core API has not finished with. */
 export const IN_FLIGHT_ROUTES = ['queued', 'processing'];
 
+/**
+ * Routes whose emails are read somewhere other than the Inbox.
+ *
+ * Membership correspondence belongs on the Membership page, beside the
+ * application, its timeline and the club's decisions — an answered enquiry,
+ * a reply from the enquirer, an email that could not be sent. The core API
+ * only leaves a membership email for the Inbox when it produced no
+ * application at all (membership misconfigured, database unreachable), and
+ * that one is routed to 'inbox' like anything else needing a person.
+ */
+export const ROUTES_READ_ELSEWHERE = ['membership'];
+
 /** SQL: this row is not one the core API is still working on. `alias` is the table alias, if any. */
 export function notInFlightSql(alias = '') {
+  return excludedRoutesSql(IN_FLIGHT_ROUTES, alias);
+}
+
+/** SQL: this row belongs in the Inbox at all — see ROUTES_READ_ELSEWHERE. `alias` is the table alias, if any. */
+export function belongsInInboxSql(alias = '') {
+  return excludedRoutesSql(ROUTES_READ_ELSEWHERE, alias);
+}
+
+function excludedRoutesSql(routes, alias) {
   const column = alias ? `${alias}.routed_to` : 'routed_to';
-  return `COALESCE(${column}, '') NOT IN (${IN_FLIGHT_ROUTES.map((route) => `'${route}'`).join(', ')})`;
+  return `COALESCE(${column}, '') NOT IN (${routes.map((route) => `'${route}'`).join(', ')})`;
 }
 
 const iso = (value) => (value ? new Date(value).toISOString() : null);

@@ -123,4 +123,37 @@ describe('MembershipDrawer', () => {
     expect(details).toHaveTextContent('CDH number');
     expect(details).toHaveTextContent('Other clubs');
   });
+
+  test('the conversation with the applicant is here, and says what the team still owes them', async () => {
+    // Membership email is not in the Inbox, so an unanswered reply has to be
+    // visible on the application itself.
+    api.membershipApplication.mockResolvedValue({
+      ...detail('submitted', ['under_review']),
+      needsReply: 'Reply about membership application MEM-20261004-ABCD1234 (submitted) - for the team to answer.',
+      thread: [
+        {
+          id: 3,
+          direction: 'inbound',
+          fromEmail: 'isla@example.com',
+          subject: 'Joining',
+          body: 'I would like to join.',
+          createdAt: '2026-10-01T08:00:00Z',
+        },
+        {
+          id: 4,
+          direction: 'inbound',
+          fromEmail: 'isla@example.com',
+          subject: 'Re: Joining',
+          body: 'Any news on my application?',
+          createdAt: '2026-10-03T08:00:00Z',
+        },
+      ],
+    });
+    render(<MembershipDrawer applicationId={7} enabled onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    expect(await screen.findByText(/for the team to answer/)).toBeInTheDocument();
+    expect(screen.getByText('2 emails with isla@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Any news on my application?')).toBeInTheDocument();
+    expect(screen.getByText('I would like to join.')).toBeInTheDocument();
+  });
 });

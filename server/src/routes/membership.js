@@ -15,7 +15,7 @@
  *   GET  /summary                        the KPI row
  *   GET  /applications?status=&q=        list + counts per status
  *   GET  /applications.csv               export
- *   GET  /applications/:id               detail, timeline, the enquiry email
+ *   GET  /applications/:id               detail, timeline, the conversation with the applicant
  *   PATCH /applications/:id/status       a review decision {status, note}
  *   POST /applications/:id/notes         a staff note
  *   POST /applications/:id/invite        waitlisted → invited (service on only)
@@ -421,7 +421,7 @@ router.get('/applications/:id', async (req, res, next) => {
     if (!row) return res.status(404).json({ error: 'No such application' });
     const application = serialiseApplication(row);
 
-    const [events, recommended, source, category] = await Promise.all([
+    const [events, recommended, source, thread, category] = await Promise.all([
       query(`SELECT * FROM public.membership_events WHERE application_id = $1 AND club = $2 ORDER BY created_at, id`, [
         application.id,
         club,
@@ -435,8 +435,27 @@ router.get('/applications/:id', async (req, res, next) => {
       application.sourceMessageId
         ? query('SELECT * FROM public.email_messages WHERE id = $1 AND club = $2', [application.sourceMessageId, club])
         : { rows: [] },
+      // Membership correspondence is read here rather than in the Inbox, so
+      // the whole conversation with the applicant comes with the application
+      // — their later replies included, not just the enquiry we answered.
+      // By address, plus the enquiry itself: the applicant may have given a
+      // different address on the form than the one they wrote from.
+      query(
+        `SELECT * FROM public.email_messages
+          WHERE club = $1
+            AND (lower(from_email) = lower($2) OR lower(to_email) = lower($2) OR id = $3)
+          ORDER BY created_at ASC, id ASC LIMIT 100`,
+        [club, application.email, application.sourceMessageId ?? null],
+      ),
       loadCategory(application.categoryId, club),
     ]);
+
+    const messages = thread.rows.map(serialiseMessage);
+    // What the core API could not finish by itself: a reply nobody has
+    // answered, or an automatic email that did not go out.
+    const needsReply =
+      [...messages].reverse().find((message) => message.direction === 'inbound' && message.reviewReason)
+        ?.reviewReason ?? null;
 
     res.json({
       application,
@@ -444,6 +463,8 @@ router.get('/applications/:id', async (req, res, next) => {
       recommendedCategories: recommended.rows.map(serialiseCategory),
       events: events.rows.map(serialiseEvent),
       sourceEmail: source.rows[0] ? serialiseMessage(source.rows[0]) : null,
+      thread: messages,
+      needsReply,
       emailConfigured: emailConfigured(),
     });
   } catch (err) {

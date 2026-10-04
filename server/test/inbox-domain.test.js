@@ -73,8 +73,8 @@ test('emails the core API is still working on are labelled and kept out of the I
   assert.equal(notInFlightSql('m'), "COALESCE(m.routed_to, '') NOT IN ('queued', 'processing')");
 });
 
-test('membership enquiries read as such in the Inbox', async () => {
-  const { serialiseMessage } = await import('../src/lib/inbox-domain.js');
+test('membership email is labelled as such, and belongs to the Membership page not the Inbox', async () => {
+  const { ROUTES_READ_ELSEWHERE, belongsInInboxSql, serialiseMessage } = await import('../src/lib/inbox-domain.js');
   const message = serialiseMessage({
     id: 2,
     direction: 'inbound',
@@ -83,4 +83,11 @@ test('membership enquiries read as such in the Inbox', async () => {
   });
   assert.equal(message.intentLabel, 'Membership enquiry');
   assert.equal(message.routeLabel, 'Sent to Membership');
+
+  // Correspondence about an application is read beside the application. Only
+  // a membership fault that produced no application is routed to 'inbox',
+  // and that one is not excluded here.
+  assert.deepEqual(ROUTES_READ_ELSEWHERE, ['membership']);
+  assert.equal(belongsInInboxSql('m'), "COALESCE(m.routed_to, '') NOT IN ('membership')");
+  assert.equal(belongsInInboxSql(), "COALESCE(routed_to, '') NOT IN ('membership')");
 });

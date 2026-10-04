@@ -23,6 +23,7 @@ import { LOGO_CID, inlineLogoAttachment } from '../lib/email-layout.js';
 import { manageUrlFor } from '../lib/change-request-domain.js';
 import {
   REVIEW_STATUSES,
+  belongsInInboxSql,
   buildReplyEmail,
   notInFlightSql,
   replyProblem,
@@ -102,12 +103,15 @@ router.get('/', async (req, res, next) => {
     const status = String(req.query.status ?? 'open');
     const club = req.user.customerId;
 
+    // Membership correspondence is read on the Membership page, so it is not
+    // in the Inbox under any status — including 'all' — nor in the counts.
+    const inbound = `m.direction = 'inbound' AND ${belongsInInboxSql('m')}`;
     const where =
       status === 'all'
-        ? `m.direction = 'inbound'`
+        ? inbound
         : REVIEW_STATUSES.includes(status)
-          ? `m.direction = 'inbound' AND m.review_status = '${status}' AND ${notInFlightSql('m')}`
-          : `m.direction = 'inbound' AND m.review_status = 'open' AND ${notInFlightSql('m')}`;
+          ? `${inbound} AND m.review_status = '${status}' AND ${notInFlightSql('m')}`
+          : `${inbound} AND m.review_status = 'open' AND ${notInFlightSql('m')}`;
     // The guest's name from their booking, so the list reads as people rather
     // than addresses.
 
@@ -122,7 +126,8 @@ router.get('/', async (req, res, next) => {
       ),
       query(
         `SELECT review_status, COUNT(*)::int AS n FROM public.email_messages
-          WHERE club = $1 AND direction = 'inbound' AND ${notInFlightSql()} GROUP BY review_status`,
+          WHERE club = $1 AND direction = 'inbound' AND ${notInFlightSql()} AND ${belongsInInboxSql()}
+          GROUP BY review_status`,
         [club],
       ),
     ]);
