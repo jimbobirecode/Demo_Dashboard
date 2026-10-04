@@ -165,6 +165,11 @@ erDiagram
         text phone "PII"
         date date_of_birth "PII"
         text address "PII"
+        text postcode "PII"
+        text handicap
+        text home_club
+        text other_clubs
+        text cdh_number "PII"
         text message "PII (free text)"
         text enquiry_summary "PII"
         int_array recommended_category_ids
@@ -274,7 +279,7 @@ What the club offers: `name` (unique per club), `description`, `eligibility`, `j
 
 ### `membership_applications`
 
-One per enquirer and club, enquiry to welcome: `reference` (`MEM-YYYYMMDD-XXXXXXXX`, unique; carried by the signed links), `kind` (`application`/`waitlist`, CHECK), `status` (`enquired`, `submitted`, `under_review`, `approved`, `declined`, `welcomed`, `waitlisted`, `invited`, `withdrawn`; CHECK), `category_id` (FK, set null), applicant details — `first_name`, `last_name`, `email`, `phone`, `date_of_birth`, `address`, `handicap`, `home_club`, `proposer`, `seconder`, `message` (**PII**) — `enquiry_summary` (**PII**), `recommended_category_ids[]`, `consent`, `source_message_id` (the inbound `email_messages` row), `staff_notes` (**PII**), `decision_note`, `decided_by/at`, `submitted_at`, `welcomed_at`, timestamps. Indexes on `(club, status, created_at DESC)` and `(club, lower(email))`.
+One per enquirer and club, enquiry to welcome: `reference` (`MEM-YYYYMMDD-XXXXXXXX`, unique; carried by the signed links), `kind` (`application`/`waitlist`, CHECK), `status` (`enquired`, `submitted`, `under_review`, `approved`, `declined`, `welcomed`, `waitlisted`, `invited`, `withdrawn`; CHECK), `category_id` (FK, set null), applicant details — `first_name`, `last_name`, `email`, `phone`, `date_of_birth`, `address` (permanent address, without the postcode), `postcode`, `handicap`, `cdh_number` (CDH — Central Database of Handicaps — number, optional), `home_club` (current home club; "None" if not a member anywhere), `other_clubs` (free text), `proposer`, `seconder`, `message` (**PII**) — `enquiry_summary` (**PII**), `recommended_category_ids[]`, `consent`, `source_message_id` (the inbound `email_messages` row), `staff_notes` (**PII**), `decision_note`, `decided_by/at`, `submitted_at`, `welcomed_at`, timestamps. Indexes on `(club, status, created_at DESC)` and `(club, lower(email))`. `postcode`, `other_clubs` and `cdh_number` come from `0009_membership_applicant_details.sql` (nullable; empty on rows from before it).
 
 Allowed staff moves: `submitted → under_review → approved | declined`, `approved → welcomed`, `waitlisted → invited`, `enquired/invited/waitlisted → withdrawn`; `declined`, `welcomed` and `withdrawn` are final (`lib/membership-domain.js`).
 

@@ -80,7 +80,15 @@ async function loadSettings(club) {
 }
 
 function linksConfigured() {
-  return Boolean(membershipSecret() && membershipFormBaseUrl());
+  return missingLinkSettings().length === 0;
+}
+
+/** The server settings an application link still needs (blank counts as unset). */
+function missingLinkSettings() {
+  return [
+    membershipSecret() ? null : 'BOOKING_LINK_SECRET',
+    membershipFormBaseUrl() ? null : 'MEMBERSHIP_FORM_BASE_URL',
+  ].filter(Boolean);
 }
 
 function emailConfigured() {
@@ -94,6 +102,7 @@ router.get('/settings', async (req, res, next) => {
       ...settings,
       canEdit: req.user.role === 'admin',
       linksConfigured: linksConfigured(),
+      missingLinkSettings: missingLinkSettings(),
       emailConfigured: emailConfigured(),
       statuses: MEMBERSHIP_STATUSES.map((id) => ({ id, label: STATUS_LABELS[id], next: TRANSITIONS[id] })),
     });
@@ -137,7 +146,13 @@ router.put('/settings', requireAdmin, async (req, res, next) => {
     if (copy !== null) log.info(`membership copy for ${club} updated by ${req.user.username}`);
 
     const after = await loadSettings(club);
-    res.json({ ...after, canEdit: true, linksConfigured: linksConfigured(), emailConfigured: emailConfigured() });
+    res.json({
+      ...after,
+      canEdit: true,
+      linksConfigured: linksConfigured(),
+      missingLinkSettings: missingLinkSettings(),
+      emailConfigured: emailConfigured(),
+    });
   } catch (err) {
     next(err);
   }
@@ -461,7 +476,7 @@ async function emailApplicant(
     apiKey: process.env.SENDGRID_API_KEY,
     fromEmail,
     fromName: process.env.FROM_NAME ?? BRAND.fromName,
-    replyTo: settings.contact_email || process.env.REPLY_TO_EMAIL || fromEmail,
+    replyTo: email.replyTo,
     toEmail: application.email,
     subject: email.subject,
     text: email.text,
@@ -598,9 +613,10 @@ async function inviteGuard(req, res) {
     res.status(409).json({ error: 'Membership applications are closed — switch them on before inviting the waitlist' });
     return null;
   }
-  if (!linksConfigured()) {
+  const missing = missingLinkSettings();
+  if (missing.length) {
     res.status(409).json({
-      error: 'Application links cannot be made: set BOOKING_LINK_SECRET and MEMBERSHIP_FORM_BASE_URL on the server',
+      error: `Application links cannot be made: ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} not set on the server`,
     });
     return null;
   }

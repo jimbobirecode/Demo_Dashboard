@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MANAGEABLE_STATUSES,
+  bookingLinkSecret,
   daysUntilPlay,
+  describeLinkSecret,
+  linkSecret,
+  linkSecretFingerprint,
   describeOptions,
   describeRequest,
   MANAGE_LINK_GRACE_DAYS,
@@ -150,4 +154,31 @@ test('a manage link stops opening a month after the round', () => {
 test('the link format is unchanged — the booking service mints the same one', () => {
   // Same value the booking service's test expects for this booking and secret.
   assert.equal(signBooking('TMG-20261018-AB12', 'secret', 'royal_dornoch'), 'cd-7OB3iyxwKtt_lDyMPgmM7UK1P86nJ');
+});
+
+test('BOOKING_LINK_SECRET is read with surrounding whitespace stripped, as the core API reads it', () => {
+  assert.equal(bookingLinkSecret({ BOOKING_LINK_SECRET: '  shared\n' }), 'shared');
+  assert.equal(bookingLinkSecret({ BOOKING_LINK_SECRET: ' \t\n' }), null);
+  assert.equal(bookingLinkSecret({}), null);
+  assert.equal(linkSecret({ BOOKING_LINK_SECRET: 'shared \n', JWT_SECRET: 'jwt' }), 'shared');
+  // A blank shared secret still falls back to JWT_SECRET for manage links.
+  assert.equal(linkSecret({ BOOKING_LINK_SECRET: '  ', JWT_SECRET: 'jwt' }), 'jwt');
+  assert.equal(linkSecret({ JWT_SECRET: 'jwt' }), 'jwt');
+  assert.equal(linkSecret({}), null);
+  assert.equal(
+    signBooking(42, linkSecret({ BOOKING_LINK_SECRET: 'shared\n' })),
+    signBooking(42, linkSecret({ BOOKING_LINK_SECRET: 'shared' })),
+  );
+});
+
+test('the link secret fingerprint matches the shared test vector and is logged, never the secret', () => {
+  assert.equal(linkSecretFingerprint('test-secret'), '6e1a163b');
+  assert.equal(linkSecretFingerprint(null), null);
+  assert.equal(
+    describeLinkSecret({ BOOKING_LINK_SECRET: ' test-secret\n' }),
+    'LINK SECRET: set (fingerprint 6e1a163b)',
+  );
+  assert.equal(describeLinkSecret({ JWT_SECRET: 'jwt' }), 'LINK SECRET: not set');
+  assert.equal(describeLinkSecret({ BOOKING_LINK_SECRET: '   ' }), 'LINK SECRET: not set');
+  assert.doesNotMatch(describeLinkSecret({ BOOKING_LINK_SECRET: 'test-secret' }), /test-secret/);
 });

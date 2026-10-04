@@ -128,20 +128,31 @@ export default function MembershipDrawer({ applicationId, enabled, onClose, onCh
               onConfirm={confirmMove}
             />
 
-            <section className="stack" style={{ gap: '0.6rem' }}>
-              <h3>Applicant</h3>
+            <section className="stack" style={{ gap: '0.6rem' }} aria-label="Applicant details">
+              <h3>Applicant details</h3>
               <div className="detail-grid">
-                <Field label="Phone" value={application.phone} />
+                <Field label="First name" value={application.firstName} />
+                <Field label="Last name" value={application.lastName} />
                 <Field
                   label="Date of birth"
                   value={application.dateOfBirth ? formatDate(application.dateOfBirth) : ''}
                 />
-                <Field label="Handicap" value={application.handicap} />
-                <Field label="Home club" value={application.homeClub} />
+                <Field label="Email" value={application.email} />
+                <Field label="Contact number" value={application.phone} />
+              </div>
+              <Field
+                label="Permanent address"
+                value={[application.address, application.postcode].filter(Boolean).join('\n')}
+                block
+              />
+              <div className="detail-grid">
+                <Field label="Current home club" value={application.homeClub} />
+                <Field label="Other clubs" value={application.otherClubs} />
+                <Field label="Handicap index" value={application.handicap} />
+                <Field label="CDH number" value={application.cdhNumber} />
                 <Field label="Proposer" value={application.proposer} />
                 <Field label="Seconder" value={application.seconder} />
               </div>
-              {application.address && <Field label="Address" value={application.address} block />}
               {application.message && <Field label="In their words" value={application.message} block />}
               <div className="muted" style={{ fontSize: '0.75rem' }}>
                 {application.consent ? 'Consented to the club holding these details.' : 'No consent recorded yet.'}

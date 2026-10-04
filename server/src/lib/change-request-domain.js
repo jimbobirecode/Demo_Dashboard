@@ -40,13 +40,40 @@ export function readChangePolicy(env = process.env) {
   return {
     cancelNeedsApproval: true,
     amendNeedsApproval: true,
-    secretConfigured: Boolean(env.JWT_SECRET || env.BOOKING_LINK_SECRET),
+    secretConfigured: Boolean(env.JWT_SECRET || bookingLinkSecret(env)),
   };
+}
+
+/**
+ * BOOKING_LINK_SECRET with surrounding whitespace stripped, or null when unset
+ * or blank. The core API strips it the same way, so a stray space or newline
+ * pasted into one host's settings cannot make the two services sign with
+ * different keys.
+ */
+export function bookingLinkSecret(env = process.env) {
+  const secret = String(env.BOOKING_LINK_SECRET ?? '').trim();
+  return secret || null;
 }
 
 /** The key the manage links are signed with. */
 export function linkSecret(env = process.env) {
-  return env.BOOKING_LINK_SECRET || env.JWT_SECRET || null;
+  return bookingLinkSecret(env) || env.JWT_SECRET || null;
+}
+
+/**
+ * A non-reversible fingerprint of a link secret, logged at boot by both the
+ * dashboard and the core API so the owner can see whether they hold the same
+ * key: the first 8 hex characters of sha256("teemail-link-fingerprint|" + secret).
+ */
+export function linkSecretFingerprint(secret) {
+  if (!secret) return null;
+  return crypto.createHash('sha256').update(`teemail-link-fingerprint|${secret}`).digest('hex').slice(0, 8);
+}
+
+/** The startup log line: "LINK SECRET: set (fingerprint ab12cd34)" or "LINK SECRET: not set". */
+export function describeLinkSecret(env = process.env) {
+  const secret = bookingLinkSecret(env);
+  return secret ? `LINK SECRET: set (fingerprint ${linkSecretFingerprint(secret)})` : 'LINK SECRET: not set';
 }
 
 /**

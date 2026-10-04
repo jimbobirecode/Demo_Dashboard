@@ -92,10 +92,11 @@ export function brandTemplateData(source = env) {
 /**
  * A complete email. `content` is HTML the caller has already escaped.
  */
-export function brandedEmail(content, { source = env } = {}) {
+export function brandedEmail(content, { source = env, contactEmail: contactOverride } = {}) {
   const c = EMAIL_COLORS;
   const logo = headerLogoSrc(source);
-  const contactEmail = source.REPLY_TO_EMAIL ?? source.FROM_EMAIL ?? '';
+  // A caller with its own address (membership mail) passes contactEmail.
+  const contactEmail = contactOverride ?? source.REPLY_TO_EMAIL ?? source.FROM_EMAIL ?? '';
   const contactLine = [source.CLUB_ADDRESS, source.CLUB_PHONE].filter(Boolean).map(escapeHtml).join(' · ');
 
   // Only the embedded copy's height is known; an override URL keeps its own.

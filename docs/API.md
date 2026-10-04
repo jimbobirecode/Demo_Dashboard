@@ -108,7 +108,7 @@ The core API answers the enquiry email and hosts the forms (`/membership/apply`,
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/settings` | Staff | `{enabled, settings, updatedAt, updatedBy, canEdit, linksConfigured, emailConfigured, statuses}`. No `club_settings` row reads as `enabled: false` |
+| GET | `/settings` | Staff | `{enabled, settings, updatedAt, updatedBy, canEdit, linksConfigured, missingLinkSettings, emailConfigured, statuses}` — `missingLinkSettings` lists which of `BOOKING_LINK_SECRET` / `MEMBERSHIP_FORM_BASE_URL` is unset or blank. No `club_settings` row reads as `enabled: false` |
 | PUT | `/settings` | **Admin** | `{enabled?: boolean, settings?: {intro, next_steps, closed_message, contact_email, committee_name}}` — upserts `club_settings`, records `updated_by`, logs who opened/closed applications. Unknown keys dropped; 400 on bad types, lengths or address |
 | GET | `/summary` | Staff | KPI row: `newSubmissions`, `underReview`, `awaitingWelcome` (approved), `waitlist`, `enquiriesThisMonth`, `welcomedThisYear`, `enabled` |
 | GET | `/categories` | Staff | Categories (active first) with `applications` (how many point at each) |
@@ -116,12 +116,14 @@ The core API answers the enquiry email and hosts the forms (`/membership/apply`,
 | PUT | `/categories/:id` | **Admin** | Replace a category's fields (same validation) |
 | DELETE | `/categories/:id` | **Admin** | Delete; if any application uses it (chosen or recommended) it is retired (`active = false`) instead → `{retired: true}` |
 | GET | `/applications?status=&q=` | Staff | Up to 500 applications with `categoryName`, plus `counts` per status. `status` is one status, a comma list or `all`; `q` matches name, email or reference (literal, no wildcards) |
-| GET | `/applications.csv?status=&q=` | Staff | The same as CSV; every cell through `lib/csv.js` (formulas defused) |
-| GET | `/applications/:id` | Staff | `{application, category, recommendedCategories, events, sourceEmail, emailConfigured}` — `sourceEmail` is the logged inbound enquiry (`source_message_id`) |
+| GET | `/applications.csv?status=&q=` | Staff | The same as CSV (reference, status, kind, name, email, phone, category, date of birth, address, postcode, handicap, CDH number, home club, other clubs, proposer, seconder, dates); every cell through `lib/csv.js` (formulas defused) |
+| GET | `/applications/:id` | Staff | `{application, category, recommendedCategories, events, sourceEmail, emailConfigured}` — `sourceEmail` is the logged inbound enquiry (`source_message_id`). An application carries the applicant's details: `firstName`, `lastName`, `email`, `phone`, `dateOfBirth`, `address`, `postcode`, `homeClub`, `otherClubs`, `handicap`, `cdhNumber`, `proposer`, `seconder`, `message` (`''` when not given) |
 | PATCH | `/applications/:id/status` | Staff | `{status, note}` — validated transition (409 otherwise; `invited` → 400, use invite). Writes `membership_events` (`status:<new>`), `decided_by/decided_at` (+`decision_note`) on approved/declined, `welcomed_at` on welcomed; then emails the applicant (`membership_under_review`, `_approved`, `_declined`, `_welcome`) and logs it in `email_messages`. `{application, emailed, emailKind, emailNotice}` — the decision stands if the email cannot go |
 | POST | `/applications/:id/notes` | Staff | `{note}` (≤2000) — appended to `staff_notes` as `[time user] note`, plus a `note` event |
-| POST | `/applications/:id/invite` | Staff | `waitlisted → invited`; only while applications are **on** and links can be signed (`BOOKING_LINK_SECRET` + `MEMBERSHIP_FORM_BASE_URL`), else 409. Emails `membership_invite` with the signed apply link (same reference) |
+| POST | `/applications/:id/invite` | Staff | `waitlisted → invited`; only while applications are **on** and links can be signed (`BOOKING_LINK_SECRET` + `MEMBERSHIP_FORM_BASE_URL`, blank counts as unset), else 409 naming what is missing. Emails `membership_invite` with the signed apply link (same reference) |
 | POST | `/applications/invite-waitlist` | **Admin** | Invite every waitlisted applicant of the club; `{invited, emailed}` |
+
+Applicant emails name, and take replies at, the membership contact address: `membership_settings.contact_email`, else `MEMBERSHIP_CONTACT_EMAIL`, else `memberships@club.teemail.io` — never `REPLY_TO_EMAIL`/`FROM_EMAIL`. Links are signed with `BOOKING_LINK_SECRET` (whitespace stripped); if the core API refuses them as "not valid", compare the `LINK SECRET` fingerprint both services log at boot.
 
 ## `/api/operators` (`routes/operators.js`) — **Staff**
 

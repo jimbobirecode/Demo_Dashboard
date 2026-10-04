@@ -33,6 +33,10 @@ services:
       # here on purpose - set it in the dashboard.
       - key: MEMBERSHIP_FORM_BASE_URL
         sync: false
+      # Membership: the address membership emails name and take replies at
+      # (unless the club sets its own contact email). Plain value, not a secret.
+      - key: MEMBERSHIP_CONTACT_EMAIL
+        value: memberships@club.teemail.io
       # The dashboard's public address: emailed links and the CSRF origin check.
       - key: APP_URL
         sync: false
