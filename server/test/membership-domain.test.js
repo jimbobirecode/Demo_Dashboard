@@ -439,7 +439,7 @@ test('each decision email is warm, names the category with its fees and says wha
   });
   assert.match(welcome.subject, /^Welcome to /);
   assert.match(welcome.text, /Fees payable: €4,350/);
-  assert.match(welcome.text, /memberships@demo\.teemail\.io/);
+  assert.match(welcome.text, /memberships@club\.teemail\.io/);
   assert.match(welcome.text, /locker/);
 
   const welcomeFree = buildMembershipEmail({
