@@ -60,6 +60,7 @@ flowchart LR
 | Bookings | Creates `Inquiry` bookings with offered tee times; moves them to `Requested` when the guest submits the form or a Book Now email | Lists, filters, edits (status, note, tee time, payment), exports, imports tee sheets, converts waitlist entries; Stripe payment moves `Inquiry`/`Requested` to `Booked` |
 | Guest changes | Files change/cancel emails from the booking's guest as `Pending` requests | Manage-booking page files requests; staff approve/decline on **Guest Requests** (approving a cancellation sets `Cancelled`) |
 | Outbound email | Availability replies, acknowledgements, holding emails | Staff replies, change-request outcomes, payment links and receipts, pre-arrival/post-play campaigns, operator reminders, password reset / invitation / portal sign-in links |
+| Membership | Answers enquiries to the membership address (demo: `memberships@demo.teemail.io`) with the categories and an apply link, or — when the club has switched applications off — a waitlist link; hosts `/membership/apply` and `/membership/waitlist` | The on/off switch, categories and reply copy; committee review (`submitted → under_review → approved/declined → welcomed`) with an email to the applicant at each step; waitlist invitations |
 | Payments | None | Stripe Payment Links, webhook, periodic sync, receipts |
 | Schema | Never alters it; checks `bookings` columns at start-up | **Owns it**: `db/migrations/`, applied before the server listens ([MIGRATIONS.md](MIGRATIONS.md)) |
 | Accounts | None | `dashboard_users`, `password_resets`, `operator_portal_links` |
@@ -127,6 +128,38 @@ stateDiagram-v2
 
 - **Core API** inserts every inbound email on arrival (`routed_to = 'queued'`, `message_id` = its Message-ID — unique per club among inbound rows, migration `0007` — SPF/DKIM results in `extraction->'inbound'`), claims it (`processing`), then updates it with the Anthropic triage result (`intent`, `summary`, `extraction`, `draft_reply`) and the route; held emails get `routed_to = 'inbox'`, `review_status = 'open'`, `review_reason`. It also inserts each outbound email it sends.
 - **Dashboard** reads them for the Inbox (rows still `queued`/`processing` are labelled but never counted or listed as needing a person) and each booking's conversation, updates `review_status` (`replied`/`dismissed`/`open`), `handled_at/by` and `booking_id` (link), inserts every email it sends (`server/src/lib/email-log.js`) and inserts portal enquiries as `inbound` rows with `intent = 'operator_request'`.
+
+### Membership
+
+```mermaid
+sequenceDiagram
+    participant G as Enquirer
+    participant C as Core API
+    participant DB as Postgres
+    participant D as Dashboard (staff)
+    G->>C: email to the membership address
+    C->>DB: read club_settings.membership_enabled, categories
+    alt applications ON
+        C->>G: categories (best fits first) + signed "Apply now" link
+        G->>C: /membership/apply?ref=&token= (form)
+        C->>DB: status submitted, event, acknowledgement logged
+        D->>DB: under_review → approved | declined → welcomed (events)
+        D->>G: email at each step (under review, approved/declined, welcome)
+    else applications OFF (or no settings row)
+        C->>G: "applications closed" + signed "Join the waitlist" link
+        G->>C: /membership/waitlist?ref=&token=
+        C->>DB: status waitlisted
+        D->>DB: (once ON) waitlisted → invited
+        D->>G: invitation with a signed apply link (same reference)
+    end
+```
+
+- **Schema**: `club_settings`, `membership_categories`, `membership_applications`, `membership_events` (migration `0008`, owned here). The core API tolerates their absence by holding the enquiry in the Inbox.
+- **Reference**: `MEM-YYYYMMDD-XXXXXXXX` (8 × `[A-Z0-9]`, CSPRNG), unique. A repeat enquiry reuses an open (`enquired`, `invited`, `waitlisted`) application.
+- **Token**: `base64url(HMAC-SHA256(BOOKING_LINK_SECRET, "<club>|membership|<reference>"))`, `=` stripped, first 32 characters; constant-time compare. Pinned on both sides by a shared test vector. No secret → no links.
+- **Links**: `<MEMBERSHIP_FORM_BASE_URL>/membership/apply?ref=&token=` and `/membership/waitlist?…` — the dashboard's `MEMBERSHIP_FORM_BASE_URL` is the core API's public URL.
+- **Email kinds** in `email_messages`: inbound `intent = 'membership_enquiry'`, `routed_to = 'membership'`; outbound `membership_reply`, `membership_closed`, `membership_received`, `membership_waitlisted` (core API) and `membership_under_review`, `membership_approved`, `membership_declined`, `membership_welcome`, `membership_invite` (dashboard).
+- **Who moves what**: the core API sets `enquired`, `submitted`, `waitlisted`; staff set the rest through `PATCH /api/membership/applications/:id/status` and the invite actions (rules in `server/src/lib/membership-domain.js`).
 
 ### `booking_change_requests`
 

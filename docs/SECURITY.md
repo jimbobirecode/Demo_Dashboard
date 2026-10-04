@@ -104,6 +104,13 @@ Tokens in URLs are posted back in the request **body** (`/reset-password/check`,
 - The page returns only what the link holder already knows (no notes, phone, payment state). A guest can only **request**; nothing changes until staff approve (`readChangePolicy`: approval always required).
 - Revocation: only all at once, by rotating `BOOKING_LINK_SECRET` on both services.
 
+## Membership: signed links and the admin-only switch
+
+- **Signed membership links.** Application and waitlist links (`<MEMBERSHIP_FORM_BASE_URL>/membership/apply|waitlist?ref=&token=`) carry the application reference and `base64url(HMAC-SHA256(BOOKING_LINK_SECRET, "<club>|membership|<reference>"))`, unpadded, first 32 characters — the format the core API verifies (constant-time). The `membership` label keeps a membership token from ever opening a manage-booking link and the reverse; the club scopes it to one install. Unlike manage links there is **no JWT_SECRET fallback**: without `BOOKING_LINK_SECRET` (or without `MEMBERSHIP_FORM_BASE_URL`) the dashboard refuses to invite rather than send a link the core API cannot check. References are `MEM-YYYYMMDD-` + 8 characters from `crypto.randomInt`. Rotating the secret revokes every outstanding link. (`lib/membership-domain.js`)
+- **The switch is administrators' only.** `PUT /api/membership/settings` (open/close applications, reply copy) and category writes require `requireAdmin`; staff see them read-only. Each change records `updated_by` and is logged (`membership applications opened/closed for <club> by <user>`). Bulk waitlist invitation is admin-only; invitations are refused while applications are closed.
+- **Club scoping.** Every membership query is filtered by the session's club; an application or category id of another club is a 404 (integration-tested).
+- **Applicant content** (enquiry text, form answers, staff notes) is rendered as text in the SPA and escaped in every email (`escapeHtml`); exports defuse formulas.
+
 ## Stripe webhook
 
 `server/src/routes/stripe-webhook.js`, `verifyWebhookSignature` in `server/src/lib/stripe.js`.

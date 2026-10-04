@@ -19,6 +19,10 @@ erDiagram
     tour_operators ||..o{ operator_portal_links : "operator_id + club"
     tour_operators ||..o{ operator_portal_sessions : "operator_id + club"
     email_messages ||..o| booking_change_requests : "change_request_id / email_message_id"
+    membership_categories ||--o{ membership_applications : "category_id (FK, ON DELETE SET NULL)"
+    membership_applications ||--o{ membership_events : "application_id (FK, ON DELETE CASCADE)"
+    email_messages ||..o| membership_applications : "source_message_id"
+    club_settings ||..o{ membership_categories : "club"
 
     bookings {
         serial id PK
@@ -132,6 +136,50 @@ erDiagram
         text draft_reply "PII"
         text review_status
     }
+    club_settings {
+        text club PK
+        bool membership_enabled
+        jsonb membership_settings "reply copy"
+        text updated_by
+    }
+    membership_categories {
+        serial id PK
+        text club
+        text name "unique per club"
+        numeric joining_fee
+        numeric annual_fee
+        int min_age
+        int max_age
+        bool active
+    }
+    membership_applications {
+        serial id PK
+        text club
+        text reference UK "MEM-YYYYMMDD-XXXXXXXX"
+        text kind "application or waitlist"
+        text status
+        int category_id FK
+        text first_name "PII"
+        text last_name "PII"
+        text email "PII"
+        text phone "PII"
+        date date_of_birth "PII"
+        text address "PII"
+        text message "PII (free text)"
+        text enquiry_summary "PII"
+        int_array recommended_category_ids
+        int source_message_id
+        text staff_notes "PII (free text)"
+        text decided_by
+    }
+    membership_events {
+        serial id PK
+        int application_id FK
+        text club
+        text event
+        text actor
+        text note "PII (free text)"
+    }
     schema_migrations {
         int version PK
         text name
@@ -156,6 +204,10 @@ Who reads (R) and writes (W: insert/update/delete) each table, from `grep` of bo
 | `password_resets` | `0002` | R/W (`routes/auth.js`, `routes/users.js`) | — | |
 | `operator_portal_links` | `0003` | W (`routes/portal.js`; redeemed by `UPDATE … RETURNING`, older unused links retired on a new request) | — | |
 | `operator_portal_sessions` | `0006` | R/W (`routes/portal.js`: created on sign-in, checked per request, revoked on sign-out) | — | |
+| `club_settings` | `0008` | R/W (`routes/membership.js`: the switch and copy, admin writes) | R (whether applications are open, reply copy) | No row = membership off |
+| `membership_categories` | `0008` | R/W (`routes/membership.js`, admin writes; seed) | R (reply and form) | |
+| `membership_applications` | `0008` | R/W (`routes/membership.js`: review, notes, invitations) | R/W (enquiry → `enquired`; forms → `submitted`/`waitlisted`) | |
+| `membership_events` | `0008` | R/W (`routes/membership.js`) | W | Timeline; actor `guest`, `bot` or a username |
 | `schema_migrations` | `server/src/db/migrate.js` | R/W (migration runner only) | — | |
 
 ## Tables
@@ -211,6 +263,24 @@ Guest/operator requests to amend or cancel: `booking_id`, `club`, `kind` (`cance
 ### `email_messages`
 
 Every guest email in and out; `review_status = 'open'` is the Inbox. `club`, `direction`, `booking_id`; `message_id` (inbound Message-ID; unique per club among inbound rows via `uq_email_messages_inbound_message_id`, migration `0007`); `from_email`, `to_email`, `subject`, `body_text` (inbound bodies up to 100,000 chars) — **PII**; `intent`, `summary`, `extraction` (JSONB: the Anthropic extraction and inbound metadata incl. SPF/DKIM, From header, Message-ID) — **PII**; `routed_to` (`queued`/`processing` while the core API handles it; index `idx_email_messages_pending`); `change_request_id`; `review_status`, `review_reason`, `draft_reply` (**PII**), `handled_at/by`; `sent_by` (`bot`, `Stripe`, a username or `portal:<email>`), `kind`, `in_reply_to` (FK), `created_at`.
+
+### `club_settings`
+
+One row per club (migration `0008`): `membership_enabled` (the owner's switch: on = enquiries are offered the categories and an application link; off, or no row = they are offered the waitlist), `membership_settings` (JSONB: `intro`, `next_steps`, `closed_message`, `contact_email`, `committee_name`; length-limited by `validateMembershipSettings`), `updated_at`, `updated_by`.
+
+### `membership_categories`
+
+What the club offers: `name` (unique per club), `description`, `eligibility`, `joining_fee`, `annual_fee` (club currency), `min_age`, `max_age`, `sort_order`, `active` (a category used by an application is retired, never deleted), timestamps.
+
+### `membership_applications`
+
+One per enquirer and club, enquiry to welcome: `reference` (`MEM-YYYYMMDD-XXXXXXXX`, unique; carried by the signed links), `kind` (`application`/`waitlist`, CHECK), `status` (`enquired`, `submitted`, `under_review`, `approved`, `declined`, `welcomed`, `waitlisted`, `invited`, `withdrawn`; CHECK), `category_id` (FK, set null), applicant details — `first_name`, `last_name`, `email`, `phone`, `date_of_birth`, `address`, `handicap`, `home_club`, `proposer`, `seconder`, `message` (**PII**) — `enquiry_summary` (**PII**), `recommended_category_ids[]`, `consent`, `source_message_id` (the inbound `email_messages` row), `staff_notes` (**PII**), `decision_note`, `decided_by/at`, `submitted_at`, `welcomed_at`, timestamps. Indexes on `(club, status, created_at DESC)` and `(club, lower(email))`.
+
+Allowed staff moves: `submitted → under_review → approved | declined`, `approved → welcomed`, `waitlisted → invited`, `enquired/invited/waitlisted → withdrawn`; `declined`, `welcomed` and `withdrawn` are final (`lib/membership-domain.js`).
+
+### `membership_events`
+
+The timeline: `application_id` (FK, cascade), `club`, `event` (`enquired`, `link_sent`, `submitted`, `waitlisted`, `status:<new>`, `note`, `email:<kind>`, `invited`), `actor` (`guest`, `bot` or a username), `note` (**PII**), `created_at`.
 
 ### `schema_migrations`
 
