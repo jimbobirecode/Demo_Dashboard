@@ -16,6 +16,7 @@ import Import from './pages/Import.jsx';
 import Requests from './pages/Requests.jsx';
 import Inbox from './pages/Inbox.jsx';
 import Portal from './pages/Portal.jsx';
+import Membership from './pages/Membership.jsx';
 import { useInboxCount } from './lib/useInboxCount.js';
 
 // The charting library is only needed on the analytics route — keep it out of
@@ -97,6 +98,9 @@ function StaffApp() {
           <NavLink to="/waitlist" className={navClass}>
             Waitlist
           </NavLink>
+          <NavLink to="/membership" className={navClass}>
+            Membership
+          </NavLink>
           <NavLink to="/operators" className={navClass}>
             Tour Operators
           </NavLink>
@@ -155,6 +159,7 @@ function StaffApp() {
             <Route path="/inbox" element={<Inbox onCountChange={setInboxCount} />} />
             <Route path="/waitlist" element={<Waitlist user={user} />} />
             <Route path="/operators" element={<Operators user={user} />} />
+            <Route path="/membership" element={<Membership user={user} />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/reminders" element={<Reminders />} />
             <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />
