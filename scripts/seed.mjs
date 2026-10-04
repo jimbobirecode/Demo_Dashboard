@@ -5,6 +5,8 @@
  *   npm run seed -- --reset       -- remove previously seeded rows first
  *   npm run seed -- --operators   -- only the tour operators and their bookings
  *                                    (for a database that already has bookings)
+ *   npm run seed -- --membership  -- only the membership demo (categories,
+ *                                    the switch ON, sample applications)
  *
  * Safety: every booking this writes carries the DEMO_PREFIX booking_id, every
  * operator it writes is marked by SAMPLE_OPERATOR_NOTE and books from a
@@ -14,6 +16,8 @@
  */
 import '../server/src/env.js';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import bcrypt from 'bcryptjs';
 import { pool } from '../server/src/db.js';
 import { BRAND } from '../server/src/lib/brand.js';
@@ -578,10 +582,39 @@ export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
   return { operators: OPERATORS.length, bookings: bookingsInserted };
 }
 
-export async function seed({ client, reset = false, operatorsOnly = false } = {}) {
+// ---------------------------------------------------------------------------
+// Membership
+// ---------------------------------------------------------------------------
+
+const MEMBERSHIP_SEED = fileURLToPath(new URL('../db/seeds/seed_membership_demo.sql', import.meta.url));
+
+/**
+ * The membership demo, from its SQL seed (which psql users run directly).
+ * The club it seeds is handed over through the membership_seed.club setting,
+ * so the file keeps one definition of the sample data for both routes.
+ */
+export async function seedMembership(client, CLUB) {
+  await client.query("SELECT set_config('membership_seed.club', $1, false)", [CLUB]);
+  try {
+    await client.query(fs.readFileSync(MEMBERSHIP_SEED, 'utf8'));
+  } finally {
+    await client.query("SELECT set_config('membership_seed.club', '', false)");
+  }
+  const { rows } = await client.query(
+    'SELECT COUNT(*)::int AS count FROM public.membership_applications WHERE club = $1',
+    [CLUB],
+  );
+  console.log(`Seeded the membership demo for club "${CLUB}" (${rows[0].count} application(s), applications ON).`);
+}
+
+export async function seed({ client, reset = false, operatorsOnly = false, membershipOnly = false } = {}) {
   // The schema comes from db/migrations: the server runs them at boot, and
   // the CLI below runs them before seeding.
   const CLUB = await resolveClub(client);
+  if (membershipOnly) {
+    await seedMembership(client, CLUB);
+    return { club: CLUB, inserted: 0, operators: null, password: null };
+  }
   if (operatorsOnly) {
     const operators = await seedTourOperators(client, CLUB, { reset });
     return { club: CLUB, inserted: operators.bookings, operators, password: null };
@@ -653,6 +686,9 @@ export async function seed({ client, reset = false, operatorsOnly = false } = {}
     console.log('');
     const operators = await seedTourOperators(client, CLUB, { reset });
 
+    console.log('');
+    await seedMembership(client, CLUB);
+
     return { club: CLUB, inserted, operators, password };
   }
 }
@@ -671,6 +707,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       client,
       reset: process.argv.includes('--reset'),
       operatorsOnly: process.argv.includes('--operators'),
+      membershipOnly: process.argv.includes('--membership'),
     });
   } catch (err) {
     console.error('Seed failed:', err.message);
