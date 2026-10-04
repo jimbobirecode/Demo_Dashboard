@@ -121,7 +121,9 @@ export default function Membership({ user }) {
         />
       </div>
 
-      <Segmented label="Membership sections" options={TABS} value={tab} onChange={setTab} />
+      <div>
+        <Segmented label="Membership sections" options={TABS} value={tab} onChange={setTab} />
+      </div>
 
       {tab === 'applications' && <Applications key={refreshKey} onOpen={setOpenId} />}
       {tab === 'waitlist' && (
