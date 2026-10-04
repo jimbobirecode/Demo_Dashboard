@@ -211,7 +211,7 @@ test('settings keep the five known keys, trimmed, and drop the rest', () => {
     intro: '  Thanks for your interest ',
     next_steps: 'Pay fees',
     closed_message: 'Closed for now',
-    contact_email: 'memberships@demo.teemail.io',
+    contact_email: 'memberships@club.teemail.io',
     committee_name: 'The Membership Committee',
     extra: 'dropped',
     committee: '',
@@ -221,7 +221,7 @@ test('settings keep the five known keys, trimmed, and drop the rest', () => {
     intro: 'Thanks for your interest',
     next_steps: 'Pay fees',
     closed_message: 'Closed for now',
-    contact_email: 'memberships@demo.teemail.io',
+    contact_email: 'memberships@club.teemail.io',
     committee_name: 'The Membership Committee',
   });
   assert.deepEqual(validateMembershipSettings({ intro: '   ' }).value, {}, 'blank is left out');
@@ -433,7 +433,7 @@ test('each decision email is warm, names the category with its fees and says wha
     kind: 'welcomed',
     application: APPLICATION,
     category: FULL,
-    settings: { contact_email: 'memberships@demo.teemail.io' },
+    settings: { contact_email: 'memberships@club.teemail.io' },
     currency: 'EUR',
     env: ENV,
   });

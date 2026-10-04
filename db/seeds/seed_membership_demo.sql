@@ -2,7 +2,7 @@
 -- Membership demo (Membership page)
 -- ============================================================================
 -- Switches membership applications ON for the demo club, writes its reply
--- wording (enquiries arrive at memberships@demo.teemail.io in the demo
+-- wording (enquiries arrive at memberships@club.teemail.io in the demo
 -- environment), the seven membership categories with their fees (EUR), and
 -- four sample applications at different stages with their timelines:
 -- one just submitted, one under review, one approved and awaiting its
@@ -50,7 +50,7 @@ BEGIN
         'intro', 'Thank you for your interest in becoming a member. Below are the membership categories we offer, with the ones that best match your enquiry first.',
         'next_steps', 'Once your fees are received we will send your membership card, arrange your locker and book you in for a welcome round with one of our professionals.',
         'closed_message', 'Membership applications are closed at the moment while the committee completes this year''s intake. Join our waitlist and we will invite you to apply as soon as places open.',
-        'contact_email', 'memberships@demo.teemail.io',
+        'contact_email', 'memberships@club.teemail.io',
         'committee_name', 'The Membership Committee'
     ), NOW(), 'seed')
     ON CONFLICT (club) DO UPDATE SET
@@ -111,7 +111,7 @@ BEGIN
     -- Isla Munro: enquired by email, applied for Full - waiting for review to start.
     INSERT INTO public.email_messages
         (club, direction, from_email, to_email, subject, body_text, intent, summary, routed_to, created_at)
-    VALUES (v_club, 'inbound', 'isla.munro@example.com', 'memberships@demo.teemail.io', 'Becoming a member',
+    VALUES (v_club, 'inbound', 'isla.munro@example.com', 'memberships@club.teemail.io', 'Becoming a member',
             E'Hello,\n\nI moved to Dornoch in the summer and play off 11. I would love to join the club - could you tell me about membership and what it costs?\n\nMany thanks,\nIsla Munro',
             'membership_enquiry', 'Local golfer (handicap 11), recently moved to the area, asking about membership and fees.',
             'membership', NOW() - INTERVAL '6 days')
