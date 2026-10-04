@@ -13,7 +13,6 @@ const TABS = [
   { id: 'applications', label: 'Applications' },
   { id: 'waitlist', label: 'Waitlist' },
   { id: 'categories', label: 'Categories' },
-  { id: 'settings', label: 'Settings' },
 ];
 
 /**
@@ -136,9 +135,6 @@ export default function Membership({ user }) {
         />
       )}
       {tab === 'categories' && <Categories isAdmin={isAdmin} />}
-      {tab === 'settings' && (
-        <SettingsTab settings={settings} onSaved={(next) => setSettings((current) => ({ ...current, ...next }))} />
-      )}
 
       {openId && (
         <MembershipDrawer
@@ -658,114 +654,6 @@ function CategoryForm({ value, busy, onSave, onCancel }) {
           Cancel
         </button>
       </div>
-    </form>
-  );
-}
-
-/* ---------- settings ---------- */
-
-const SETTINGS_FIELDS = [
-  {
-    key: 'intro',
-    label: 'Introduction',
-    help: 'Opens the instant reply when applications are open.',
-    rows: 3,
-    max: 2000,
-  },
-  {
-    key: 'next_steps',
-    label: 'Next steps',
-    help: 'What happens after approval: fees, start date, inductions. Used in the reply, approval and welcome emails.',
-    rows: 3,
-    max: 2000,
-  },
-  {
-    key: 'closed_message',
-    label: 'Closed message',
-    help: 'What an enquirer is told while applications are closed, above the waitlist link.',
-    rows: 3,
-    max: 2000,
-  },
-  {
-    key: 'committee_name',
-    label: 'Committee name',
-    help: 'Who reviews applications, e.g. “The Membership Committee”.',
-    max: 120,
-  },
-  {
-    key: 'contact_email',
-    label: 'Contact email',
-    help: 'Where applicants can write; replies go here too.',
-    max: 254,
-    type: 'email',
-  },
-];
-
-function SettingsTab({ settings, onSaved }) {
-  const [form, setForm] = useState(() =>
-    Object.fromEntries(SETTINGS_FIELDS.map(({ key }) => [key, settings.settings?.[key] ?? ''])),
-  );
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState(null);
-  const canEdit = settings.canEdit;
-
-  async function save(event) {
-    event.preventDefault();
-    setBusy(true);
-    setMessage(null);
-    try {
-      const next = await api.saveMembershipSettings({ settings: form });
-      onSaved(next);
-      setMessage({ kind: 'success', text: 'Saved. New replies and emails use this wording from now on.' });
-    } catch (err) {
-      setMessage({ kind: 'error', text: err.message });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form className="card stack" style={{ gap: '0.9rem' }} onSubmit={save}>
-      <div>
-        <h3>Wording</h3>
-        <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem' }}>
-          Leave a field empty to use the standard wording.
-          {!canEdit && ' Only an administrator can change these.'}
-        </p>
-      </div>
-      {message && <div className={`banner ${message.kind}`}>{message.text}</div>}
-      {SETTINGS_FIELDS.map((f) => (
-        <label key={f.key} className="stack" style={{ gap: '0.35rem' }}>
-          <span className="label">{f.label}</span>
-          {f.rows ? (
-            <textarea
-              rows={f.rows}
-              maxLength={f.max}
-              value={form[f.key]}
-              disabled={!canEdit}
-              onChange={(event) => setForm({ ...form, [f.key]: event.target.value })}
-            />
-          ) : (
-            <input
-              type={f.type ?? 'text'}
-              maxLength={f.max}
-              value={form[f.key]}
-              disabled={!canEdit}
-              onChange={(event) => setForm({ ...form, [f.key]: event.target.value })}
-            />
-          )}
-          <span className="muted" style={{ fontSize: '0.75rem' }}>
-            {f.help}
-          </span>
-        </label>
-      ))}
-      {canEdit && (
-        <div>
-          <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? 'Saving…' : 'Save wording'}
-          </button>
-        </div>
-      )}
     </form>
   );
 }
