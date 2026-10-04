@@ -15,6 +15,7 @@ import { hashLegacyTempPasswords } from './auth.js';
 import { sendReceipt } from './routes/payments.js';
 import { startPaymentSync } from './lib/payment-sync.js';
 import { appBaseUrl } from './lib/brand.js';
+import { bookingLinkSecret, describeLinkSecret } from './lib/change-request-domain.js';
 
 const logSeed = logger.child('seed');
 
@@ -95,6 +96,9 @@ async function maybeSeedOnStart() {
 
 /** Configuration that works, but less safely than it should; said once at boot. */
 function warnAboutConfiguration() {
+  // Compare with the core API's own line: different fingerprints mean the two
+  // services sign membership and manage links with different keys.
+  log.info(describeLinkSecret());
   if (process.env.NODE_ENV === 'production' && !process.env.APP_URL && !process.env.PUBLIC_URL) {
     // The CSRF origin check then trusts only the request's own host (see
     // allowedOriginsFor); emailed links fall back to the default address.
@@ -103,7 +107,7 @@ function warnAboutConfiguration() {
         "instead of this dashboard. Set APP_URL to the dashboard's public https:// address.",
     );
   }
-  if (process.env.NODE_ENV === 'production' && !process.env.BOOKING_LINK_SECRET) {
+  if (process.env.NODE_ENV === 'production' && !bookingLinkSecret()) {
     log.warn(
       'BOOKING_LINK_SECRET is not set — manage-booking links are signed with JWT_SECRET, ' +
         'and the booking service cannot issue links at all. Set the same BOOKING_LINK_SECRET on both services.',

@@ -12,7 +12,7 @@
 import crypto from 'node:crypto';
 import { BRAND } from './brand.js';
 import { brandedEmail, escapeHtml, EMAIL_COLORS } from './email-layout.js';
-import { linkSecret } from './change-request-domain.js';
+import { bookingLinkSecret } from './change-request-domain.js';
 
 /* ---------------------------------------------------------------------------
  * Statuses
@@ -151,10 +151,11 @@ export function isMembershipReference(value) {
  * The key membership links are signed with: BOOKING_LINK_SECRET, which the
  * core API holds too. Unlike manage-booking links there is no JWT_SECRET
  * fallback — a link signed with a key the core API does not have would open
- * nothing, so no secret means no link.
+ * nothing, so no secret means no link. Surrounding whitespace is stripped,
+ * as the core API does.
  */
 export function membershipSecret(env = process.env) {
-  return env.BOOKING_LINK_SECRET ? linkSecret(env) : null;
+  return bookingLinkSecret(env);
 }
 
 /** base64url(HMAC-SHA256(secret, `${club}|membership|${reference}`)), unpadded, first 32 characters. */
@@ -381,8 +382,11 @@ export function serialiseApplication(row) {
     phone: row.phone ?? '',
     dateOfBirth: dateOnly(row.date_of_birth),
     address: row.address ?? '',
+    postcode: row.postcode ?? '',
     handicap: row.handicap ?? '',
+    cdhNumber: row.cdh_number ?? '',
     homeClub: row.home_club ?? '',
+    otherClubs: row.other_clubs ?? '',
     proposer: row.proposer ?? '',
     seconder: row.seconder ?? '',
     message: row.message ?? '',
@@ -451,6 +455,22 @@ export function describeEvent(event) {
  * Applicant emails
  * ------------------------------------------------------------------------- */
 
+export const DEFAULT_MEMBERSHIP_CONTACT_EMAIL = 'memberships@club.teemail.io';
+
+/**
+ * The address membership emails name and take replies at: the club's own
+ * (membership_settings.contact_email), else MEMBERSHIP_CONTACT_EMAIL, else
+ * memberships@club.teemail.io. Never REPLY_TO_EMAIL or FROM_EMAIL — those are
+ * the booking desk's, not the membership office's.
+ */
+export function membershipContactEmail(settings = {}, env = process.env) {
+  return (
+    String(settings?.contact_email ?? '').trim() ||
+    String(env.MEMBERSHIP_CONTACT_EMAIL ?? '').trim() ||
+    DEFAULT_MEMBERSHIP_CONTACT_EMAIL
+  );
+}
+
 /** An amount in the club's currency: whole amounts without pennies. */
 export function formatFee(amount, currency = BRAND.currency, locale = BRAND.locale) {
   const value = Number(amount) || 0;
@@ -511,12 +531,10 @@ export function buildMembershipEmail({
   const ref = application.reference;
   const first = firstNameOf(application);
   const committee = settings.committee_name || 'the Membership Committee';
-  const contact = settings.contact_email || env.REPLY_TO_EMAIL || env.FROM_EMAIL || '';
+  const contact = membershipContactEmail(settings, env);
   const said = String(note ?? '').trim();
   const fees = category ? describeCategoryFees(category, currency) : '';
-  const contactLine = contact
-    ? `If you have any questions in the meantime, just reply to this email or write to ${contact}.`
-    : 'If you have any questions in the meantime, just reply to this email.';
+  const contactLine = `If you have any questions in the meantime, just reply to this email or write to ${contact}.`;
 
   const copy = {
     under_review: {
@@ -565,9 +583,7 @@ export function buildMembershipEmail({
           : 'Your membership starts straight away.',
         settings.next_steps ||
           'Our team will be in touch to arrange your locker, handicap transfer and a tour of the clubhouse.',
-        contact
-          ? `Questions about your membership? Write to ${contact} - we are always happy to help.`
-          : 'Questions about your membership? Just reply to this email - we are always happy to help.',
+        `Questions about your membership? Write to ${contact} - we are always happy to help.`,
         'We look forward to seeing you on the course.',
       ],
     },
@@ -626,10 +642,10 @@ export function buildMembershipEmail({
         .join('') +
       button +
       `<p style="margin:0;">Kind regards,<br>${signOff}</p>`,
-    { source: env },
+    { source: env, contactEmail: contact },
   );
 
-  return { subject: copy.subject, text, html };
+  return { subject: copy.subject, text, html, replyTo: contact };
 }
 
 /* ---------------------------------------------------------------------------
@@ -646,8 +662,12 @@ export const CSV_COLUMNS = [
   ['Phone', (a) => a.phone],
   ['Category', (a) => a.categoryName ?? ''],
   ['Date of birth', (a) => a.dateOfBirth ?? ''],
+  ['Address', (a) => a.address],
+  ['Postcode', (a) => a.postcode],
   ['Handicap', (a) => a.handicap],
+  ['CDH number', (a) => a.cdhNumber],
   ['Home club', (a) => a.homeClub],
+  ['Other clubs', (a) => a.otherClubs],
   ['Proposer', (a) => a.proposer],
   ['Seconder', (a) => a.seconder],
   ['Submitted', (a) => a.submittedAt ?? ''],

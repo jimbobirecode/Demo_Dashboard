@@ -8,6 +8,7 @@ import { Segmented } from '../components/analytics/Segmented.jsx';
 import MembershipToggle from '../components/MembershipToggle.jsx';
 import MembershipDrawer from '../components/MembershipDrawer.jsx';
 import MembershipStatusPill from '../components/MembershipStatusPill.jsx';
+import MembershipConfigWarning from '../components/MembershipConfigWarning.jsx';
 
 const TABS = [
   { id: 'applications', label: 'Applications' },
@@ -78,14 +79,7 @@ export default function Membership({ user }) {
         }}
       />
 
-      {(!settings.linksConfigured || !settings.emailConfigured) && (
-        <div className="banner error">
-          {!settings.linksConfigured &&
-            'Application links cannot be made yet: BOOKING_LINK_SECRET and MEMBERSHIP_FORM_BASE_URL must be set on the server. '}
-          {!settings.emailConfigured &&
-            'Email sending is not set up, so decisions are recorded but applicants are not emailed.'}
-        </div>
-      )}
+      <MembershipConfigWarning settings={settings} />
 
       <div className="kpi-row">
         <KpiTile
@@ -418,6 +412,11 @@ function WaitTable({ rows, onOpen, action }) {
                 <div className="muted" style={{ fontSize: '0.75rem' }}>
                   {application.email}
                 </div>
+                {(application.phone || application.postcode || application.homeClub) && (
+                  <div className="muted" style={{ fontSize: '0.75rem' }}>
+                    {[application.phone, application.postcode, application.homeClub].filter(Boolean).join(' · ')}
+                  </div>
+                )}
               </td>
               <td>{application.categoryName ?? <span className="muted">Any</span>}</td>
               <td className="muted" style={{ maxWidth: '320px', fontSize: '0.8125rem' }}>

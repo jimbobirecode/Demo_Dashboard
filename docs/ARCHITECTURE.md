@@ -92,7 +92,7 @@ token = base64url( HMAC-SHA256( key = BOOKING_LINK_SECRET, msg = "<club>|<bookin
 
 - Core API: `booking_form.booking_token` signs `/book` links and the manage-booking link it puts in acknowledgement emails (`DASHBOARD_URL` + `/manage-booking?ref=…&token=…`).
 - Dashboard: `signBooking` / `verifyBookingToken` in `server/src/lib/change-request-domain.js`; `manageUrlFor` builds `APP_URL/manage-booking?ref=…&token=…` for the emails it sends.
-- **The secret must be identical on both services.** The dashboard falls back to `JWT_SECRET` when `BOOKING_LINK_SECRET` is unset (and warns at boot in production); the core API then cannot issue links that verify on the dashboard.
+- **The secret must be identical on both services.** Both read it with surrounding whitespace stripped and log `LINK SECRET: set (fingerprint xxxxxxxx)` at boot (first 8 hex of `sha256("teemail-link-fingerprint|" + secret)`; test vector `test-secret` → `6e1a163b`) so the two can be compared. The dashboard falls back to `JWT_SECRET` when `BOOKING_LINK_SECRET` is unset (and warns at boot in production); the core API then cannot issue links that verify on the dashboard.
 - Tokens carry no expiry (the format is shared and already in guests' inboxes). The dashboard refuses a manage link 30 days after the play date (`MANAGE_LINK_GRACE_DAYS`, HTTP 410); the core API's form only accepts bookings still in `Inquiry`/`Pending`/`Requested`.
 - Rotating the secret invalidates every outstanding link in both services ([DEPLOYMENT.md](DEPLOYMENT.md#booking_link_secret)).
 

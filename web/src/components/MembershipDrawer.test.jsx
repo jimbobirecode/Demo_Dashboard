@@ -97,4 +97,30 @@ describe('MembershipDrawer', () => {
     render(<MembershipDrawer applicationId={7} enabled onClose={vi.fn()} />);
     expect(await screen.findByText(/nothing more to do/)).toBeInTheDocument();
   });
+
+  test('shows every applicant detail, with the postcode beside the address', async () => {
+    api.membershipApplication.mockResolvedValue(
+      detail('submitted', ['under_review'], {
+        firstName: 'Isla',
+        lastName: 'Munro',
+        dateOfBirth: '1986-04-12',
+        phone: '+44 7700 900101',
+        address: '4 Castle Street, Dornoch',
+        postcode: 'IV25 3SN',
+        homeClub: 'Tain Golf Club',
+        otherClubs: 'Brora Golf Club',
+        handicap: '11.2',
+        cdhNumber: '1000000101',
+      }),
+    );
+    render(<MembershipDrawer applicationId={7} enabled onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    const details = await screen.findByRole('region', { name: 'Applicant details' });
+    expect(details).toHaveTextContent(/Permanent address\s*4 Castle Street, Dornoch\s+IV25 3SN/);
+    for (const text of ['+44 7700 900101', 'Tain Golf Club', 'Brora Golf Club', '11.2', '1000000101', 'Munro']) {
+      expect(details).toHaveTextContent(text);
+    }
+    expect(details).toHaveTextContent('CDH number');
+    expect(details).toHaveTextContent('Other clubs');
+  });
 });

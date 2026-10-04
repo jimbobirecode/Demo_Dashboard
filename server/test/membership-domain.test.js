@@ -19,6 +19,8 @@ import {
   formatFee,
   isMembershipReference,
   isMembershipStatus,
+  DEFAULT_MEMBERSHIP_CONTACT_EMAIL,
+  membershipContactEmail,
   membershipFormBaseUrl,
   membershipLink,
   membershipSecret,
@@ -176,6 +178,17 @@ test('links need BOOKING_LINK_SECRET itself — JWT_SECRET alone signs nothing t
   assert.equal(membershipSecret({}), null);
 });
 
+test('the membership secret is trimmed, so a stray space in one host signs the same links as the core API', () => {
+  assert.equal(membershipSecret({ BOOKING_LINK_SECRET: '  shared\n' }), 'shared');
+  assert.equal(membershipSecret({ BOOKING_LINK_SECRET: '   ', JWT_SECRET: 'jwt' }), null);
+  const app = { reference: 'MEM-20261004-ABCD1234', club: 'royal_dornoch' };
+  const base = { MEMBERSHIP_FORM_BASE_URL: 'https://core.example' };
+  assert.equal(
+    membershipUrlFor(app, 'apply', { ...base, BOOKING_LINK_SECRET: 'shared \r\n' }),
+    membershipUrlFor(app, 'apply', { ...base, BOOKING_LINK_SECRET: 'shared' }),
+  );
+});
+
 test('links are built on MEMBERSHIP_FORM_BASE_URL, to the apply or waitlist form', () => {
   assert.equal(
     membershipFormBaseUrl({ MEMBERSHIP_FORM_BASE_URL: ' https://core.example/// ' }),
@@ -311,6 +324,25 @@ test('rows serialise to the shape the page reads', () => {
   assert.equal(app.submittedAt, '2026-10-01T10:00:00.000Z');
   assert.equal(app.decidedAt, null);
   assert.equal(app.phone, '');
+  assert.equal(app.postcode, '');
+  assert.equal(app.otherClubs, '');
+  assert.equal(app.cdhNumber, '');
+
+  const detailed = serialiseApplication({
+    id: 8,
+    status: 'waitlisted',
+    address: '4 Castle Street, Dornoch',
+    postcode: 'IV25 3SN',
+    home_club: 'Tain Golf Club',
+    other_clubs: 'Brora Golf Club',
+    cdh_number: '1000000101',
+    handicap: '11.2',
+  });
+  assert.equal(detailed.address, '4 Castle Street, Dornoch');
+  assert.equal(detailed.postcode, 'IV25 3SN');
+  assert.equal(detailed.homeClub, 'Tain Golf Club');
+  assert.equal(detailed.otherClubs, 'Brora Golf Club');
+  assert.equal(detailed.cdhNumber, '1000000101');
 
   const bare = serialiseApplication({
     id: 1,
@@ -360,7 +392,7 @@ test('events read as sentences', () => {
 const FULL = { name: 'Full', joiningFee: 2500, annualFee: 1850 };
 const JUNIOR = { name: 'Junior', joining_fee: 0, annual_fee: 250 };
 const APPLICATION = { reference: 'MEM-20261004-ABCD1234', firstName: 'Isla Rose', email: 'isla@example.com' };
-const ENV = { REPLY_TO_EMAIL: 'club@example.com' };
+const ENV = { MEMBERSHIP_CONTACT_EMAIL: 'club@example.com', REPLY_TO_EMAIL: 'desk@example.com' };
 
 test('fees are spelled in the club currency, whole amounts without pennies', () => {
   assert.equal(formatFee(2500, 'EUR', 'en-GB'), '€2,500');
@@ -417,7 +449,7 @@ test('each decision email is warm, names the category with its fees and says wha
   });
   assert.match(free.text, /welcome pack/);
   assert.doesNotMatch(free.text, /amount due/);
-  assert.match(free.text, /just reply to this email\./);
+  assert.match(free.text, /write to memberships@club\.teemail\.io\./, 'the default membership address');
 
   const declined = buildMembershipEmail({
     kind: 'declined',
@@ -453,7 +485,7 @@ test('each decision email is warm, names the category with its fees and says wha
   const welcomeBare = buildMembershipEmail({ kind: 'welcomed', application: { reference: 'R' }, env: {} });
   assert.match(welcomeBare.text, /^Dear there,/);
   assert.match(welcomeBare.text, /starts straight away/);
-  assert.match(welcomeBare.text, /Just reply to this email/);
+  assert.match(welcomeBare.text, /Write to memberships@club\.teemail\.io/);
 });
 
 test('an invitation carries the signed apply link as a button and in the text', () => {
@@ -505,6 +537,22 @@ test('the CSV columns read from the serialised application', () => {
   assert.equal(values[1], 'Approved');
   assert.equal(values[3], '=cmd', 'defused by lib/csv.js when written');
   assert.ok(values.every((value) => typeof value === 'string'));
+
+  const labels = CSV_COLUMNS.map(([label]) => label);
+  for (const label of ['Address', 'Postcode', 'Handicap', 'CDH number', 'Home club', 'Other clubs']) {
+    assert.ok(labels.includes(label), label);
+  }
+  const full = serialiseApplication({
+    id: 2,
+    status: 'submitted',
+    postcode: 'IV25 3SN',
+    other_clubs: 'Brora',
+    cdh_number: 'X1',
+  });
+  const pick = (label) => CSV_COLUMNS.find(([l]) => l === label)[1](full);
+  assert.equal(pick('Postcode'), 'IV25 3SN');
+  assert.equal(pick('Other clubs'), 'Brora');
+  assert.equal(pick('CDH number'), 'X1');
 });
 
 test('the token matches the core API’s cross-service test vector exactly', () => {
@@ -512,4 +560,38 @@ test('the token matches the core API’s cross-service test vector exactly', () 
   const token = signMembership('MEM-20261004-ABCDEFGH', 'test-secret', 'royal_dornoch');
   assert.equal(token, '6G-gH72yiTObhng71GzSOIjhJBwKH2MD');
   assert.ok(verifyMembershipToken('MEM-20261004-ABCDEFGH', token, 'test-secret', 'royal_dornoch'));
+});
+
+test('membership mail names the club setting, then MEMBERSHIP_CONTACT_EMAIL, then the default — never the booking desk', () => {
+  assert.equal(DEFAULT_MEMBERSHIP_CONTACT_EMAIL, 'memberships@club.teemail.io');
+  const desk = { REPLY_TO_EMAIL: 'desk@example.com', FROM_EMAIL: 'bookings@example.com' };
+  assert.equal(membershipContactEmail({}, desk), 'memberships@club.teemail.io');
+  assert.equal(
+    membershipContactEmail({}, { ...desk, MEMBERSHIP_CONTACT_EMAIL: ' join@example.com ' }),
+    'join@example.com',
+  );
+  assert.equal(membershipContactEmail({}, { ...desk, MEMBERSHIP_CONTACT_EMAIL: '  ' }), 'memberships@club.teemail.io');
+  assert.equal(
+    membershipContactEmail(
+      { contact_email: 'sec@example.com' },
+      { ...desk, MEMBERSHIP_CONTACT_EMAIL: 'join@example.com' },
+    ),
+    'sec@example.com',
+  );
+  assert.equal(membershipContactEmail(undefined, {}), 'memberships@club.teemail.io');
+
+  for (const kind of ['under_review', 'approved', 'declined', 'welcomed', 'invited']) {
+    const email = buildMembershipEmail({ kind, application: APPLICATION, env: desk });
+    assert.match(email.text, /memberships@club\.teemail\.io/, kind);
+    assert.match(email.html, /mailto:memberships@club\.teemail\.io/, `${kind} footer`);
+    assert.doesNotMatch(email.text + email.html, /desk@example\.com|bookings@example\.com/, kind);
+    assert.equal(email.replyTo, 'memberships@club.teemail.io', kind);
+  }
+  const own = buildMembershipEmail({
+    kind: 'invited',
+    application: APPLICATION,
+    env: { ...desk, MEMBERSHIP_CONTACT_EMAIL: 'join@example.com' },
+  });
+  assert.match(own.text, /write to join@example\.com\./);
+  assert.equal(own.replyTo, 'join@example.com');
 });

@@ -2,6 +2,20 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – membership contract v2 (October 2026)
+
+### Fixed
+
+- `BOOKING_LINK_SECRET` is read with surrounding whitespace stripped (manage-booking and membership links), as the core API reads it: a trailing space or newline in one service's settings made invitation links the core API refused as "not valid". The `JWT_SECRET` fallback for manage links is unchanged.
+- Membership emails no longer fall back to `REPLY_TO_EMAIL`/`FROM_EMAIL` (the booking desk's address) for their text, footer or Reply-To: they use the club's contact email, else `MEMBERSHIP_CONTACT_EMAIL`, else `memberships@club.teemail.io`.
+
+### Added
+
+- Boot log line `LINK SECRET: set (fingerprint xxxxxxxx)` / `LINK SECRET: not set`, the same as the core API's, to compare the two services' secrets without revealing them.
+- Migration `0009_membership_applicant_details.sql`: `membership_applications.postcode`, `other_clubs`, `cdh_number`. Shown in the application drawer's "Applicant details" block (address with postcode), in the API and the CSV export (which also gains the address); the waitlist table shows phone, postcode and home club; the demo seed fills them.
+- `MEMBERSHIP_CONTACT_EMAIL` (`.env.example`, `render.yaml`).
+- Membership page: the configuration note names the missing link setting and explains how to spot a `BOOKING_LINK_SECRET` mismatch; invitations refused for a missing setting say which one.
+
 ## Unreleased – membership module (October 2026)
 
 ### Added

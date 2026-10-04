@@ -83,6 +83,13 @@ async function seed() {
   ids.waitA = await application('club_a', 'MEM-20261001-CCCCCCCC', 'waitlisted', { kind: 'waitlist' });
   ids.waitA2 = await application('club_a', 'MEM-20261001-DDDDDDDD', 'waitlisted', { kind: 'waitlist' });
   ids.formula = await application('club_a', 'MEM-20261001-EEEEEEEE', 'enquired', { firstName: '=HYPERLINK("x")' });
+  await pool.query(
+    `UPDATE membership_applications
+        SET address = '4 Castle Street, Dornoch', postcode = 'IV25 3SN', home_club = 'Tain Golf Club',
+            other_clubs = 'Brora Golf Club', cdh_number = '1000000101', handicap = '11.2'
+      WHERE id = $1`,
+    [ids.submitted],
+  );
   ids.appB = await application('club_b', 'MEM-20261001-FFFFFFFF', 'submitted', { categoryId: ids.fullB });
   ids.waitB = await application('club_b', 'MEM-20261001-GGGGGGGG', 'waitlisted', { kind: 'waitlist' });
 }
@@ -309,6 +316,11 @@ describe('membership routes against Postgres', { skip }, () => {
       assert.deepEqual(res.body.recommendedCategories.map((c) => c.name).sort(), ['Full', 'Junior']);
       assert.equal(res.body.sourceEmail.body, 'I would like to join the club.');
       assert.deepEqual(res.body.events, []);
+      const a = res.body.application;
+      assert.deepEqual(
+        [a.address, a.postcode, a.homeClub, a.otherClubs, a.cdhNumber, a.handicap],
+        ['4 Castle Street, Dornoch', 'IV25 3SN', 'Tain Golf Club', 'Brora Golf Club', '1000000101', '11.2'],
+      );
     });
 
     test('another club’s application is a 404 everywhere (no IDOR)', async () => {
@@ -473,6 +485,9 @@ describe('membership routes against Postgres', { skip }, () => {
       assert.match(res.headers['content-type'], /text\/csv/);
       assert.match(res.headers['content-disposition'], /membership_\d{4}-\d{2}-\d{2}\.csv/);
       assert.match(res.text, /^Reference,Status,/);
+      assert.match(res.text.split('\n')[0], /Address,Postcode,Handicap,CDH number,Home club,Other clubs/);
+      assert.match(res.text, /IV25 3SN/);
+      assert.match(res.text, /Brora Golf Club/);
       assert.match(res.text, /"'=HYPERLINK\(""x""\)"/);
       assert.doesNotMatch(res.text, /FFFFFFFF/);
       assert.equal((await staffA.get('/api/membership/applications.csv?status=bogus')).status, 400);
@@ -493,7 +508,14 @@ describe('membership routes against Postgres', { skip }, () => {
 
     test('when open, an invitation emails a signed apply link for the same reference', async () => {
       await adminA.put('/api/membership/settings').set(CSRF).send({ enabled: true });
-      const res = await staffA.post(`/api/membership/applications/${ids.waitA}/invite`).set(CSRF);
+      // As pasted into a host's settings: the core API strips the newline, so must we.
+      process.env.BOOKING_LINK_SECRET = ` ${LINK_SECRET}\n`;
+      let res;
+      try {
+        res = await staffA.post(`/api/membership/applications/${ids.waitA}/invite`).set(CSRF);
+      } finally {
+        process.env.BOOKING_LINK_SECRET = LINK_SECRET;
+      }
       assert.equal(res.status, 200);
       assert.equal(res.body.application.status, 'invited');
       assert.equal(res.body.application.reference, 'MEM-20261001-CCCCCCCC');
@@ -504,6 +526,10 @@ describe('membership routes against Postgres', { skip }, () => {
       assert.equal(link.origin + link.pathname, 'https://core.example/membership/apply');
       assert.equal(link.searchParams.get('ref'), 'MEM-20261001-CCCCCCCC');
       assert.ok(verifyMembershipToken('MEM-20261001-CCCCCCCC', link.searchParams.get('token'), LINK_SECRET, 'club_a'));
+      // The membership address, never the booking desk's FROM_EMAIL.
+      assert.equal(sent[0].reply_to.email, 'memberships@club.teemail.io');
+      assert.match(text, /write to memberships@club\.teemail\.io\./);
+      assert.doesNotMatch(JSON.stringify(sent[0].content), /bookings@club\.test/);
 
       const { rows } = await pool.query(`SELECT event FROM membership_events WHERE application_id = $1 ORDER BY id`, [
         ids.waitA,
@@ -535,6 +561,11 @@ describe('membership routes against Postgres', { skip }, () => {
         const res = await staffA.post(`/api/membership/applications/${ids.waitA2}/invite`).set(CSRF);
         assert.equal(res.status, 409);
         assert.match(res.body.error, /MEMBERSHIP_FORM_BASE_URL/);
+        assert.doesNotMatch(res.body.error, /BOOKING_LINK_SECRET/, 'names only what is missing');
+        process.env.MEMBERSHIP_FORM_BASE_URL = '   ';
+        const blank = await staffA.post(`/api/membership/applications/${ids.waitA2}/invite`).set(CSRF);
+        assert.equal(blank.status, 409);
+        assert.match(blank.body.error, /MEMBERSHIP_FORM_BASE_URL/);
       } finally {
         process.env.MEMBERSHIP_FORM_BASE_URL = base;
       }

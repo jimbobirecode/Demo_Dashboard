@@ -119,11 +119,12 @@ BEGIN
 
     INSERT INTO public.membership_applications
         (club, reference, kind, status, category_id, first_name, last_name, email, phone, date_of_birth, address,
-         handicap, home_club, proposer, seconder, message, enquiry_summary, recommended_category_ids, consent,
-         source_message_id, submitted_at, created_at, updated_at)
+         postcode, handicap, home_club, other_clubs, cdh_number, proposer, seconder, message, enquiry_summary,
+         recommended_category_ids, consent, source_message_id, submitted_at, created_at, updated_at)
     VALUES (v_club, 'MEM-' || to_char(CURRENT_DATE - 6, 'YYYYMMDD') || '-DEMO0001', 'application', 'submitted', v_full,
             'Isla', 'Munro', 'isla.munro@example.com', '+44 7700 900101', DATE '1986-04-12',
-            '4 Castle Street, Dornoch', '11.2', 'Tain Golf Club', 'Hamish Grant (member since 2004)', 'Morag Ross',
+            '4 Castle Street, Dornoch', 'IV25 3SN', '11.2', 'Tain Golf Club', 'Brora Golf Club', '1000000101',
+            'Hamish Grant (member since 2004)', 'Morag Ross',
             'I have played the Championship Course as a visitor many times and would love to make it my home course.',
             'Local golfer (handicap 11), recently moved to the area, asking about membership and fees.',
             ARRAY[v_full, v_country], TRUE, v_msg, NOW() - INTERVAL '4 days', NOW() - INTERVAL '6 days', NOW() - INTERVAL '4 days')
@@ -136,12 +137,13 @@ BEGIN
 
     -- Callum Fraser: Intermediate, with the committee.
     INSERT INTO public.membership_applications
-        (club, reference, kind, status, category_id, first_name, last_name, email, phone, date_of_birth,
-         handicap, home_club, proposer, seconder, message, enquiry_summary, recommended_category_ids, consent,
-         staff_notes, submitted_at, created_at, updated_at)
+        (club, reference, kind, status, category_id, first_name, last_name, email, phone, date_of_birth, address,
+         postcode, handicap, home_club, other_clubs, cdh_number, proposer, seconder, message, enquiry_summary,
+         recommended_category_ids, consent, staff_notes, submitted_at, created_at, updated_at)
     VALUES (v_club, 'MEM-' || to_char(CURRENT_DATE - 15, 'YYYYMMDD') || '-DEMO0002', 'application', 'under_review', v_intermediate,
             'Callum', 'Fraser', 'callum.fraser@example.com', '+44 7700 900102', DATE '2000-09-03',
-            '6.4', 'Inverness Golf Club', 'Iain MacLeod', 'Fiona Campbell',
+            'Flat 2, 17 Union Street, Inverness', 'IV1 1PP', '6.4', 'Inverness Golf Club', NULL, '1000000102',
+            'Iain MacLeod', 'Fiona Campbell',
             'Working in Inverness; keen to play competitions and join the scratch team.',
             '26-year-old asking about junior-to-adult membership options.',
             ARRAY[v_intermediate, v_full], TRUE,
@@ -159,12 +161,12 @@ BEGIN
 
     -- The Mackenzies: Family, approved - ready to be welcomed.
     INSERT INTO public.membership_applications
-        (club, reference, kind, status, category_id, first_name, last_name, email, phone, address,
-         handicap, proposer, seconder, message, enquiry_summary, recommended_category_ids, consent,
+        (club, reference, kind, status, category_id, first_name, last_name, email, phone, date_of_birth, address,
+         postcode, handicap, home_club, other_clubs, cdh_number, proposer, seconder, message, enquiry_summary, recommended_category_ids, consent,
          decision_note, decided_by, decided_at, submitted_at, created_at, updated_at)
     VALUES (v_club, 'MEM-' || to_char(CURRENT_DATE - 30, 'YYYYMMDD') || '-DEMO0003', 'application', 'approved', v_family,
-            'Eilidh', 'Mackenzie', 'eilidh.mackenzie@example.com', '+44 7700 900103', 'Bonar Bridge',
-            '18.0 / 22.5', 'Alasdair Munro', 'Catriona Gunn',
+            'Eilidh', 'Mackenzie', 'eilidh.mackenzie@example.com', '+44 7700 900103', DATE '1981-02-27',
+            'Kyle House, Bonar Bridge', 'IV24 3EA', '18.0 / 22.5', 'None', 'Bonar Bridge-Ardgay Golf Club (country)', NULL, 'Alasdair Munro', 'Catriona Gunn',
             'Family of four - both children are in the junior coaching programme.',
             'Family enquiry: two adults and two juniors (ages 12 and 15).',
             ARRAY[v_family], TRUE,
@@ -182,10 +184,11 @@ BEGIN
 
     -- Margaret Sutherland: enquired while applications were closed - on the waitlist.
     INSERT INTO public.membership_applications
-        (club, reference, kind, status, category_id, first_name, last_name, email, phone, message,
-         enquiry_summary, recommended_category_ids, consent, created_at, updated_at)
+        (club, reference, kind, status, category_id, first_name, last_name, email, phone, date_of_birth, address,
+         postcode, handicap, home_club, other_clubs, cdh_number, message, enquiry_summary, recommended_category_ids, consent, created_at, updated_at)
     VALUES (v_club, 'MEM-' || to_char(CURRENT_DATE - 45, 'YYYYMMDD') || '-DEMO0004', 'waitlist', 'waitlisted', v_senior,
             'Margaret', 'Sutherland', 'margaret.sutherland@example.com', '+44 7700 900104',
+            DATE '1958-11-19', '3 Main Street, Golspie', 'KW10 6TG', '24.1', 'Golspie Golf Club', NULL, '1000000104',
             'Recently retired to Golspie; would like to join the seniors'' section.',
             'Retired golfer asking about senior membership.',
             ARRAY[v_senior], TRUE, NOW() - INTERVAL '45 days', NOW() - INTERVAL '44 days')
