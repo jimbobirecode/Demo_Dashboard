@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../lib/format.js';
 import ChatThread from '../components/ChatThread.jsx';
@@ -297,7 +298,15 @@ function InboxDetail({ id, onChanged, onHandled }) {
 
       {notice && <div className={`banner ${notice.kind}`}>{notice.text}</div>}
 
-      {booking ? (
+      {message.routedTo === 'membership' || message.intent === 'membership_enquiry' ? (
+        <div className="context-strip">
+          <span className="muted">Membership enquiry</span>
+          <span>Answered automatically and filed on the Membership page.</span>
+          <Link to="/membership" className="btn-sm button-link">
+            Open Membership
+          </Link>
+        </div>
+      ) : booking ? (
         <div className="context-strip">
           <span className="muted">Booking</span>
           <span className="mono">{booking.bookingId}</span>

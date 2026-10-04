@@ -22,6 +22,7 @@ import changeRoutes from './routes/changes.js';
 import paymentRoutes from './routes/payments.js';
 import inboxRoutes from './routes/inbox.js';
 import portalRoutes from './routes/portal.js';
+import membershipRoutes from './routes/membership.js';
 import stripeWebhookRoutes from './routes/stripe-webhook.js';
 import { pool } from './db.js';
 import { contentSecurityDirectives, csrfProtection } from './lib/request-guard.js';
@@ -95,6 +96,7 @@ app.use('/api/changes', changeRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/inbox', inboxRoutes);
 app.use('/api/portal', portalRoutes);
+app.use('/api/membership', membershipRoutes);
 
 const distDir = path.resolve(__dirname, '../../web/dist');
 if (fs.existsSync(distDir)) {

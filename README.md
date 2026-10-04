@@ -4,7 +4,7 @@ The staff dashboard of **TeeMail**, an email booking assistant for golf clubs. A
 
 It serves three audiences:
 
-- **Club staff** — bookings, the Inbox of emails the bot held for a person, guest change requests, waitlist, tour operator accounts, payments, guest and operator email campaigns, tee-sheet imports, analytics, and (for administrators) user accounts.
+- **Club staff** — bookings, the Inbox of emails the bot held for a person, guest change requests, waitlist, membership applications, tour operator accounts, payments, guest and operator email campaigns, tee-sheet imports, analytics, and (for administrators) user accounts.
 - **Tour operators** — a portal with emailed one-time sign-in: their bookings and balances, change requests, new enquiries, online payment.
 - **Guests** — a manage-booking page reached by a signed link, where they ask to change or cancel.
 
@@ -99,6 +99,7 @@ Never point `TEST_DATABASE_URL` at real data: the tests create, truncate and dro
 - **Tour operators**: accounts with email domains, credit terms (deposit, balance, net days, limit), exposure and ageing; bookings matched by assignment or sending domain (a name in prose is only a suggestion); booking-status and payment-due reminder campaigns; the operator portal.
 - **Guest emails**: pre-arrival welcome (after payment by default) and post-play thank-you via SendGrid templates, with dry-run previews and send stamps so nobody is emailed twice; optional Club Vero survey link ([docs/CLUB_VERO_INTEGRATION.md](docs/CLUB_VERO_INTEGRATION.md)).
 - **Waitlist**: entries, conversion to a booking in one transaction, suggested conversions made outside the dashboard, conversion reporting.
+- **Membership**: an on/off switch for membership applications (administrators). On, an enquiry to the club's membership address (demo: `memberships@club.teemail.io`) gets an instant reply from the core API with the club's categories and fees and a signed link to apply; off, a link to join the waitlist. Staff review applications (`submitted → under review → approved / declined → welcomed`), each step emailing the applicant; the waitlist can be invited to apply once applications reopen. Categories and reply wording are edited on the page. Needs `BOOKING_LINK_SECRET` (shared with the core API) and `MEMBERSHIP_FORM_BASE_URL` (the core API's public URL) for invitation links; demo data in `db/seeds/seed_membership_demo.sql`.
 - **Tee-sheet import**: CSV/XLSX, preview before writing, duplicate detection, undo per batch (administrators); imported rows count as play but never as enquiries in the analytics.
 - **Analytics**: KPIs against the previous period, funnel, lead time, party size, course mix, request utilisation, collection and ageing, direct vs trade, accommodation, caddies, journey-email coverage; every chart has a table view.
 - **Accounts**: sign-in by email, roles `admin`/`staff`, invitations and self-service reset by one-time emailed links, forced change of legacy temporary passwords.

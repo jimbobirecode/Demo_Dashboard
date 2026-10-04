@@ -13,6 +13,7 @@ Current files:
 | 0005 | `0005_retire_legacy_statuses.sql` | `Pending` → `Inquiry`, `Confirmed` → `Booked` |
 | 0006 | `0006_operator_portal_sessions.sql` | `operator_portal_sessions` (revocable portal sessions) |
 | 0007 | `0007_email_messages_message_id.sql` | `email_messages.message_id`, unique inbound Message-ID index, pending-row index (core API) |
+| 0008 | `0008_membership.sql` | `club_settings`, `membership_categories`, `membership_applications`, `membership_events` (membership module, shared with the core API) |
 
 `0001`–`0004` are a **baseline**: they reproduce the schema production was running on when versioned migrations were introduced (folding in the retired `migration_*.sql` files and the core API's old runtime DDL), idempotently, so they are no-ops on a database that already has it — without needing to own its tables (see [Guarded DDL](#guarded-ddl)). What they change on the existing production database, and the first-deploy checklist: [DEPLOYMENT.md](DEPLOYMENT.md#first-deploy-of-the-migration-runner--checklist). Resulting tables: [DATA_MODEL.md](DATA_MODEL.md).
 

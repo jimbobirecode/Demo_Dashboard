@@ -72,3 +72,15 @@ test('emails the core API is still working on are labelled and kept out of the I
   );
   assert.equal(notInFlightSql('m'), "COALESCE(m.routed_to, '') NOT IN ('queued', 'processing')");
 });
+
+test('membership enquiries read as such in the Inbox', async () => {
+  const { serialiseMessage } = await import('../src/lib/inbox-domain.js');
+  const message = serialiseMessage({
+    id: 2,
+    direction: 'inbound',
+    intent: 'membership_enquiry',
+    routed_to: 'membership',
+  });
+  assert.equal(message.intentLabel, 'Membership enquiry');
+  assert.equal(message.routeLabel, 'Sent to Membership');
+});

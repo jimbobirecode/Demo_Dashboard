@@ -102,6 +102,27 @@ Outgoing staff emails include the booking's signed manage link when the email is
 | POST | `/:waitlistId/link` | `{bookingId}` — record that an existing booking was this entry's conversion |
 | DELETE | `/:waitlistId` | **Admin**. Delete an unconverted entry (409 for a converted one) |
 
+## `/api/membership` (`routes/membership.js`) — **Staff**: membership enquiries to welcome
+
+The core API answers the enquiry email and hosts the forms (`/membership/apply`, `/membership/waitlist`); these routes are the club's side. Contract: [ARCHITECTURE.md](ARCHITECTURE.md#membership). Every query is scoped to the signed-in club; another club's id answers 404.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/settings` | Staff | `{enabled, settings, updatedAt, updatedBy, canEdit, linksConfigured, emailConfigured, statuses}`. No `club_settings` row reads as `enabled: false` |
+| PUT | `/settings` | **Admin** | `{enabled?: boolean, settings?: {intro, next_steps, closed_message, contact_email, committee_name}}` — upserts `club_settings`, records `updated_by`, logs who opened/closed applications. Unknown keys dropped; 400 on bad types, lengths or address |
+| GET | `/summary` | Staff | KPI row: `newSubmissions`, `underReview`, `awaitingWelcome` (approved), `waitlist`, `enquiriesThisMonth`, `welcomedThisYear`, `enabled` |
+| GET | `/categories` | Staff | Categories (active first) with `applications` (how many point at each) |
+| POST | `/categories` | **Admin** | Create (`name` ≤80 required, fees 0–100,000, ages 0–120, min ≤ max). 409 on a duplicate name |
+| PUT | `/categories/:id` | **Admin** | Replace a category's fields (same validation) |
+| DELETE | `/categories/:id` | **Admin** | Delete; if any application uses it (chosen or recommended) it is retired (`active = false`) instead → `{retired: true}` |
+| GET | `/applications?status=&q=` | Staff | Up to 500 applications with `categoryName`, plus `counts` per status. `status` is one status, a comma list or `all`; `q` matches name, email or reference (literal, no wildcards) |
+| GET | `/applications.csv?status=&q=` | Staff | The same as CSV; every cell through `lib/csv.js` (formulas defused) |
+| GET | `/applications/:id` | Staff | `{application, category, recommendedCategories, events, sourceEmail, emailConfigured}` — `sourceEmail` is the logged inbound enquiry (`source_message_id`) |
+| PATCH | `/applications/:id/status` | Staff | `{status, note}` — validated transition (409 otherwise; `invited` → 400, use invite). Writes `membership_events` (`status:<new>`), `decided_by/decided_at` (+`decision_note`) on approved/declined, `welcomed_at` on welcomed; then emails the applicant (`membership_under_review`, `_approved`, `_declined`, `_welcome`) and logs it in `email_messages`. `{application, emailed, emailKind, emailNotice}` — the decision stands if the email cannot go |
+| POST | `/applications/:id/notes` | Staff | `{note}` (≤2000) — appended to `staff_notes` as `[time user] note`, plus a `note` event |
+| POST | `/applications/:id/invite` | Staff | `waitlisted → invited`; only while applications are **on** and links can be signed (`BOOKING_LINK_SECRET` + `MEMBERSHIP_FORM_BASE_URL`), else 409. Emails `membership_invite` with the signed apply link (same reference) |
+| POST | `/applications/invite-waitlist` | **Admin** | Invite every waitlisted applicant of the club; `{invited, emailed}` |
+
 ## `/api/operators` (`routes/operators.js`) — **Staff**
 
 | Method | Path | Purpose |
@@ -168,4 +189,4 @@ Every portal request checks the session row (`operator_portal_sessions`: not rev
 
 ## SPA routes (not API)
 
-Served by `web/src/App.jsx`: staff pages (`/bookings`, `/analytics`, `/requests`, `/inbox`, `/waitlist`, `/operators`, `/emails`, `/reminders`, `/import`, `/users` (admin), `/account/password`); public pages (sign-in at any other path), `/forgot-password`, `/reset-password?token=`, `/accept-invite?token=`, `/manage-booking?ref=&token=`; portal `/portal`, `/portal/sign-in?token=`.
+Served by `web/src/App.jsx`: staff pages (`/bookings`, `/analytics`, `/requests`, `/inbox`, `/waitlist`, `/membership`, `/operators`, `/emails`, `/reminders`, `/import`, `/users` (admin), `/account/password`); public pages (sign-in at any other path), `/forgot-password`, `/reset-password?token=`, `/accept-invite?token=`, `/manage-booking?ref=&token=`; portal `/portal`, `/portal/sign-in?token=`.

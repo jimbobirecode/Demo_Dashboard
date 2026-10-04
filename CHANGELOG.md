@@ -2,6 +2,17 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – membership module (October 2026)
+
+### Added
+
+- **Membership**: an on/off switch for membership applications (administrators only, recorded with who changed it). On, an enquiry to the membership address gets the club's categories and a signed apply link from the core API; off, a signed waitlist link.
+- Migration `0008_membership.sql`: `club_settings`, `membership_categories`, `membership_applications`, `membership_events`.
+- `/api/membership`: settings, categories (admin writes; soft delete when in use), application list/detail/CSV export, review transitions with applicant emails (`membership_under_review`, `_approved`, `_declined`, `_welcome`), staff notes, waitlist invitations (`membership_invite`, only while open), KPI summary. Club-scoped throughout.
+- Membership page: the switch with what guests receive in each state, KPI row, Applications / Waitlist / Categories / Settings tabs, and an application drawer whose actions each state the email the applicant will receive.
+- Inbox and conversation labels for membership enquiries and email kinds.
+- `db/seeds/seed_membership_demo.sql` (also run by `npm run seed`; `--membership` for only that); `MEMBERSHIP_FORM_BASE_URL`.
+
 ## Unreleased – security and quality hardening (October 2026)
 
 ### Security

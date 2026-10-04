@@ -13,6 +13,15 @@ const KIND_LABELS = {
   post_play: 'Thank-you after play',
   reply: 'Reply',
   automatic: 'Automatic email',
+  membership_reply: 'Membership details',
+  membership_closed: 'Applications closed – waitlist offered',
+  membership_received: 'Application received',
+  membership_waitlisted: 'Waitlist place confirmed',
+  membership_under_review: 'Application under review',
+  membership_approved: 'Membership approved',
+  membership_declined: 'Membership declined',
+  membership_welcome: 'Welcome to the club',
+  membership_invite: 'Invitation to apply',
 };
 
 /** Who an email the club sent came from, as the reader thinks of it. */

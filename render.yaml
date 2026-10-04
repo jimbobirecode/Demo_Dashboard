@@ -27,6 +27,12 @@ services:
       # same value must be set on both services, so it is never generated here.
       - key: BOOKING_LINK_SECRET
         sync: false
+      # Membership: the core API's public base URL, where the application and
+      # waitlist forms live (for the demo, the core API's Render URL). Waitlist
+      # invitations link there, signed with BOOKING_LINK_SECRET. Left blank
+      # here on purpose - set it in the dashboard.
+      - key: MEMBERSHIP_FORM_BASE_URL
+        sync: false
       # The dashboard's public address: emailed links and the CSRF origin check.
       - key: APP_URL
         sync: false

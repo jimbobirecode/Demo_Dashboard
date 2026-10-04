@@ -156,6 +156,23 @@ export const api = {
   sendCampaign: (campaign, bookingIds, { dryRun = false } = {}) =>
     request('/emails/send', { method: 'POST', body: { campaign, bookingIds, dryRun } }),
 
+  // Membership: the service switch, categories, copy and the application pipeline.
+  membershipSettings: () => request('/membership/settings'),
+  saveMembershipSettings: (patch) => request('/membership/settings', { method: 'PUT', body: patch }),
+  membershipSummary: () => request('/membership/summary'),
+  membershipCategories: () => request('/membership/categories'),
+  createMembershipCategory: (category) => request('/membership/categories', { method: 'POST', body: category }),
+  updateMembershipCategory: (id, category) =>
+    request(`/membership/categories/${id}`, { method: 'PUT', body: category }),
+  deleteMembershipCategory: (id) => request(`/membership/categories/${id}`, { method: 'DELETE' }),
+  membershipApplications: ({ status, q } = {}) => request(`/membership/applications${queryString({ status, q })}`),
+  membershipApplication: (id) => request(`/membership/applications/${id}`),
+  setMembershipStatus: (id, status, note) =>
+    request(`/membership/applications/${id}/status`, { method: 'PATCH', body: { status, note } }),
+  addMembershipNote: (id, note) => request(`/membership/applications/${id}/notes`, { method: 'POST', body: { note } }),
+  inviteMembershipApplicant: (id) => request(`/membership/applications/${id}/invite`, { method: 'POST' }),
+  inviteMembershipWaitlist: () => request('/membership/applications/invite-waitlist', { method: 'POST' }),
+
   // The tour operator portal (its own session, separate from staff sign-in).
   portalLogin: (email) => request('/portal/login', { method: 'POST', body: { email } }),
   portalRedeem: (token) => request('/portal/session', { method: 'POST', body: { token } }),
@@ -168,6 +185,11 @@ export const api = {
     request(`/portal/bookings/${encodeURIComponent(bookingId)}/pay`, { method: 'POST', body: {} }),
   portalEnquiry: (body) => request('/portal/enquiries', { method: 'POST', body }),
 };
+
+/** The membership export, downloaded by the browser with the session cookie. */
+export function membershipExportUrl({ status, q } = {}) {
+  return `${BASE}/membership/applications.csv${queryString({ status, q })}`;
+}
 
 /** The operator's statement, downloaded by the browser with the portal cookie. */
 export const portalStatementUrl = `${BASE}/portal/statement.csv`;
