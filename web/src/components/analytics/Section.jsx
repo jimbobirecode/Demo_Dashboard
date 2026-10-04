@@ -29,9 +29,9 @@ export function Figure({ label, value, sub }) {
 }
 
 /**
- * What a section says when the columns behind it were never filled in. An
- * install that does not use tour operators, or has not run a migration, is
- * told which one rather than shown a grid of zeroes.
+ * What a section says when the columns behind it were never filled in: a
+ * club that does not use a feature is told so rather than shown a grid of
+ * zeroes.
  */
 export function NotRecorded({ children }) {
   return <div className="empty">{children}</div>;

@@ -1,53 +1,52 @@
 /**
  * POST /api/stripe/webhook — Stripe telling us a payment link was paid.
- * GET  /api/stripe/webhook — answers so the URL can be checked in a browser.
+ * GET  /api/stripe/webhook — answers { ok: true }, so the URL can be checked in a browser.
  *
  * Mounted ahead of the JSON body parser with a raw parser of its own, because
  * the signature is computed over the exact bytes Stripe sent; parsed and
  * re-serialised JSON would never verify.
  *
  * A verified event we have handled, or have no use for, is answered 2xx.
- * Anything that means the payment could not be recorded yet — the secret or a
- * migration missing, the database down — is answered 5xx on purpose, so Stripe
+ * Anything that means the payment could not be recorded yet — the secret
+ * missing, the database down — is answered 5xx on purpose, so Stripe
  * keeps retrying (for up to three days) until it can be.
  *
  * Every delivery is noted in the webhook log the drawer shows.
  */
 import express, { Router } from 'express';
 import { verifyWebhookSignature } from '../lib/stripe.js';
-import { PAYMENT_EVENTS, paidSessionFromEvent, readPaymentLinkConfig } from '../lib/payment-link-domain.js';
-import { MigrationMissingError, recordStripePayment } from '../lib/record-payment.js';
+import { paidSessionFromEvent, readPaymentLinkConfig } from '../lib/payment-link-domain.js';
+import { recordStripePayment } from '../lib/record-payment.js';
 import { logWebhook } from '../lib/webhook-log.js';
 import { sendReceipt } from './payments.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('stripe');
 
 const router = Router();
 
+// Says only that the route exists. Whether a signing secret is configured is
+// shown to administrators in the payments diagnostics, not to anybody.
 router.get('/', (req, res) => {
-  res.json({
-    ok: true,
-    endpoint: 'Stripe webhook',
-    method: 'Stripe sends POST requests here',
-    signingSecretSet: Boolean(readPaymentLinkConfig().webhookSecret),
-    events: PAYMENT_EVENTS,
-  });
+  res.json({ ok: true });
 });
 
 router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const { webhookSecret } = readPaymentLinkConfig();
   if (!webhookSecret) {
-    console.error('[stripe] webhook received but STRIPE_WEBHOOK_SECRET is not set');
+    log.error('webhook received but STRIPE_WEBHOOK_SECRET is not set');
     logWebhook({ outcome: 'rejected', detail: 'STRIPE_WEBHOOK_SECRET is not set on the server' });
     return res.status(503).json({ error: 'Webhook not configured' });
   }
 
   const check = verifyWebhookSignature(req.body, req.get('stripe-signature'), webhookSecret);
   if (!check.ok) {
-    console.warn('[stripe] rejected webhook:', check.reason);
+    log.warn('rejected webhook:', check.reason);
     logWebhook({
       outcome: 'rejected',
       detail:
         check.reason === 'Signature mismatch'
-          ? 'Signature mismatch: STRIPE_WEBHOOK_SECRET is not this endpoint\'s signing secret (test and live mode have different ones)'
+          ? "Signature mismatch: STRIPE_WEBHOOK_SECRET is not this endpoint's signing secret (test and live mode have different ones)"
           : check.reason,
     });
     return res.status(400).json({ error: check.reason });
@@ -69,11 +68,17 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
   let recorded;
   try {
     recorded = await recordStripePayment(session);
-    console.log(`[stripe] ${event.type} ${session.id}: ${recorded.result}`);
+    log.info(`${event.type} ${session.id}: ${recorded.result}`);
   } catch (err) {
-    const detail = err instanceof MigrationMissingError ? err.message : `Database error: ${err.message}`;
-    console.error('[stripe] could not record payment', session.id, err);
-    logWebhook({ outcome: 'failed', type: event.type, bookingId: session.metadata?.booking_id ?? null, detail });
+    const detail = `Database error: ${err.message}`;
+    log.error('could not record payment', session.id, err);
+    logWebhook({
+      outcome: 'failed',
+      type: event.type,
+      bookingId: session.metadata?.booking_id ?? null,
+      club: session.metadata?.club ?? null,
+      detail,
+    });
     return res.status(503).json({ error: 'Could not record the payment yet' });
   }
 
@@ -87,13 +92,14 @@ router.post('/', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) =>
       message: err.message,
     }));
     receipt = outcome.ok ? 'sent' : `not sent: ${outcome.message}`;
-    console.log(`[stripe] receipt for ${recorded.booking.bookingId}: ${receipt}`);
+    log.info(`receipt for ${recorded.booking.bookingId}: ${receipt}`);
   }
 
   logWebhook({
     outcome: recorded.booking ? 'recorded' : 'skipped',
     type: event.type,
     bookingId: recorded.booking?.bookingId ?? session.metadata?.booking_id ?? null,
+    club: recorded.booking?.club ?? session.metadata?.club ?? null,
     detail: receipt ? `${recorded.result}; receipt ${receipt}` : recorded.result,
   });
   res.json({ received: true, result: recorded.result, receipt });

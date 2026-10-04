@@ -2,6 +2,7 @@
   "name": "teemail-dashboard",
   "private": true,
   "version": "2.0.0",
+  "type": "module",
   "description": "TeeMail Golf Club visitor bookings dashboard",
   "workspaces": [
     "server",
@@ -11,15 +12,31 @@
     "dev": "concurrently -n api,web -c yellow,cyan \"npm run dev -w server\" \"npm run dev -w web\"",
     "build": "npm run build -w web",
     "start": "node server/src/index.js",
-    "postinstall": "echo ''",
+    "migrate": "node server/src/db/migrate.js",
+    "migrate:status": "node server/src/db/migrate.js --status",
     "seed": "node scripts/seed.mjs",
-    "check": "node scripts/check-install.mjs",
-    "test": "node --test server/test/*.test.js"
+    "test": "npm run test:server && npm run test:web",
+    "test:server": "node --test 'server/test/*.test.js' 'server/test/integration/*.test.js'",
+    "test:web": "npm run test -w web",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='server/src/**' --test-coverage-lines=68 --test-coverage-branches=84 --test-coverage-functions=72 'server/test/*.test.js' 'server/test/integration/*.test.js'",
+    "lint": "eslint .",
+    "format": "prettier --write server scripts web/src web/*.js eslint.config.js",
+    "format:check": "prettier --check server scripts web/src web/*.js eslint.config.js"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "@eslint/js": "^9.39.5",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9"
   },
   "engines": {
     "node": ">=20 <25"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

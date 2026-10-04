@@ -13,13 +13,19 @@
  */
 import { Router } from 'express';
 import { query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { buildAuditSet, getBookingColumns } from '../lib/schema.js';
+import { BOOKING_SELECT, buildAuditSet } from '../lib/schema.js';
 import { BRAND, appBaseUrl } from '../lib/brand.js';
 import { sendPaymentEmail } from '../lib/payment-mailer.js';
-import { createPaymentLink, deactivatePaymentLink, listWebhookEndpoints, paidSessionsForLink, prefilledLinkUrl } from '../lib/stripe.js';
-import { lastSync, syncPendingPayments } from '../lib/payment-sync.js';
+import {
+  createPaymentLink,
+  deactivatePaymentLink,
+  listWebhookEndpoints,
+  paidSessionsForLink,
+  prefilledLinkUrl,
+} from '../lib/stripe.js';
+import { lastSync, scopeSyncResult, syncPendingPayments } from '../lib/payment-sync.js';
 import { PAYMENT_EVENTS } from '../lib/payment-link-domain.js';
 import { recordStripePayment } from '../lib/record-payment.js';
 import { recentWebhooks } from '../lib/webhook-log.js';
@@ -35,24 +41,18 @@ import {
   readPaymentLinkConfig,
 } from '../lib/payment-link-domain.js';
 import { withAccount } from './bookings.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('payments');
 
 const router = Router();
 router.use(requireAuth);
 
-const MIGRATION = 'migration_add_stripe_payment_links.sql';
-
-router.get('/config', async (req, res, next) => {
-  try {
-    const columns = await getBookingColumns();
-    res.json({
-      ...publicPaymentLinkConfig(readPaymentLinkConfig()),
-      migrated: columns.has('stripe_payment_link_id'),
-      migration: MIGRATION,
-      webhooks: recentWebhooks(),
-    });
-  } catch (err) {
-    next(err);
-  }
+router.get('/config', (req, res) => {
+  res.json({
+    ...publicPaymentLinkConfig(readPaymentLinkConfig()),
+    webhooks: recentWebhooks(req.user.customerId),
+  });
 });
 
 router.post('/bookings/:bookingId/link', async (req, res, next) => {
@@ -65,19 +65,11 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
   }
 
   try {
-    const columns = await getBookingColumns();
-    if (!columns.has('stripe_payment_link_id')) {
-      return res.status(409).json({
-        error: `Run ${MIGRATION} first — the dashboard picks it up within 30 seconds, with no restart.`,
-        migration: MIGRATION,
-      });
-    }
-
     const club = req.user.customerId;
-    const { rows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
-      [req.params.bookingId, club],
-    );
+    const { rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
+      req.params.bookingId,
+      club,
+    ]);
     if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
 
     const booking = await withAccount(serialiseBooking(rows[0]), club);
@@ -108,7 +100,7 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
     if (!outcome.ok) {
       // Nobody has the link, so it must not stay payable.
       await deactivatePaymentLink({ secretKey: config.secretKey, linkId: link.id }).catch((err) =>
-        console.error('[payments] could not deactivate unsent link', link.id, err.message),
+        log.error('could not deactivate unsent link', link.id, err.message),
       );
       return res.status(502).json({ error: `The email was not sent: ${outcome.message}` });
     }
@@ -116,8 +108,8 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
     // The previous link asked for a different amount; switch it off so the
     // guest cannot pay both. Best effort — the new link is already out.
     if (booking.paymentLinkId && booking.paymentLinkId !== link.id) {
-      await deactivatePaymentLink({ secretKey: config.secretKey, linkId: booking.paymentLinkId }).catch(
-        (err) => console.error('[payments] could not deactivate previous link', booking.paymentLinkId, err.message),
+      await deactivatePaymentLink({ secretKey: config.secretKey, linkId: booking.paymentLinkId }).catch((err) =>
+        log.error('could not deactivate previous link', booking.paymentLinkId, err.message),
       );
     }
 
@@ -128,19 +120,19 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
       payment_link_sent_by: req.user.username,
       payment_status: PENDING_PAYMENT_STATUS,
     };
-    const names = Object.keys(updates).filter((name) => columns.has(name));
+    const names = Object.keys(updates);
     const params = names.map((name) => updates[name]);
     const sets = names.map((name, index) => `"${name}" = $${index + 1}`);
-    if (columns.has('payment_link_sent_at')) sets.push('payment_link_sent_at = NOW()');
+    sets.push('payment_link_sent_at = NOW()');
 
-    const audit = buildAuditSet(columns, params.length + 1, req.user.username);
+    const audit = buildAuditSet(params.length + 1, req.user.username);
     params.push(...audit.values, booking.bookingId, club);
 
     const updated = await query(
       `UPDATE public.bookings
           SET ${[...sets, ...audit.clauses].join(', ')}
         WHERE booking_id = $${params.length - 1} AND club = $${params.length}
-      RETURNING ${columns.selectList}`,
+      RETURNING ${BOOKING_SELECT}`,
       params,
     );
 
@@ -163,7 +155,6 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
  * receipt that did not go out must not undo a payment that did.
  */
 export async function sendReceipt(booking, config, sentBy = 'Stripe') {
-  const columns = await getBookingColumns();
   if (!booking.guestEmail) return { ok: false, message: 'No guest email address' };
   if (!config.sendgridKey || !config.fromEmail) return { ok: false, message: 'SendGrid is not configured' };
 
@@ -181,11 +172,11 @@ export async function sendReceipt(booking, config, sentBy = 'Stripe') {
     record: { club: booking.club, bookingId: booking.bookingId, kind: 'receipt', sentBy },
   });
 
-  if (outcome.ok && columns.has('payment_receipt_sent_at')) {
-    await query(
-      `UPDATE public.bookings SET payment_receipt_sent_at = NOW() WHERE booking_id = $1 AND club = $2`,
-      [booking.bookingId, booking.club],
-    );
+  if (outcome.ok) {
+    await query(`UPDATE public.bookings SET payment_receipt_sent_at = NOW() WHERE booking_id = $1 AND club = $2`, [
+      booking.bookingId,
+      booking.club,
+    ]);
   }
   return outcome;
 }
@@ -193,12 +184,11 @@ export async function sendReceipt(booking, config, sentBy = 'Stripe') {
 router.post('/bookings/:bookingId/receipt', async (req, res, next) => {
   const config = readPaymentLinkConfig();
   try {
-    const columns = await getBookingColumns();
     const club = req.user.customerId;
-    const { rows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
-      [req.params.bookingId, club],
-    );
+    const { rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
+      req.params.bookingId,
+      club,
+    ]);
     if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
 
     const booking = serialiseBooking(rows[0]);
@@ -209,10 +199,10 @@ router.post('/bookings/:bookingId/receipt', async (req, res, next) => {
     const outcome = await sendReceipt(booking, config, req.user.username);
     if (!outcome.ok) return res.status(502).json({ error: `The receipt was not sent: ${outcome.message}` });
 
-    const fresh = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
-      [booking.bookingId, club],
-    );
+    const fresh = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
+      booking.bookingId,
+      club,
+    ]);
     res.json({
       booking: await withAccount(serialiseBooking(fresh.rows[0]), club),
       message: `Receipt emailed to ${booking.guestEmail}`,
@@ -236,13 +226,14 @@ router.post('/bookings/:bookingId/check', async (req, res, next) => {
   if (!config.secretKey) return res.status(409).json({ error: 'STRIPE_SECRET_KEY is not set' });
 
   try {
-    const columns = await getBookingColumns();
     const club = req.user.customerId;
     const load = async () =>
-      (await query(`SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
-        req.params.bookingId,
-        club,
-      ])).rows[0];
+      (
+        await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
+          req.params.bookingId,
+          club,
+        ])
+      ).rows[0];
 
     const row = await load();
     if (!row) return res.status(404).json({ error: 'Booking not found' });
@@ -278,7 +269,8 @@ router.post('/bookings/:bookingId/check', async (req, res, next) => {
 router.post('/sync', async (req, res, next) => {
   try {
     const result = await syncPendingPayments({ reason: `manual (${req.user.username})` });
-    res.json(result);
+    // The run covers every club on this server; answer with this club's part.
+    res.json(scopeSyncResult(result, req.user.customerId));
   } catch (err) {
     next(err);
   }
@@ -289,7 +281,9 @@ router.post('/sync', async (req, res, next) => {
  * against the real thing where possible — including asking Stripe which
  * webhook endpoints it actually has, rather than trusting the setup notes.
  */
-router.get('/diagnostics', async (req, res, next) => {
+// It describes how the Stripe account is wired up — which keys are set, which
+// endpoints Stripe has — so it is for administrators.
+router.get('/diagnostics', requireAdmin, async (req, res, next) => {
   const config = readPaymentLinkConfig();
   const checks = [];
   const add = (id, ok, label, detail, fix = null) => checks.push({ id, ok, label, detail, fix });
@@ -297,25 +291,31 @@ router.get('/diagnostics', async (req, res, next) => {
   const webhookUrl = appUrl ? `${appUrl}/api/stripe/webhook` : null;
 
   try {
-    add('secret_key', Boolean(config.secretKey), 'Stripe secret key',
+    add(
+      'secret_key',
+      Boolean(config.secretKey),
+      'Stripe secret key',
       config.secretKey ? `Set (${config.testMode ? 'test' : 'live'} mode)` : 'STRIPE_SECRET_KEY is not set',
-      config.secretKey ? null : 'Set STRIPE_SECRET_KEY on the dashboard service in Render.');
+      config.secretKey ? null : 'Set STRIPE_SECRET_KEY on the dashboard service in Render.',
+    );
 
-    const columns = await getBookingColumns();
-    const migrated = columns.has('stripe_payment_link_id') && columns.has('stripe_checkout_session_id');
-    add('migration_links', migrated, 'Payment-link database columns',
-      migrated ? 'Present' : 'Missing', migrated ? null : 'Run migration_add_stripe_payment_links.sql.');
-    const receipts = columns.has('pre_play_clock_started_at') && columns.has('payment_receipt_sent_at');
-    add('migration_receipts', receipts, 'Receipt database columns',
-      receipts ? 'Present' : 'Missing', receipts ? null : 'Run migration_add_payment_receipts.sql.');
-
-    add('webhook_secret', Boolean(config.webhookSecret), 'Webhook signing secret',
+    add(
+      'webhook_secret',
+      Boolean(config.webhookSecret),
+      'Webhook signing secret',
       config.webhookSecret ? 'Set' : 'STRIPE_WEBHOOK_SECRET is not set',
-      config.webhookSecret ? null : "Copy the endpoint's signing secret (whsec_…) from Stripe into STRIPE_WEBHOOK_SECRET.");
+      config.webhookSecret
+        ? null
+        : "Copy the endpoint's signing secret (whsec_…) from Stripe into STRIPE_WEBHOOK_SECRET.",
+    );
 
-    add('app_url', Boolean(appUrl), 'Dashboard address (APP_URL)',
+    add(
+      'app_url',
+      Boolean(appUrl),
+      'Dashboard address (APP_URL)',
       appUrl || 'Not set, so the webhook address cannot be checked',
-      appUrl ? null : 'Set APP_URL to the dashboard\'s public address, e.g. https://your-dashboard.onrender.com');
+      appUrl ? null : "Set APP_URL to the dashboard's public address, e.g. https://your-dashboard.onrender.com",
+    );
 
     if (config.secretKey) {
       try {
@@ -324,44 +324,70 @@ router.get('/diagnostics', async (req, res, next) => {
         const matching = webhookUrl ? ours.filter((e) => e.url.replace(/\/+$/, '') === webhookUrl) : ours;
         const endpoint = matching[0] ?? ours[0] ?? null;
         if (!endpoint) {
-          add('webhook_endpoint', false, `Webhook endpoint in Stripe (${config.testMode ? 'test' : 'live'} mode)`,
+          add(
+            'webhook_endpoint',
+            false,
+            `Webhook endpoint in Stripe (${config.testMode ? 'test' : 'live'} mode)`,
             endpoints.length
               ? `${endpoints.length} endpoint(s) registered, none pointing at /api/stripe/webhook: ${endpoints.map((e) => e.url).join(', ')}`
               : 'No webhook endpoints are registered in this mode',
-            `In Stripe (${config.testMode ? 'Test mode on' : 'live mode'}) → Developers → Webhooks → Add endpoint: ${webhookUrl ?? 'https://<dashboard>/api/stripe/webhook'}`);
+            `In Stripe (${config.testMode ? 'Test mode on' : 'live mode'}) → Developers → Webhooks → Add endpoint: ${webhookUrl ?? 'https://<dashboard>/api/stripe/webhook'}`,
+          );
         } else {
           const listens = PAYMENT_EVENTS.filter((e) => endpoint.events.includes(e) || endpoint.events.includes('*'));
           const urlOk = !webhookUrl || endpoint.url.replace(/\/+$/, '') === webhookUrl;
           const ok = endpoint.status === 'enabled' && listens.length > 0 && urlOk;
-          add('webhook_endpoint', ok, `Webhook endpoint in Stripe (${config.testMode ? 'test' : 'live'} mode)`,
+          add(
+            'webhook_endpoint',
+            ok,
+            `Webhook endpoint in Stripe (${config.testMode ? 'test' : 'live'} mode)`,
             `${endpoint.url} · ${endpoint.status} · events: ${endpoint.events.join(', ') || 'none'}`,
-            ok ? null : [
-              endpoint.status !== 'enabled' ? 'Enable the endpoint in Stripe.' : null,
-              listens.length ? null : `Add the event checkout.session.completed (or payment_intent.succeeded).`,
-              urlOk ? null : `It points at ${endpoint.url}, not ${webhookUrl}.`,
-            ].filter(Boolean).join(' '));
+            ok
+              ? null
+              : [
+                  endpoint.status !== 'enabled' ? 'Enable the endpoint in Stripe.' : null,
+                  listens.length ? null : `Add the event checkout.session.completed (or payment_intent.succeeded).`,
+                  urlOk ? null : `It points at ${endpoint.url}, not ${webhookUrl}.`,
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+          );
         }
       } catch (err) {
-        add('webhook_endpoint', null, 'Webhook endpoint in Stripe', `Could not ask Stripe: ${err.message}`,
-          'A restricted key may not be allowed to read webhook endpoints; check them in the Stripe dashboard.');
+        add(
+          'webhook_endpoint',
+          null,
+          'Webhook endpoint in Stripe',
+          `Could not ask Stripe: ${err.message}`,
+          'A restricted key may not be allowed to read webhook endpoints; check them in the Stripe dashboard.',
+        );
       }
     }
 
-    const { entries, startedAt } = recentWebhooks();
+    const { entries, startedAt } = recentWebhooks(req.user.customerId);
     const last = entries[0] ?? null;
-    add('webhook_received', last ? last.outcome !== 'rejected' && last.outcome !== 'failed' : null,
+    add(
+      'webhook_received',
+      last ? last.outcome !== 'rejected' && last.outcome !== 'failed' : null,
       'Webhooks received',
-      last ? `Last ${last.at}: ${last.outcome}${last.detail ? ` — ${last.detail}` : ''}` : `None since the server started (${startedAt})`,
-      last && (last.outcome === 'rejected' || last.outcome === 'failed') ? last.detail : null);
+      last
+        ? `Last ${last.at}: ${last.outcome}${last.detail ? ` — ${last.detail}` : ''}`
+        : `None since the server started (${startedAt})`,
+      last && (last.outcome === 'rejected' || last.outcome === 'failed') ? last.detail : null,
+    );
 
-    const sync = lastSync();
-    add('sync', sync ? !sync.skipped && !sync.errors.length : null, 'Fetching payments from Stripe',
+    const sync = lastSync(req.user.customerId);
+    add(
+      'sync',
+      sync ? !sync.skipped && !sync.errors.length : null,
+      'Fetching payments from Stripe',
       sync
         ? sync.skipped
           ? `Not running: ${sync.skipped}`
           : `Last run ${sync.finishedAt} (${sync.reason}): ${sync.checked} pending link(s) checked, ${sync.recorded.length} payment(s) recorded${sync.errors.length ? `, errors: ${sync.errors.map((e) => e.error).join('; ')}` : ''}`
         : 'Not run yet (it runs 15 seconds after start-up, then every few minutes)',
-      null);
+      null,
+    );
 
     res.json({ checks, webhookUrl, testMode: config.testMode });
   } catch (err) {

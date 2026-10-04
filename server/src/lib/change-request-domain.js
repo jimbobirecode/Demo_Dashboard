@@ -57,11 +57,7 @@ export function linkSecret(env = process.env) {
  */
 export function signBooking(bookingId, secret, club = '') {
   if (!secret) return null;
-  return crypto
-    .createHmac('sha256', String(secret))
-    .update(`${club}|${bookingId}`)
-    .digest('base64url')
-    .slice(0, 32);
+  return crypto.createHmac('sha256', String(secret)).update(`${club}|${bookingId}`).digest('base64url').slice(0, 32);
 }
 
 /** Constant-time comparison, so a wrong token cannot be found a byte at a time. */
@@ -93,7 +89,13 @@ export function manageUrlFor(booking, env = process.env) {
 
 function describeRound(booking) {
   const when = booking?.date
-    ? new Intl.DateTimeFormat(BRAND.locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+    ? new Intl.DateTimeFormat(BRAND.locale, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      })
         .format(new Date(`${booking.date}T00:00:00Z`))
         .replace(',', '')
     : '';
@@ -111,7 +113,10 @@ function describeRound(booking) {
  */
 export function buildChangeEmail({ outcome, booking, request = null, note = '', manageUrl = null }) {
   const ref = booking.bookingId;
-  const first = String(booking.guestName ?? '').trim().split(/\s+/)[0] || 'there';
+  const first =
+    String(booking.guestName ?? '')
+      .trim()
+      .split(/\s+/)[0] || 'there';
   const round = describeRound(booking);
   const said = String(note ?? '').trim();
 
@@ -176,6 +181,26 @@ export function buildChangeEmail({ outcome, booking, request = null, note = '', 
   return { subject: content.subject, text, html };
 }
 
+/**
+ * How long after the round a manage link still opens.
+ *
+ * The link itself cannot expire: its format (an HMAC of `club|booking`,
+ * base64url, 32 characters, keyed by BOOKING_LINK_SECRET) is shared with the
+ * booking service, which mints the same links, so changing it would break
+ * every link that service has already sent. Instead the page refuses a
+ * booking that was played long enough ago that nobody has a legitimate
+ * reason to open it — which is also when a forwarded or leaked email is most
+ * likely to be sitting in somebody else's inbox.
+ */
+export const MANAGE_LINK_GRACE_DAYS = 30;
+
+/** Whether a manage link for this booking is past use. Undated bookings never are. */
+export function manageLinkExpired(booking, today, { graceDays = MANAGE_LINK_GRACE_DAYS } = {}) {
+  if (!booking?.date) return false;
+  const days = daysUntilPlay(booking.date, today);
+  return days !== null && days < -graceDays;
+}
+
 /** Whole days from today to the round. Negative once it has been played. */
 export function daysUntilPlay(date, today) {
   const play = Date.parse(`${date}T00:00:00Z`);
@@ -200,9 +225,10 @@ export function describeOptions(booking, policy, today) {
       canAmend: false,
       autoCancel: false,
       daysUntilPlay: days,
-      reason: booking?.status === 'Cancelled'
-        ? 'This booking has already been cancelled.'
-        : 'This booking can no longer be changed online.',
+      reason:
+        booking?.status === 'Cancelled'
+          ? 'This booking has already been cancelled.'
+          : 'This booking can no longer be changed online.',
     };
   }
 
@@ -232,7 +258,9 @@ export function describeOptions(booking, policy, today) {
 export function validateChangeRequest(input, options) {
   const errors = [];
 
-  const kind = String(input?.kind ?? '').trim().toLowerCase();
+  const kind = String(input?.kind ?? '')
+    .trim()
+    .toLowerCase();
   if (!REQUEST_KINDS.includes(kind)) errors.push('Choose whether to amend or cancel');
 
   if (kind === 'cancel' && !options.canCancel) errors.push(options.reason);
@@ -250,9 +278,8 @@ export function validateChangeRequest(input, options) {
     errors.push('That date is not valid');
   }
 
-  const players = input?.requestedPlayers === undefined || input?.requestedPlayers === ''
-    ? null
-    : Number(input.requestedPlayers);
+  const players =
+    input?.requestedPlayers === undefined || input?.requestedPlayers === '' ? null : Number(input.requestedPlayers);
   if (players !== null && (!Number.isInteger(players) || players < 1 || players > 40)) {
     errors.push('Players must be a whole number between 1 and 40');
   }
@@ -290,7 +317,7 @@ export function serialiseChangeRequest(row) {
     resolutionNote: row.resolution_note ?? '',
     open: row.status === 'Pending',
     // 'email' when it was read out of a guest's email rather than asked for
-    // on the manage-booking page (migration_add_email_inbox.sql).
+    // on the manage-booking page.
     source: row.source ?? 'link',
     emailMessageId: row.email_message_id ?? null,
   };

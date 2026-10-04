@@ -38,6 +38,9 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
   useEffect(() => {
     setAmount(defaultAmount(booking));
     setMessage(null);
+    // Reset only when a different booking opens or what it owes changes, not
+    // whenever the parent hands over a fresh object for the same booking.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking.bookingId, booking.payment?.outstanding]);
 
   // Opening a booking that is still awaiting payment asks Stripe directly, so
@@ -114,7 +117,9 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
       <div className="between">
         <span className="label">Card payment link</span>
         {config.testMode && (
-          <span className="secondary" style={{ fontSize: '0.75rem' }}>Stripe test mode</span>
+          <span className="secondary" style={{ fontSize: '0.75rem' }}>
+            Stripe test mode
+          </span>
         )}
       </div>
 
@@ -133,7 +138,8 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
           )}
           {awaiting && onCheck && (
             <>
-              {' '}·{' '}
+              {' '}
+              ·{' '}
               <button
                 type="button"
                 className="btn-sm"
@@ -147,7 +153,8 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
           )}
           {booking.paymentLinkUrl && awaiting && (
             <>
-              {' '}·{' '}
+              {' '}
+              ·{' '}
               <button
                 type="button"
                 className="btn-sm"
@@ -174,7 +181,8 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
           )}
           {onSendReceipt && (
             <>
-              {' '}·{' '}
+              {' '}
+              ·{' '}
               <button
                 type="button"
                 className="btn-sm"
@@ -198,11 +206,7 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
         </div>
       )}
 
-      {!config.migrated ? (
-        <div className="secondary" style={{ fontSize: '0.8125rem' }}>
-          Run <code>{config.migration}</code> on the database to enable payment links.
-        </div>
-      ) : !config.configured ? (
+      {!config.configured ? (
         <div className="secondary" style={{ fontSize: '0.8125rem' }}>
           Payment links are not set up. The server needs: {config.missing.join(', ')}.
         </div>
@@ -228,12 +232,7 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
               style={{ width: '9rem' }}
             />
           </label>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={send}
-            disabled={busy || !(Number(amount) > 0)}
-          >
+          <button type="button" className="btn-primary" onClick={send} disabled={busy || !(Number(amount) > 0)}>
             {busy ? 'Sending…' : sent ? 'Resend payment link' : 'Email payment link'}
           </button>
         </div>
@@ -255,9 +254,9 @@ function WebhookStatus({ webhooks }) {
   if (!last) {
     return (
       <div className="secondary" style={style}>
-        No webhook from Stripe since the server started ({formatDateTime(webhooks.startedAt)}). If the guest has
-        paid, check Stripe → Developers → Webhooks has an endpoint for <code>/api/stripe/webhook</code> in the same
-        mode (test or live) as the payment.
+        No webhook from Stripe since the server started ({formatDateTime(webhooks.startedAt)}). If the guest has paid,
+        check Stripe → Developers → Webhooks has an endpoint for <code>/api/stripe/webhook</code> in the same mode (test
+        or live) as the payment.
       </div>
     );
   }
@@ -301,7 +300,11 @@ function SetupCheck() {
         <button type="button" className="btn-sm" onClick={run} disabled={busy} style={{ padding: '0.1rem 0.6rem' }}>
           {busy ? 'Checking…' : 'Check payment setup'}
         </button>
-        {error && <div className="banner error" style={{ marginTop: '0.4rem' }}>{error}</div>}
+        {error && (
+          <div className="banner error" style={{ marginTop: '0.4rem' }}>
+            {error}
+          </div>
+        )}
       </div>
     );
   }
@@ -316,7 +319,17 @@ function SetupCheck() {
       </div>
       {result.checks.map((check) => (
         <div key={check.id} style={{ display: 'grid', gridTemplateColumns: '1.2rem 1fr', gap: '0.4rem' }}>
-          <span aria-hidden="true" style={{ color: check.ok === false ? 'var(--status-rejected, #DB4F7D)' : check.ok ? 'var(--brand-gold-bright)' : 'var(--text-muted)' }}>
+          <span
+            aria-hidden="true"
+            style={{
+              color:
+                check.ok === false
+                  ? 'var(--status-rejected, #DB4F7D)'
+                  : check.ok
+                    ? 'var(--brand-gold-bright)'
+                    : 'var(--text-muted)',
+            }}
+          >
             {check.ok === false ? '✗' : check.ok ? '✓' : '?'}
           </span>
           <div>

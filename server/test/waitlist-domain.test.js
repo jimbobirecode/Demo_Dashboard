@@ -15,15 +15,49 @@ import {
 
 /** Two open, one converted, one that gave up. */
 const ENTRIES = [
-  { status: 'Waiting', players: 4, requestedDate: '2026-05-15', open: true, notificationSent: false, createdAt: '2026-01-01T09:00:00Z', convertedAt: null, convertedBookingId: null },
-  { status: 'Notified', players: 2, requestedDate: '2026-05-15', open: true, notificationSent: true, createdAt: '2026-01-02T09:00:00Z', convertedAt: null, convertedBookingId: null },
-  { status: 'Converted', players: 4, requestedDate: '2026-05-16', open: false, notificationSent: true, createdAt: '2026-01-01T09:00:00Z', convertedAt: '2026-01-11T09:00:00Z', convertedBookingId: 'BOOK-1' },
-  { status: 'Cancelled', players: 2, requestedDate: '2026-05-16', open: false, notificationSent: true, createdAt: '2026-01-01T09:00:00Z', convertedAt: null, convertedBookingId: null },
+  {
+    status: 'Waiting',
+    players: 4,
+    requestedDate: '2026-05-15',
+    open: true,
+    notificationSent: false,
+    createdAt: '2026-01-01T09:00:00Z',
+    convertedAt: null,
+    convertedBookingId: null,
+  },
+  {
+    status: 'Notified',
+    players: 2,
+    requestedDate: '2026-05-15',
+    open: true,
+    notificationSent: true,
+    createdAt: '2026-01-02T09:00:00Z',
+    convertedAt: null,
+    convertedBookingId: null,
+  },
+  {
+    status: 'Converted',
+    players: 4,
+    requestedDate: '2026-05-16',
+    open: false,
+    notificationSent: true,
+    createdAt: '2026-01-01T09:00:00Z',
+    convertedAt: '2026-01-11T09:00:00Z',
+    convertedBookingId: 'BOOK-1',
+  },
+  {
+    status: 'Cancelled',
+    players: 2,
+    requestedDate: '2026-05-16',
+    open: false,
+    notificationSent: true,
+    createdAt: '2026-01-01T09:00:00Z',
+    convertedAt: null,
+    convertedBookingId: null,
+  },
 ];
 
-const BOOKINGS = [
-  { bookingId: 'BOOK-1', status: 'Booked', total: 1440 },
-];
+const BOOKINGS = [{ bookingId: 'BOOK-1', status: 'Booked', total: 1440 }];
 
 test('the status vocabulary is the one the Streamlit waitlist used', () => {
   assert.deepEqual(WAITLIST_STATUSES, ['Waiting', 'Notified', 'Converted', 'Cancelled']);
@@ -35,9 +69,14 @@ test('the status vocabulary is the one the Streamlit waitlist used', () => {
 
 test('a serialised entry carries the conversion link and says whether it is open', () => {
   const entry = serialiseWaitlistEntry({
-    waitlist_id: 'WL-1', guest_email: 'a@b.co', requested_date: new Date('2026-05-15T00:00:00'),
-    players: '4', status: 'Converted', converted_booking_id: 'BOOK-9',
-    converted_at: new Date('2026-01-11T09:00:00Z'), club: 'teemail',
+    waitlist_id: 'WL-1',
+    guest_email: 'a@b.co',
+    requested_date: new Date('2026-05-15T00:00:00'),
+    players: '4',
+    status: 'Converted',
+    converted_booking_id: 'BOOK-9',
+    converted_at: new Date('2026-01-11T09:00:00Z'),
+    club: 'teemail',
   });
 
   assert.equal(entry.requestedDate, '2026-05-15');
@@ -136,8 +175,14 @@ test('a new entry needs an address, a date and a sane party size', () => {
 
   assert.match(validateWaitlistEntry({ requestedDate: '2026-05-15', players: 4 }).errors[0], /email/);
   assert.match(validateWaitlistEntry({ guestEmail: 'a@b.co', players: 4 }).errors[0], /requested date/);
-  assert.match(validateWaitlistEntry({ guestEmail: 'a@b.co', requestedDate: '2026-05-15', players: 0 }).errors[0], /Players/);
-  assert.match(validateWaitlistEntry({ guestEmail: 'a@b.co', requestedDate: '15/05/2026', players: 4 }).errors[0], /requested date/);
+  assert.match(
+    validateWaitlistEntry({ guestEmail: 'a@b.co', requestedDate: '2026-05-15', players: 0 }).errors[0],
+    /Players/,
+  );
+  assert.match(
+    validateWaitlistEntry({ guestEmail: 'a@b.co', requestedDate: '15/05/2026', players: 4 }).errors[0],
+    /requested date/,
+  );
   assert.match(
     validateWaitlistEntry({ guestEmail: 'a@b.co', requestedDate: '2026-05-15', players: 4, priority: 99 }).errors[0],
     /Priority/,
@@ -145,22 +190,47 @@ test('a new entry needs an address, a date and a sane party size', () => {
 });
 
 test('a minted id is dated and unique enough to read', () => {
-  const id = mintWaitlistId(new Date('2026-09-23T10:00:00Z'), () => 0.5);
-  assert.match(id, /^WL-20260923-[0-9A-F]{4}$/);
-  assert.notEqual(mintWaitlistId(new Date(), Math.random), mintWaitlistId(new Date(), Math.random));
+  const id = mintWaitlistId(new Date('2026-09-23T10:00:00Z'), () => 0);
+  assert.equal(id, 'WL-20260923-AAAAAA');
+  assert.match(mintWaitlistId(), /^WL-\d{8}-[A-Z0-9]{6}$/);
+  assert.notEqual(mintWaitlistId(), mintWaitlistId());
 });
-
 
 /* ---------- conversions that happened somewhere else ---------- */
 
 const OPEN = [
-  { waitlistId: 'WL-A', guestEmail: 'alan@x.com', guestName: 'Alan', requestedDate: '2026-05-15', players: 4, open: true, status: 'Waiting', createdAt: '2026-01-01T09:00:00Z', convertedBookingId: null },
-  { waitlistId: 'WL-B', guestEmail: 'petra@x.se', requestedDate: '2026-05-20', players: 2, open: true, status: 'Notified', createdAt: '2026-01-01T09:00:00Z', convertedBookingId: null },
+  {
+    waitlistId: 'WL-A',
+    guestEmail: 'alan@x.com',
+    guestName: 'Alan',
+    requestedDate: '2026-05-15',
+    players: 4,
+    open: true,
+    status: 'Waiting',
+    createdAt: '2026-01-01T09:00:00Z',
+    convertedBookingId: null,
+  },
+  {
+    waitlistId: 'WL-B',
+    guestEmail: 'petra@x.se',
+    requestedDate: '2026-05-20',
+    players: 2,
+    open: true,
+    status: 'Notified',
+    createdAt: '2026-01-01T09:00:00Z',
+    convertedBookingId: null,
+  },
 ];
 
 const on = (date, over = {}) => ({
-  bookingId: 'B', guestEmail: 'alan@x.com', date, players: 4, total: 1440,
-  status: 'Booked', timestamp: '2026-02-01T09:00:00Z', ...over,
+  bookingId: 'B',
+  guestEmail: 'alan@x.com',
+  date,
+  players: 4,
+  total: 1440,
+  status: 'Booked',
+  timestamp: '2026-02-01T09:00:00Z',
+  ...over,
 });
 
 test('a booking on the requested date is an exact suggestion', () => {
@@ -175,10 +245,9 @@ test('a booking on the requested date is an exact suggestion', () => {
 });
 
 test('a booking near the requested date is likely, and says how near', () => {
-  const [match] = suggestConversions(
-    OPEN,
-    [on('2026-05-22', { bookingId: 'B-2', guestEmail: 'petra@x.se', players: 4 })],
-  );
+  const [match] = suggestConversions(OPEN, [
+    on('2026-05-22', { bookingId: 'B-2', guestEmail: 'petra@x.se', players: 4 }),
+  ]);
 
   assert.equal(match.confidence, 'likely');
   assert.equal(match.dayGap, 2);
@@ -188,10 +257,10 @@ test('a booking near the requested date is likely, and says how near', () => {
 
 test('nothing is suggested that cannot be the conversion', () => {
   const noise = [
-    on('2026-09-01', { bookingId: 'far' }),                                  // a different trip
-    on('2026-05-15', { bookingId: 'gone', status: 'Cancelled' }),            // converted nobody
+    on('2026-09-01', { bookingId: 'far' }), // a different trip
+    on('2026-05-15', { bookingId: 'gone', status: 'Cancelled' }), // converted nobody
     on('2026-05-15', { bookingId: 'old', timestamp: '2025-06-01T09:00:00Z' }), // predates the entry
-    on('2026-05-15', { bookingId: 'else', guestEmail: 'somebody@x.com' }),   // a different guest
+    on('2026-05-15', { bookingId: 'else', guestEmail: 'somebody@x.com' }), // a different guest
     on('2026-05-15', { bookingId: 'blank', guestEmail: '' }),
   ];
   assert.deepEqual(suggestConversions(OPEN, noise), []);
@@ -200,7 +269,16 @@ test('nothing is suggested that cannot be the conversion', () => {
 test('a booking already recorded as somebody else’s conversion is not offered again', () => {
   const entries = [
     ...OPEN,
-    { waitlistId: 'WL-C', guestEmail: 'alan@x.com', requestedDate: '2026-05-15', players: 4, open: false, status: 'Converted', createdAt: '2026-01-01T09:00:00Z', convertedBookingId: 'B-1' },
+    {
+      waitlistId: 'WL-C',
+      guestEmail: 'alan@x.com',
+      requestedDate: '2026-05-15',
+      players: 4,
+      open: false,
+      status: 'Converted',
+      createdAt: '2026-01-01T09:00:00Z',
+      convertedBookingId: 'B-1',
+    },
   ];
   assert.deepEqual(
     suggestConversions(entries, [on('2026-05-15', { bookingId: 'B-1' })]),
@@ -210,7 +288,18 @@ test('a booking already recorded as somebody else’s conversion is not offered 
 });
 
 test('a closed entry is never offered a match, and an empty list is quiet', () => {
-  const closed = [{ waitlistId: 'WL-X', guestEmail: 'alan@x.com', requestedDate: '2026-05-15', players: 4, open: false, status: 'Cancelled', createdAt: '2026-01-01T09:00:00Z', convertedBookingId: null }];
+  const closed = [
+    {
+      waitlistId: 'WL-X',
+      guestEmail: 'alan@x.com',
+      requestedDate: '2026-05-15',
+      players: 4,
+      open: false,
+      status: 'Cancelled',
+      createdAt: '2026-01-01T09:00:00Z',
+      convertedBookingId: null,
+    },
+  ];
   assert.deepEqual(suggestConversions(closed, [on('2026-05-15', { bookingId: 'B-1' })]), []);
   assert.deepEqual(suggestConversions([], [on('2026-05-15')]), []);
   assert.deepEqual(suggestConversions(OPEN, []), []);
@@ -219,7 +308,16 @@ test('a closed entry is never offered a match, and an empty list is quiet', () =
 test('exact matches sort above likely ones, and matching party sizes above not', () => {
   const entries = [
     OPEN[0],
-    { waitlistId: 'WL-D', guestEmail: 'dee@x.com', requestedDate: '2026-05-15', players: 2, open: true, status: 'Waiting', createdAt: '2026-01-01T09:00:00Z', convertedBookingId: null },
+    {
+      waitlistId: 'WL-D',
+      guestEmail: 'dee@x.com',
+      requestedDate: '2026-05-15',
+      players: 2,
+      open: true,
+      status: 'Waiting',
+      createdAt: '2026-01-01T09:00:00Z',
+      convertedBookingId: null,
+    },
   ];
   const bookings = [
     on('2026-05-17', { bookingId: 'near' }),

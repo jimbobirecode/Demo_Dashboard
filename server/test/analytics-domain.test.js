@@ -28,10 +28,46 @@ import {
 
 /** Four bookings spanning both courses, both months and a cancellation. */
 const ROWS = [
-  { status: 'Booked', total: 400, players: 4, date: '2026-03-18', teeTime: '10:04 AM', timestamp: '2026-02-01T09:00:00Z', golfCourses: 'Championship Course', hotelRequired: true },
-  { status: 'Booked', total: 200, players: 2, date: '2026-03-20', teeTime: '08:30', timestamp: '2026-03-18T09:00:00Z', golfCourses: 'Struie Course', hotelRequired: false },
-  { status: 'Inquiry', total: 150, players: 3, date: '2026-04-02', teeTime: 'Not Specified', timestamp: '2026-03-01T09:00:00Z', golfCourses: '', hotelRequired: false },
-  { status: 'Cancelled', total: 999, players: 2, date: '2026-04-05', teeTime: '14:15', timestamp: '2026-01-01T09:00:00Z', golfCourses: 'Championship Course and Struie Course', hotelRequired: true },
+  {
+    status: 'Booked',
+    total: 400,
+    players: 4,
+    date: '2026-03-18',
+    teeTime: '10:04 AM',
+    timestamp: '2026-02-01T09:00:00Z',
+    golfCourses: 'Championship Course',
+    hotelRequired: true,
+  },
+  {
+    status: 'Booked',
+    total: 200,
+    players: 2,
+    date: '2026-03-20',
+    teeTime: '08:30',
+    timestamp: '2026-03-18T09:00:00Z',
+    golfCourses: 'Struie Course',
+    hotelRequired: false,
+  },
+  {
+    status: 'Inquiry',
+    total: 150,
+    players: 3,
+    date: '2026-04-02',
+    teeTime: 'Not Specified',
+    timestamp: '2026-03-01T09:00:00Z',
+    golfCourses: '',
+    hotelRequired: false,
+  },
+  {
+    status: 'Cancelled',
+    total: 999,
+    players: 2,
+    date: '2026-04-05',
+    teeTime: '14:15',
+    timestamp: '2026-01-01T09:00:00Z',
+    golfCourses: 'Championship Course and Struie Course',
+    hotelRequired: true,
+  },
 ];
 
 test('parses every tee-time spelling in this database', () => {
@@ -81,14 +117,29 @@ test('the time series is zero-filled across the whole span', () => {
   assert.equal(daily[0].date, '2026-03-18');
   assert.equal(daily.at(-1).date, '2026-04-05');
   assert.equal(daily.length, 19, 'every day exists');
-  assert.ok(daily.some((day) => day.count === 0), 'quiet days read as troughs');
-  assert.equal(daily.reduce((n, day) => n + day.count, 0), 4);
-  assert.equal(daily.reduce((n, day) => n + day.revenue, 0), 600);
+  assert.ok(
+    daily.some((day) => day.count === 0),
+    'quiet days read as troughs',
+  );
+  assert.equal(
+    daily.reduce((n, day) => n + day.count, 0),
+    4,
+  );
+  assert.equal(
+    daily.reduce((n, day) => n + day.revenue, 0),
+    600,
+  );
 });
 
 test('coarser granularities roll up', () => {
-  assert.deepEqual(buildSeries(ROWS, 'month').map((m) => m.date), ['2026-03-01', '2026-04-01']);
-  assert.deepEqual(buildSeries(ROWS, 'month').map((m) => m.count), [2, 2]);
+  assert.deepEqual(
+    buildSeries(ROWS, 'month').map((m) => m.date),
+    ['2026-03-01', '2026-04-01'],
+  );
+  assert.deepEqual(
+    buildSeries(ROWS, 'month').map((m) => m.count),
+    [2, 2],
+  );
   assert.ok(
     buildSeries(ROWS, 'week').every((w) => new Date(`${w.date}T00:00:00Z`).getUTCDay() === 1),
     'every week starts on a Monday',
@@ -99,7 +150,10 @@ test('the funnel narrows and says where enquiries were lost', () => {
   const funnel = buildFunnel(ROWS);
 
   assert.equal(funnel[0].count, 3, 'the cancellation is excluded');
-  assert.ok(funnel.every((s, i) => i === 0 || s.count <= funnel[i - 1].count), 'monotonic');
+  assert.ok(
+    funnel.every((s, i) => i === 0 || s.count <= funnel[i - 1].count),
+    'monotonic',
+  );
   assert.equal(funnel[0].conversionFromPrevious, 100, 'the top stage has no predecessor');
   assert.equal(funnel[1].droppedHere, 1, 'the open enquiry never advanced');
   assert.equal(funnel.at(-1).stage, 'Booked');
@@ -108,7 +162,10 @@ test('the funnel narrows and says where enquiries were lost', () => {
 test('lead time distribution and median', () => {
   const lead = buildLeadTime(ROWS);
 
-  assert.equal(lead.distribution.reduce((n, b) => n + b.count, 0), 4);
+  assert.equal(
+    lead.distribution.reduce((n, b) => n + b.count, 0),
+    4,
+  );
   assert.equal(lead.distribution[0].key, '0–7 days');
   assert.equal(lead.distribution[0].count, 1, 'the two-day booking');
   assert.equal(lead.median, 39, 'median of [2, 32, 45, 94] is 38.5, rounded');
@@ -129,7 +186,10 @@ test('a booking naming both courses counts toward both', () => {
   assert.equal(courses.find((c) => c.key === 'Championship').count, 2);
   assert.equal(courses.find((c) => c.key === 'Struie').count, 2);
   assert.equal(courses.find((c) => c.key === 'Not specified').count, 1);
-  assert.ok(courses.every((c) => c.count > 0), 'courses nobody booked are dropped');
+  assert.ok(
+    courses.every((c) => c.count > 0),
+    'courses nobody booked are dropped',
+  );
 });
 
 test('accommodation attach rate and basket size', () => {
@@ -206,9 +266,10 @@ test('the form selection is the ask, the tee sheet is the booking', () => {
   assert.equal(at('14:00–16:59').movedIn, 1);
 
   assert.equal(grid.totals.moved, 1);
-  assert.deepEqual(grid.shifts.map((s) => [s.from, s.to, s.count]), [
-    ['Before 09:00', '14:00–16:59', 1],
-  ]);
+  assert.deepEqual(
+    grid.shifts.map((s) => [s.from, s.to, s.count]),
+    [['Before 09:00', '14:00–16:59', 1]],
+  );
 });
 
 test('gaps rank the slots people ask for and walk away from', () => {
@@ -233,8 +294,19 @@ test('buildAnalytics composes every section', () => {
   const analytics = buildAnalytics(ROWS, { granularity: 'nonsense' });
 
   assert.equal(analytics.granularity, 'day', 'an unknown granularity falls back');
-  for (const key of ['totals', 'byStatus', 'series', 'funnel', 'leadTime', 'partySizes',
-    'courses', 'accommodation', 'requestUtilisation', 'popularTeeTimes', 'busiestDays']) {
+  for (const key of [
+    'totals',
+    'byStatus',
+    'series',
+    'funnel',
+    'leadTime',
+    'partySizes',
+    'courses',
+    'accommodation',
+    'requestUtilisation',
+    'popularTeeTimes',
+    'busiestDays',
+  ]) {
     assert.ok(analytics[key] !== undefined, `missing ${key}`);
   }
   assert.equal(analytics.byStatus.length, 5);
@@ -252,7 +324,16 @@ test('an empty period does not throw', () => {
 
 /** Two committed bookings with real payment state, one of them overdue. */
 const MONEY = [
-  { status: 'Booked', total: 1200, players: 4, date: '2026-03-18', paymentStatus: 'Deposit paid', amountPaid: 300, invoiceNumber: 'INV-1', balanceDueDate: '2026-02-01' },
+  {
+    status: 'Booked',
+    total: 1200,
+    players: 4,
+    date: '2026-03-18',
+    paymentStatus: 'Deposit paid',
+    amountPaid: 300,
+    invoiceNumber: 'INV-1',
+    balanceDueDate: '2026-02-01',
+  },
   { status: 'Booked', total: 400, players: 2, date: '2026-03-20', paymentStatus: 'Paid', amountPaid: 400 },
   { status: 'Booked', total: 500, players: 2, date: '2026-03-22', paymentStatus: 'Written off', amountPaid: 0 },
   { status: 'Inquiry', total: 999, players: 2, date: '2026-04-02', paymentStatus: 'Unpaid', amountPaid: 0 },
@@ -313,8 +394,27 @@ test('trade and direct are split by the operator a booking is matched to', () =>
 
 test('lodging reads nights, rooms and what the stay is worth', () => {
   const rows = [
-    { status: 'Booked', total: 1200, players: 4, hotelRequired: true, lodgingNights: 3, lodgingRooms: 2, lodgingRoomType: 'Twin', lodgingCost: 600, resortFeeTotal: 40 },
-    { status: 'Booked', total: 400, players: 2, hotelRequired: true, lodgingNights: 1, lodgingRooms: 1, lodgingRoomType: 'Double', lodgingCost: 150 },
+    {
+      status: 'Booked',
+      total: 1200,
+      players: 4,
+      hotelRequired: true,
+      lodgingNights: 3,
+      lodgingRooms: 2,
+      lodgingRoomType: 'Twin',
+      lodgingCost: 600,
+      resortFeeTotal: 40,
+    },
+    {
+      status: 'Booked',
+      total: 400,
+      players: 2,
+      hotelRequired: true,
+      lodgingNights: 1,
+      lodgingRooms: 1,
+      lodgingRoomType: 'Double',
+      lodgingCost: 150,
+    },
     { status: 'Booked', total: 300, players: 2, hotelRequired: false },
   ];
   const stay = buildLodging(rows);
@@ -324,11 +424,14 @@ test('lodging reads nights, rooms and what the stay is worth', () => {
   assert.equal(stay.nightsTotal, 4);
   assert.equal(stay.averageNights, 2);
   assert.equal(stay.roomNights, 7, '3 nights × 2 rooms, plus 1 × 1');
-  assert.deepEqual(stay.revenueMix.map((r) => [r.key, r.value]), [
-    ['Golf', 1110],
-    ['Lodging', 750],
-    ['Resort fees', 40],
-  ]);
+  assert.deepEqual(
+    stay.revenueMix.map((r) => [r.key, r.value]),
+    [
+      ['Golf', 1110],
+      ['Lodging', 750],
+      ['Resort fees', 40],
+    ],
+  );
   assert.equal(stay.roomTypes[0].key, 'Twin');
   assert.equal(stay.nightsDistribution.find((b) => b.key === '3 nights').count, 1);
   assert.equal(buildLodging([{ status: 'Booked', hotelRequired: false }]).detailed, false);
@@ -369,7 +472,10 @@ test('request themes count a booking toward every theme it mentions', () => {
   assert.ok(keys.includes('Buggy or cart'));
   assert.ok(keys.includes('Dining'));
   assert.ok(keys.includes('Caddies'));
-  assert.ok(themes.themes.every((row) => row.count > 0), 'themes nobody mentioned are dropped');
+  assert.ok(
+    themes.themes.every((row) => row.count > 0),
+    'themes nobody mentioned are dropped',
+  );
 });
 
 test('guests are counted by address, and a business address is told from a personal one', () => {
@@ -408,7 +514,12 @@ test('response time stops at the confirmation, and never runs backwards', () => 
 test('email coverage does not count a future round as a missed thank you', () => {
   const coverage = buildEmailCoverage(
     [
-      { status: 'Booked', date: '2026-03-01', preArrivalEmailSentAt: '2026-02-26T08:00:00Z', postPlayEmailSentAt: '2026-03-03T08:00:00Z' },
+      {
+        status: 'Booked',
+        date: '2026-03-01',
+        preArrivalEmailSentAt: '2026-02-26T08:00:00Z',
+        postPlayEmailSentAt: '2026-03-03T08:00:00Z',
+      },
       { status: 'Booked', date: '2026-03-02' },
       { status: 'Booked', date: '2026-12-24' },
       { status: 'Inquiry', date: '2026-03-01' },
@@ -427,8 +538,16 @@ test('email coverage does not count a future round as a missed thank you', () =>
 
 test('buildAnalytics carries every new section, and survives an empty period', () => {
   const analytics = buildAnalytics(MONEY, { today: '2026-03-01' });
-  for (const key of ['payments', 'trade', 'lodging', 'caddies', 'requestThemes', 'guests',
-    'responseTimes', 'emailCoverage']) {
+  for (const key of [
+    'payments',
+    'trade',
+    'lodging',
+    'caddies',
+    'requestThemes',
+    'guests',
+    'responseTimes',
+    'emailCoverage',
+  ]) {
     assert.ok(analytics[key] !== undefined, `missing ${key}`);
   }
 

@@ -75,10 +75,9 @@ export default function Emails() {
     load();
   }, [load]);
 
-  const bookings = pending?.bookings ?? [];
+  const bookings = useMemo(() => pending?.bookings ?? [], [pending]);
   const unsentCount = useMemo(() => bookings.filter((b) => !b.sentAt).length, [bookings]);
   const ready = Boolean(config?.campaigns?.[campaignId]?.configured && config?.hasApiKey && config?.fromEmail);
-  const untracked = config && config.tracking?.[campaignId] === false;
   const vero = config?.vero ?? null;
   // Connected AND switched on for the campaign on screen. Those are different
   // questions: pre-arrival deliberately carries no survey link even when the
@@ -108,10 +107,7 @@ export default function Emails() {
     }
     if (!dryRun) {
       const resends = bookings.filter((b) => selected.has(b.bookingId) && b.sentAt).length;
-      const warning = resends
-        ? `\n\n${resends} of them already received this email — they will get it again.`
-        : '';
-      // eslint-disable-next-line no-alert
+      const warning = resends ? `\n\n${resends} of them already received this email — they will get it again.` : '';
       if (!window.confirm(`Send the ${campaign.label.toLowerCase()} to ${ids.length} guest(s)?${warning}`)) {
         return;
       }
@@ -137,9 +133,7 @@ export default function Emails() {
             // Named separately from the failures, because it is not one: these
             // guests asked not to be contacted and were not.
             payload.skipped ? `, ${payload.skipped} skipped (unsubscribed)` : ''
-          }.${
-            payload.tracked === false ? ' Sends could not be recorded — run the email tracking migration.' : ''
-          }`,
+          }.`,
         });
         await load();
       }
@@ -174,22 +168,15 @@ export default function Emails() {
 
       {config && !config.configured && (
         <div className="banner error">
-          Email sending is not configured. Set {config.missing.join(', ')} in the environment,
-          then restart the dashboard.
+          Email sending is not configured. Set {config.missing.join(', ')} in the environment, then restart the
+          dashboard.
         </div>
       )}
 
       {vero?.enabled === false && vero.campaigns?.includes(campaignId) === true && (
         <div className="banner error">
-          Club Vero is meant to carry the survey link on this campaign, but it is not configured.
-          Set {vero.missing.join(', ')} in the environment, then restart the dashboard.
-        </div>
-      )}
-
-      {untracked && (
-        <div className="banner error">
-          This database has no email tracking columns, so sends cannot be recorded and a guest
-          could be emailed twice. Run <code>migration_add_journey_emails.sql</code> to fix it.
+          Club Vero is meant to carry the survey link on this campaign, but it is not configured. Set{' '}
+          {vero.missing.join(', ')} in the environment, then restart the dashboard.
         </div>
       )}
 
@@ -229,9 +216,7 @@ export default function Emails() {
           label={scope === 'due' ? (pending?.startsOnPayment ? 'Playing by' : 'Target play date') : 'Campaign timing'}
           value={scope === 'due' ? (pending ? formatDate(pending.targetDate) : '—') : timing}
           sub={
-            scope === 'due'
-              ? timing
-              : `Normally sent on ${pending ? formatDate(pending.targetDate) : 'the due date'}`
+            scope === 'due' ? timing : `Normally sent on ${pending ? formatDate(pending.targetDate) : 'the due date'}`
           }
           accent="var(--links-green)"
         />
@@ -284,8 +269,8 @@ export default function Emails() {
       {pending?.startsOnPayment && pending.awaitingPayment > 0 && (
         <div className="banner">
           {formatNumber(pending.awaitingPayment)} booked {pending.awaitingPayment === 1 ? 'guest is' : 'guests are'} not
-          listed because no payment has been received yet. Payment starts a guest&rsquo;s pre-play emails
-          &mdash; a Stripe payment, or marking the payment Paid or Deposit paid in the booking.
+          listed because no payment has been received yet. Payment starts a guest&rsquo;s pre-play emails &mdash; a
+          Stripe payment, or marking the payment Paid or Deposit paid in the booking.
         </div>
       )}
 
@@ -354,8 +339,8 @@ export default function Emails() {
 
         {!loading && !bookings.length && (
           <div className="empty">
-            No booked guests {campaignId === 'pre_arrival' ? 'are due a welcome' : 'are due a thank you'} in
-            this window.
+            No booked guests {campaignId === 'pre_arrival' ? 'are due a welcome' : 'are due a thank you'} in this
+            window.
             {scope === 'due' && ' Try the wider window above.'}
           </div>
         )}
@@ -380,7 +365,10 @@ export default function Emails() {
                   <tr key={row.bookingId}>
                     <td className="mono">{row.bookingId}</td>
                     <td>{row.email ?? '—'}</td>
-                    <td style={{ color: row.status === 'failed' ? 'var(--status-rejected)' : undefined }} className={row.status === 'skipped' ? 'muted' : undefined}>
+                    <td
+                      style={{ color: row.status === 'failed' ? 'var(--status-rejected)' : undefined }}
+                      className={row.status === 'skipped' ? 'muted' : undefined}
+                    >
                       {OUTCOME_LABELS[row.status] ?? row.status}
                     </td>
                     <td className="secondary">{row.message}</td>
@@ -401,14 +389,13 @@ export default function Emails() {
  * rather than push the rest at SendGrid anyway.
  */
 async function sendInBatches(campaignId, ids, dryRun) {
-  const merged = { dryRun, sent: 0, failed: 0, skipped: 0, tracked: true, results: [] };
+  const merged = { dryRun, sent: 0, failed: 0, skipped: 0, results: [] };
 
   for (let index = 0; index < ids.length; index += BATCH_SIZE) {
     const payload = await api.sendCampaign(campaignId, ids.slice(index, index + BATCH_SIZE), { dryRun });
     merged.sent += payload.sent;
     merged.failed += payload.failed;
     merged.skipped += payload.skipped ?? 0;
-    if (payload.tracked === false) merged.tracked = false;
     merged.results.push(...payload.results);
   }
 

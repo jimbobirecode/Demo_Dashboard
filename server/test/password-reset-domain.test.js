@@ -24,11 +24,7 @@ const ENV = {
 };
 
 test('configuration names every missing piece', () => {
-  assert.deepEqual(readResetConfig({}).missing, [
-    'SENDGRID_API_KEY',
-    'FROM_EMAIL',
-    'SENDGRID_TEMPLATE_PASSWORD_RESET',
-  ]);
+  assert.deepEqual(readResetConfig({}).missing, ['SENDGRID_API_KEY', 'FROM_EMAIL', 'SENDGRID_TEMPLATE_PASSWORD_RESET']);
   assert.equal(readResetConfig({}).configured, false);
   // Links are never relative: without APP_URL they open the TeeMail dashboard.
   assert.equal(readResetConfig({}).appUrl, 'https://democlub.teemail.io');
@@ -48,17 +44,12 @@ test('configuration names every missing piece', () => {
 });
 
 test('the public shape never carries the API key', () => {
-  const published = publicResetConfig(readResetConfig(ENV), { migrated: true });
+  const published = publicResetConfig(readResetConfig(ENV));
 
   assert.equal(published.apiKey, undefined);
   assert.equal(published.hasApiKey, true);
   assert.equal(published.available, true);
-  assert.equal(
-    publicResetConfig(readResetConfig(ENV), { migrated: false }).available,
-    false,
-    'an un-migrated install cannot offer reset however well SendGrid is configured',
-  );
-  assert.equal(publicResetConfig(readResetConfig({}), { migrated: true }).available, false);
+  assert.equal(publicResetConfig(readResetConfig({})).available, false);
 });
 
 test('the token is random, hashed, and never stored in the clear', () => {
@@ -174,10 +165,7 @@ test('template data carries the link and a human expiry', () => {
   assert.equal(data.expires_in, '1 hour');
   assert.equal(data.club_name, 'Royal Dornoch Golf Club');
   assert.match(data.subject, /Reset your Royal Dornoch/);
-  assert.equal(
-    buildResetTemplateData({ user: {}, ttlMinutes: 120 }).expires_in,
-    '2 hours',
-  );
+  assert.equal(buildResetTemplateData({ user: {}, ttlMinutes: 120 }).expires_in, '2 hours');
   assert.equal(buildResetTemplateData({ user: {}, ttlMinutes: 45 }).expires_in, '45 minutes');
 });
 

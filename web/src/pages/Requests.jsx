@@ -26,7 +26,9 @@ export default function Requests() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function resolve(request, decision) {
     setBusy(true);
@@ -53,15 +55,6 @@ export default function Requests() {
   }
 
   if (!data) return <div className="empty">{error ?? 'Loading requests…'}</div>;
-  if (!data.available) {
-    return (
-      <div className="stack">
-        <h1>Guest requests</h1>
-        <div className="banner error">{data.reason}</div>
-      </div>
-    );
-  }
-
   const open = data.requests.filter((request) => request.open);
   const shown = showAll ? data.requests : open;
 
@@ -71,8 +64,8 @@ export default function Requests() {
         <div>
           <h1>Guest requests</h1>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            Guests can only ask. Nothing is cancelled or changed until you approve it, and the guest is emailed
-            either way.
+            Guests can only ask. Nothing is cancelled or changed until you approve it, and the guest is emailed either
+            way.
           </p>
         </div>
         <button type="button" className="btn-sm" onClick={() => setShowAll(!showAll)}>
@@ -90,8 +83,13 @@ export default function Requests() {
           <table className="data">
             <thead>
               <tr>
-                <th>Booking</th><th>Guest</th><th>Asked</th><th>What they want</th>
-                <th className="num">Days to play</th><th>State</th><th />
+                <th>Booking</th>
+                <th>Guest</th>
+                <th>Asked</th>
+                <th>What they want</th>
+                <th className="num">Days to play</th>
+                <th>State</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -106,13 +104,18 @@ export default function Requests() {
                   </td>
                   <td>
                     <div>{request.guestName || '—'}</div>
-                    <div className="muted" style={{ fontSize: '0.75rem' }}>{request.guestEmail}</div>
+                    <div className="muted" style={{ fontSize: '0.75rem' }}>
+                      {request.guestEmail}
+                    </div>
                   </td>
                   <td>{formatDateTime(request.createdAt)}</td>
                   <td>
                     <strong>{request.kind === 'cancel' ? 'Cancel' : 'Amend'}</strong>
                     {request.source === 'email' && (
-                      <span className="muted" style={{ fontSize: '0.75rem' }}> · read from an email</span>
+                      <span className="muted" style={{ fontSize: '0.75rem' }}>
+                        {' '}
+                        · read from an email
+                      </span>
                     )}
                     {request.requestedDate && (
                       <div style={{ fontSize: '0.8125rem' }}>
@@ -133,19 +136,33 @@ export default function Requests() {
                   <td>
                     {request.status}
                     {request.autoApplied && (
-                      <div className="muted" style={{ fontSize: '0.75rem' }}>Applied automatically (old setting)</div>
+                      <div className="muted" style={{ fontSize: '0.75rem' }}>
+                        Applied automatically (old setting)
+                      </div>
                     )}
                     {request.resolvedBy && (
-                      <div className="muted" style={{ fontSize: '0.75rem' }}>{request.resolvedBy}</div>
+                      <div className="muted" style={{ fontSize: '0.75rem' }}>
+                        {request.resolvedBy}
+                      </div>
                     )}
                   </td>
                   <td className="num">
                     {request.open && (
                       <div className="row" style={{ justifyContent: 'flex-end', gap: '0.4rem' }}>
-                        <button type="button" className="btn-sm" disabled={busy} onClick={() => resolve(request, 'approve')}>
+                        <button
+                          type="button"
+                          className="btn-sm"
+                          disabled={busy}
+                          onClick={() => resolve(request, 'approve')}
+                        >
                           {request.kind === 'cancel' ? 'Cancel the booking' : 'Approve'}
                         </button>
-                        <button type="button" className="btn-sm btn-danger" disabled={busy} onClick={() => resolve(request, 'decline')}>
+                        <button
+                          type="button"
+                          className="btn-sm btn-danger"
+                          disabled={busy}
+                          onClick={() => resolve(request, 'decline')}
+                        >
                           Decline
                         </button>
                       </div>

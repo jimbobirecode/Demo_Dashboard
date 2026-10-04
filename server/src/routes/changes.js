@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { getBookingColumns, hasChangeRequests } from '../lib/schema.js';
+import { BOOKING_SELECT } from '../lib/schema.js';
 import { BRAND } from '../lib/brand.js';
 import { sendHtmlEmail } from '../lib/sendgrid.js';
 import { logEmail } from '../lib/email-log.js';
@@ -22,6 +22,7 @@ import {
   buildChangeEmail,
   describeOptions,
   linkSecret,
+  manageLinkExpired,
   manageUrlFor,
   readChangePolicy,
   serialiseChangeRequest,
@@ -29,6 +30,10 @@ import {
   verifyBookingToken,
 } from '../lib/change-request-domain.js';
 import { createThrottle } from '../lib/password-reset-domain.js';
+import { clientIp } from '../lib/request-guard.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('changes');
 
 const router = Router();
 
@@ -54,7 +59,7 @@ async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request
       html: email.html,
     });
     if (!outcomeOf.ok) {
-      console.error('[changes] guest email failed:', outcomeOf.message);
+      log.error('guest email failed:', outcomeOf.message);
       return false;
     }
     await logEmail({
@@ -70,23 +75,31 @@ async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request
     });
     return true;
   } catch (err) {
-    console.error('[changes] guest email failed:', err.message);
+    log.error('guest email failed:', err.message);
     return false;
   }
 }
 
 async function loadBooking(bookingId, club) {
-  const columns = await getBookingColumns();
-  const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
-    [bookingId, club],
-  );
+  const { rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`, [
+    bookingId,
+    club,
+  ]);
   return rows[0] ? serialiseBooking(rows[0]) : null;
 }
 
 /** An unauthenticated surface; one client should not be able to hammer it. */
 const lookupThrottle = createThrottle({ limit: 30, windowMs: 15 * 60_000 });
 const submitThrottle = createThrottle({ limit: 10, windowMs: 60 * 60_000 });
+// The same limits per booking reference, so guessing at one booking's token
+// from many addresses runs out as quickly as from one.
+const lookupRefThrottle = createThrottle({ limit: 30, windowMs: 15 * 60_000 });
+const submitRefThrottle = createThrottle({ limit: 10, windowMs: 60 * 60_000 });
+
+const refKey = (ref) =>
+  String(ref ?? '')
+    .trim()
+    .toUpperCase();
 
 /* ---------- the guest ---------- */
 
@@ -100,7 +113,8 @@ const submitThrottle = createThrottle({ limit: 10, windowMs: 60 * 60_000 });
  */
 router.get('/booking', async (req, res, next) => {
   try {
-    if (!lookupThrottle.check(clientIp(req))) {
+    const refAllowed = lookupRefThrottle.check(refKey(req.query.ref));
+    if (!lookupThrottle.check(clientIp(req)) || !refAllowed) {
       return res.status(429).json({ error: 'Too many attempts. Try again shortly.' });
     }
 
@@ -137,13 +151,10 @@ router.get('/booking', async (req, res, next) => {
 /** Ask for a change, or cancel where policy allows it. */
 router.post('/request', async (req, res, next) => {
   try {
-    if (!submitThrottle.check(clientIp(req))) {
+    const refAllowed = submitRefThrottle.check(refKey(req.body?.ref));
+    if (!submitThrottle.check(clientIp(req)) || !refAllowed) {
       return res.status(429).json({ error: 'Too many requests. Please ring the club.' });
     }
-    if (!(await hasChangeRequests())) {
-      return res.status(503).json({ error: 'Online changes are not available. Please ring the club.' });
-    }
-
     const found = await findByToken(req.body?.ref, req.body?.token);
     if (!found.ok) return res.status(found.status).json({ error: found.error });
 
@@ -171,9 +182,16 @@ router.post('/request', async (req, res, next) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,'Pending',FALSE,$8,$9,$10)
        RETURNING *`,
       [
-        booking.bookingId, booking.club, check.value.kind, check.value.message,
-        check.value.requestedDate, check.value.requestedTime, check.value.requestedPlayers,
-        options.daysUntilPlay, booking.guestEmail, clientIp(req),
+        booking.bookingId,
+        booking.club,
+        check.value.kind,
+        check.value.message,
+        check.value.requestedDate,
+        check.value.requestedTime,
+        check.value.requestedPlayers,
+        options.daysUntilPlay,
+        booking.guestEmail,
+        clientIp(req),
       ],
     );
 
@@ -185,8 +203,8 @@ router.post('/request', async (req, res, next) => {
       emailed,
       message:
         check.value.kind === 'cancel'
-          ? 'Thank you — your cancellation request is with the club. Your booking stays in place until they confirm it'
-            + (emailed ? ', and we have emailed you a copy of your request.' : '.')
+          ? 'Thank you — your cancellation request is with the club. Your booking stays in place until they confirm it' +
+            (emailed ? ', and we have emailed you a copy of your request.' : '.')
           : 'Thank you — the club has your request and will be in touch.',
       request: serialiseChangeRequest(rows[0]),
     });
@@ -199,10 +217,6 @@ router.post('/request', async (req, res, next) => {
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    if (!(await hasChangeRequests())) {
-      return res.json({ available: false, reason: 'Run migration_add_change_requests.sql', requests: [] });
-    }
-
     const { rows } = await query(
       `SELECT r.*, b.date AS play_date, b.tee_time, b.players AS booked_players, b.guest_name
          FROM public.booking_change_requests r
@@ -214,7 +228,6 @@ router.get('/', requireAuth, async (req, res, next) => {
     );
 
     res.json({
-      available: true,
       policy: readChangePolicy(),
       requests: rows.map((row) => ({
         ...serialiseChangeRequest(row),
@@ -245,10 +258,10 @@ router.post('/:id/:decision', requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: 'Decision must be approve or decline' });
     }
 
-    const { rows: found } = await query(
-      'SELECT * FROM public.booking_change_requests WHERE id = $1 AND club = $2',
-      [Number(req.params.id), req.user.customerId],
-    );
+    const { rows: found } = await query('SELECT * FROM public.booking_change_requests WHERE id = $1 AND club = $2', [
+      Number(req.params.id),
+      req.user.customerId,
+    ]);
     const request = found[0];
     if (!request) return res.status(404).json({ error: 'No such request' });
     if (request.status !== 'Pending') {
@@ -259,15 +272,10 @@ router.post('/:id/:decision', requireAuth, async (req, res, next) => {
     const cancelling = approving && request.kind === 'cancel';
 
     if (cancelling) {
-      const columns = await getBookingColumns();
       await query(
-        `UPDATE public.bookings SET status = 'Cancelled'
-           ${columns.has('updated_at') ? ', updated_at = NOW()' : ''}
-           ${columns.has('updated_by') ? ', updated_by = $3' : ''}
+        `UPDATE public.bookings SET status = 'Cancelled', updated_at = NOW(), updated_by = $3
          WHERE booking_id = $1 AND club = $2`,
-        columns.has('updated_by')
-          ? [request.booking_id, req.user.customerId, req.user.username]
-          : [request.booking_id, req.user.customerId],
+        [request.booking_id, req.user.customerId, req.user.username],
       );
     }
 
@@ -323,34 +331,35 @@ async function findByToken(ref, token) {
 
   if (!bookingId || !secret) return refused;
 
-  const columns = await getBookingColumns();
-  const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1`,
-    [bookingId],
-  );
-  if (!rows.length) return refused;
+  const { rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1`, [bookingId]);
 
-  const booking = serialiseBooking(rows[0]);
-  if (!verifyBookingToken(bookingId, token, secret, booking.club ?? '')) return refused;
+  // The token is scoped to the club, so it picks out the one row it was
+  // signed for even if two clubs happen to share a reference.
+  const booking = rows
+    .map(serialiseBooking)
+    .find((candidate) => verifyBookingToken(bookingId, token, secret, candidate.club ?? ''));
+  if (!booking) return refused;
+  if (manageLinkExpired(booking, today())) {
+    return {
+      ok: false,
+      status: 410,
+      error: 'This booking has finished, so it can no longer be managed online. Please contact the club.',
+    };
+  }
 
-  const pending = (await hasChangeRequests())
-    ? (await query(
-        `SELECT * FROM public.booking_change_requests
-          WHERE booking_id = $1 AND status = 'Pending'`,
-        [bookingId],
-      )).rows.map(serialiseChangeRequest)
-    : [];
+  const pending = (
+    await query(
+      `SELECT * FROM public.booking_change_requests
+        WHERE booking_id = $1 AND club = $2 AND status = 'Pending'`,
+      [bookingId, booking.club],
+    )
+  ).rows.map(serialiseChangeRequest);
 
   return { ok: true, booking, pending };
 }
 
 function today() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: BRAND.timeZone }).format(new Date());
-}
-
-function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 export default router;

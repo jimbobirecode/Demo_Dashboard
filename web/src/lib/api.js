@@ -8,6 +8,13 @@
  */
 const BASE = '/api';
 
+/**
+ * Sent on every call. The server refuses a state-changing request without it
+ * (see server/src/lib/request-guard.js): a page on another site cannot add a
+ * custom header to a request the browser will send with our cookie.
+ */
+const CSRF_HEADERS = { 'X-Requested-With': 'teemail' };
+
 class ApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -22,7 +29,7 @@ async function request(path, { method = 'GET', body } = {}) {
     response = await fetch(`${BASE}${path}`, {
       method,
       credentials: 'include',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      headers: body === undefined ? CSRF_HEADERS : { ...CSRF_HEADERS, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -39,18 +46,16 @@ async function request(path, { method = 'GET', body } = {}) {
 
 export const api = {
   me: () => request('/auth/me'),
-  login: (email, password) =>
-    request('/auth/login', { method: 'POST', body: { email, password } }),
+  login: (email, password) => request('/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => request('/auth/logout', { method: 'POST' }),
-  changePassword: (newPassword) =>
-    request('/auth/change-password', { method: 'POST', body: { newPassword } }),
+  // currentPassword is required except on the forced first change.
+  changePassword: (newPassword, currentPassword) =>
+    request('/auth/change-password', { method: 'POST', body: { newPassword, currentPassword } }),
 
   // Password reset. All three are reachable signed out, which is the point.
   resetConfig: () => request('/auth/reset-config'),
-  forgotPassword: (username) =>
-    request('/auth/forgot-password', { method: 'POST', body: { username } }),
-  checkResetToken: (token) =>
-    request('/auth/reset-password/check', { method: 'POST', body: { token } }),
+  forgotPassword: (username) => request('/auth/forgot-password', { method: 'POST', body: { username } }),
+  checkResetToken: (token) => request('/auth/reset-password/check', { method: 'POST', body: { token } }),
   resetPassword: (token, newPassword, confirmPassword) =>
     request('/auth/reset-password', {
       method: 'POST',
@@ -74,8 +79,7 @@ export const api = {
     request(`/waitlist/${encodeURIComponent(waitlistId)}/convert`, { method: 'POST', body: booking }),
   linkWaitlistEntry: (waitlistId, bookingId) =>
     request(`/waitlist/${encodeURIComponent(waitlistId)}/link`, { method: 'POST', body: { bookingId } }),
-  deleteWaitlistEntry: (waitlistId) =>
-    request(`/waitlist/${encodeURIComponent(waitlistId)}`, { method: 'DELETE' }),
+  deleteWaitlistEntry: (waitlistId) => request(`/waitlist/${encodeURIComponent(waitlistId)}`, { method: 'DELETE' }),
 
   // Uploading the club's own tee sheet.
   importConfig: () => request('/imports/config'),
@@ -84,8 +88,7 @@ export const api = {
   undoImport: (batchId) => request(`/imports/${encodeURIComponent(batchId)}`, { method: 'DELETE' }),
 
   // A guest managing their own booking. Signed out — the link is the credential.
-  manageBooking: (ref, token) =>
-    request(`/changes/booking${queryString({ ref, token })}`),
+  manageBooking: (ref, token) => request(`/changes/booking${queryString({ ref, token })}`),
   requestBookingChange: (body) => request('/changes/request', { method: 'POST', body }),
 
   // The club's side of those requests.
@@ -109,12 +112,10 @@ export const api = {
       method: 'PATCH',
       body: { teeTime },
     }),
-  remove: (bookingId) =>
-    request(`/bookings/${encodeURIComponent(bookingId)}`, { method: 'DELETE' }),
+  remove: (bookingId) => request(`/bookings/${encodeURIComponent(bookingId)}`, { method: 'DELETE' }),
   fixTeeTimes: () => request('/bookings/fix-tee-times', { method: 'POST' }),
 
-  analytics: ({ from, to, granularity } = {}) =>
-    request(`/analytics${queryString({ from, to, granularity })}`),
+  analytics: ({ from, to, granularity } = {}) => request(`/analytics${queryString({ from, to, granularity })}`),
 
   setPayment: (bookingId, patch) =>
     request(`/bookings/${encodeURIComponent(bookingId)}/payment`, { method: 'PATCH', body: patch }),
@@ -130,8 +131,7 @@ export const api = {
     request(`/inbox/booking/${encodeURIComponent(bookingId)}/send`, { method: 'POST', body: { body, subject } }),
   paymentDiagnostics: () => request('/payments/diagnostics'),
   syncPayments: () => request('/payments/sync', { method: 'POST' }),
-  checkPayment: (bookingId) =>
-    request(`/payments/bookings/${encodeURIComponent(bookingId)}/check`, { method: 'POST' }),
+  checkPayment: (bookingId) => request(`/payments/bookings/${encodeURIComponent(bookingId)}/check`, { method: 'POST' }),
   sendReceipt: (bookingId) =>
     request(`/payments/bookings/${encodeURIComponent(bookingId)}/receipt`, { method: 'POST' }),
   sendPaymentLink: (bookingId, amount) =>
@@ -147,14 +147,12 @@ export const api = {
     request('/operators/assign', { method: 'POST', body: { bookingIds, operatorId } }),
 
   reminderConfig: () => request('/reminders/config'),
-  remindersPending: (campaign, scope) =>
-    request(`/reminders/pending${queryString({ campaign, scope })}`),
+  remindersPending: (campaign, scope) => request(`/reminders/pending${queryString({ campaign, scope })}`),
   sendReminders: (campaign, operatorIds, { dryRun = false, scope = 'due' } = {}) =>
     request('/reminders/send', { method: 'POST', body: { campaign, operatorIds, dryRun, scope } }),
 
   emailConfig: () => request('/emails/config'),
-  emailPending: (campaign, scope) =>
-    request(`/emails/pending${queryString({ campaign, scope })}`),
+  emailPending: (campaign, scope) => request(`/emails/pending${queryString({ campaign, scope })}`),
   sendCampaign: (campaign, bookingIds, { dryRun = false } = {}) =>
     request('/emails/send', { method: 'POST', body: { campaign, bookingIds, dryRun } }),
 
@@ -166,7 +164,8 @@ export const api = {
   portalBookings: () => request('/portal/bookings'),
   portalRequest: (bookingId, body) =>
     request(`/portal/bookings/${encodeURIComponent(bookingId)}/request`, { method: 'POST', body }),
-  portalPay: (bookingId) => request(`/portal/bookings/${encodeURIComponent(bookingId)}/pay`, { method: 'POST', body: {} }),
+  portalPay: (bookingId) =>
+    request(`/portal/bookings/${encodeURIComponent(bookingId)}/pay`, { method: 'POST', body: {} }),
   portalEnquiry: (body) => request('/portal/enquiries', { method: 'POST', body }),
 };
 

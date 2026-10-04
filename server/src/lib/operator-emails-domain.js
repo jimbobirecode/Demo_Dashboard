@@ -111,9 +111,7 @@ export function publicReminderConfig(config) {
 }
 
 export function reminderReady(config, campaignId) {
-  return (
-    config.hasApiKey && Boolean(config.fromEmail) && Boolean(config.campaigns[campaignId]?.configured)
-  );
+  return config.hasApiKey && Boolean(config.fromEmail) && Boolean(config.campaigns[campaignId]?.configured);
 }
 
 /**
@@ -237,9 +235,7 @@ export function selectReminders(operators, bookings, { campaign, days, today, sc
       bookings: lines,
       freshCount: fresh.length,
       totalOutstanding: round2(lines.reduce((sum, line) => sum + line.outstanding, 0)),
-      totalOverdue: round2(
-        lines.filter((line) => line.overdue).reduce((sum, line) => sum + line.outstanding, 0),
-      ),
+      totalOverdue: round2(lines.filter((line) => line.overdue).reduce((sum, line) => sum + line.outstanding, 0)),
       maxDaysOverdue: lines.reduce((worst, line) => Math.max(worst, line.daysOverdue), 0),
       sendable: Boolean(operator.contactEmail),
       blocker: operator.contactEmail ? null : 'No contact email on the account',
@@ -296,7 +292,10 @@ export function buildReminderTemplateData(reminder, { campaign, fromEmail, days,
     has_overdue: reminder.totalOverdue > 0,
     days_overdue: String(reminder.maxDaysOverdue),
     earliest_due_date: formatLongDate(
-      lines.map((line) => line.dueDate).filter(Boolean).sort()[0] ?? null,
+      lines
+        .map((line) => line.dueDate)
+        .filter(Boolean)
+        .sort()[0] ?? null,
     ),
     account_outstanding: formatMoney(reminder.account.outstanding),
     credit_limit: reminder.account.creditLimit == null ? '' : formatMoney(reminder.account.creditLimit),
@@ -381,9 +380,7 @@ function formatLongDate(isoDate) {
   if (!isoDate) return '';
   const date = new Date(`${isoDate}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return String(isoDate);
-  const parts = Object.fromEntries(
-    LONG_DATE_PARTS.formatToParts(date).map(({ type, value }) => [type, value]),
-  );
+  const parts = Object.fromEntries(LONG_DATE_PARTS.formatToParts(date).map(({ type, value }) => [type, value]));
   return `${parts.weekday} ${parts.day} ${parts.month} ${parts.year}`;
 }
 

@@ -53,10 +53,7 @@ export default function ServiceSection({ caddies, requestThemes, emailCoverage }
                 value={`≈ ${formatNumber(caddies.estimatedCaddies)}`}
                 sub="Estimated: the number in the note, or the whole party where it says everyone"
               />
-              <Figure
-                label="Players in those parties"
-                value={formatNumber(caddies.playersInRequests)}
-              />
+              <Figure label="Players in those parties" value={formatNumber(caddies.playersInRequests)} />
             </div>
           </div>
         </ChartCard>
@@ -121,9 +118,7 @@ export default function ServiceSection({ caddies, requestThemes, emailCoverage }
             </div>
           ) : (
             <NotRecorded>
-              Nothing in this period records a send. Journey emails need{' '}
-              <code>migration_add_journey_emails.sql</code> and are sent from the Guest Emails
-              page.
+              Nothing in this period records a send. Journey emails are sent from the Guest Emails page.
             </NotRecorded>
           )}
         </ChartCard>

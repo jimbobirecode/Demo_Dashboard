@@ -15,17 +15,12 @@
  * system and were never a TeeMail enquiry.
  */
 import { Router } from 'express';
-import ExcelJS from 'exceljs';
 import { pool, query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { getBookingColumns, hasBookingSource } from '../lib/schema.js';
-import {
-  markDuplicates,
-  mintBatchId,
-  mintImportedBookingId,
-  parseTeeSheet,
-} from '../lib/import-domain.js';
+import { BOOKING_SELECT } from '../lib/schema.js';
+import { markDuplicates, mintBatchId, mintImportedBookingId, parseTeeSheet } from '../lib/import-domain.js';
+import { SheetTooLargeError, checkRowCount, readXlsxRows } from '../lib/sheet-reader.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -36,10 +31,8 @@ const MAX_ROWS = 5000;
 router.get('/config', async (req, res, next) => {
   try {
     res.json({
-      available: await hasBookingSource(),
-      reason: 'Run migration_add_booking_source.sql to upload a tee sheet',
       maxRows: MAX_ROWS,
-      batches: (await hasBookingSource()) ? await loadBatches(req.user.customerId) : [],
+      batches: await loadBatches(req.user.customerId),
     });
   } catch (err) {
     next(err);
@@ -74,10 +67,6 @@ router.post('/preview', async (req, res, next) => {
 router.post('/commit', async (req, res, next) => {
   const client = await pool.connect();
   try {
-    if (!(await hasBookingSource())) {
-      return res.status(409).json({ error: 'Run migration_add_booking_source.sql first' });
-    }
-
     const rows = await readRows(req.body);
     if (rows.error) return res.status(400).json({ error: rows.error });
 
@@ -95,7 +84,6 @@ router.post('/commit', async (req, res, next) => {
     }
 
     const batchId = mintBatchId();
-    const columns = await getBookingColumns();
     const wanted = fresh.slice(0, MAX_ROWS);
 
     // One transaction: a half-written batch would be neither importable again
@@ -104,11 +92,8 @@ router.post('/commit', async (req, res, next) => {
     let inserted = 0;
 
     for (const booking of wanted) {
-      const bookingId = booking.bookingId || mintImportedBookingId(batchId, booking.line);
-      const note = [
-        `Imported from the club tee sheet (${batchId}).`,
-        booking.notes,
-      ].filter(Boolean).join(' ');
+      const bookingId = booking.bookingId || mintImportedBookingId();
+      const note = [`Imported from the club tee sheet (${batchId}).`, booking.notes].filter(Boolean).join(' ');
 
       const { rowCount } = await client.query(
         `INSERT INTO public.bookings
@@ -117,9 +102,19 @@ router.post('/commit', async (req, res, next) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'imported',$13,NOW(),NOW())
          ON CONFLICT (booking_id) DO NOTHING`,
         [
-          bookingId, booking.guestEmail, booking.guestName, booking.contactPhone,
-          booking.date, booking.teeTime ?? 'Not Specified', booking.players, booking.total,
-          booking.status, note, req.user.customerId, booking.golfCourses, batchId,
+          bookingId,
+          booking.guestEmail,
+          booking.guestName,
+          booking.contactPhone,
+          booking.date,
+          booking.teeTime ?? 'Not Specified',
+          booking.players,
+          booking.total,
+          booking.status,
+          note,
+          req.user.customerId,
+          booking.golfCourses,
+          batchId,
         ],
       );
       inserted += rowCount;
@@ -133,7 +128,6 @@ router.post('/commit', async (req, res, next) => {
       skippedDuplicates: duplicates.length,
       rejected: parsed.rejected.length,
       truncated: fresh.length > MAX_ROWS ? fresh.length - MAX_ROWS : 0,
-      columns: columns.has('source'),
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -150,14 +144,12 @@ router.post('/commit', async (req, res, next) => {
  * worked on is theirs, not the importer's, and deleting it would throw away
  * work to tidy up a mistake.
  */
-router.delete('/:batchId', async (req, res, next) => {
+// Undoing an upload deletes bookings in bulk, so only an administrator may.
+router.delete('/:batchId', requireAdmin, async (req, res, next) => {
   try {
-    const columns = await getBookingColumns();
-    const guard = columns.has('updated_at') ? ' AND updated_at IS NULL' : '';
-
     const { rowCount } = await query(
       `DELETE FROM public.bookings
-        WHERE import_batch = $1 AND club = $2 AND source = 'imported'${guard}`,
+        WHERE import_batch = $1 AND club = $2 AND source = 'imported' AND updated_at IS NULL`,
       [req.params.batchId, req.user.customerId],
     );
 
@@ -194,29 +186,21 @@ async function readRows(body) {
   const buffer = Buffer.from(content, 'base64');
   if (buffer.length > 8 * 1024 * 1024) return { error: 'That file is larger than 8MB' };
 
-  if (name.endsWith('.xlsx') || name.endsWith('.xlsm')) {
-    try {
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
-      const sheet = workbook.worksheets[0];
-      if (!sheet) return { error: 'That workbook has no sheets' };
-
-      const rows = [];
-      sheet.eachRow({ includeEmpty: false }, (row) => {
-        const values = row.values.slice(1).map((cell) => {
-          if (cell && typeof cell === 'object' && 'result' in cell) return cell.result;
-          if (cell && typeof cell === 'object' && 'text' in cell) return cell.text;
-          return cell ?? '';
-        });
-        rows.push(values);
-      });
-      return { rows };
-    } catch {
-      return { error: 'That file could not be read as a spreadsheet' };
+  try {
+    if (name.endsWith('.xlsx') || name.endsWith('.xlsm')) {
+      try {
+        const rows = await readXlsxRows(buffer);
+        return rows.length ? { rows } : { error: 'That workbook has no rows on its first sheet' };
+      } catch (err) {
+        if (err instanceof SheetTooLargeError) throw err;
+        return { error: 'That file could not be read as a spreadsheet' };
+      }
     }
+    return { rows: checkRowCount(parseCsv(buffer.toString('utf8'))) };
+  } catch (err) {
+    if (err instanceof SheetTooLargeError) return { error: err.message };
+    throw err;
   }
-
-  return { rows: parseCsv(buffer.toString('utf8')) };
 }
 
 /**
@@ -229,37 +213,50 @@ export function parseCsv(text) {
   let field = '';
   let quoted = false;
 
-  const body = text.replace(/^﻿/, ''); // Excel writes a byte-order mark
+  const body = text.replace(/^\uFEFF/, ''); // Excel writes a byte-order mark
 
   for (let i = 0; i < body.length; i += 1) {
     const char = body[i];
 
     if (quoted) {
       if (char === '"') {
-        if (body[i + 1] === '"') { field += '"'; i += 1; }
-        else quoted = false;
+        if (body[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else quoted = false;
       } else field += char;
       continue;
     }
 
     if (char === '"') quoted = true;
-    else if (char === ',') { row.push(field); field = ''; }
-    else if (char === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
-    else if (char !== '\r') field += char;
+    else if (char === ',') {
+      row.push(field);
+      field = '';
+    } else if (char === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else if (char !== '\r') field += char;
   }
 
-  if (field || row.length) { row.push(field); rows.push(row); }
+  if (field || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
   return rows.filter((line) => line.length);
 }
 
 /** Only bookings that could collide: this club's, on the dates in the file. */
 async function loadComparableBookings(parsed, club) {
-  const dates = parsed.map((booking) => booking.date).filter(Boolean).sort();
+  const dates = parsed
+    .map((booking) => booking.date)
+    .filter(Boolean)
+    .sort();
   if (!dates.length) return [];
 
-  const columns = await getBookingColumns();
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings
+    `SELECT ${BOOKING_SELECT} FROM public.bookings
       WHERE club = $1 AND date BETWEEN $2::date AND $3::date`,
     [club, dates[0], dates.at(-1)],
   );

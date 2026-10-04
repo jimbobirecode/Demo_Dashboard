@@ -13,10 +13,7 @@ import { Figure, Section } from './Section.jsx';
 export default function GuestSection({ guests, responseTimes }) {
   return (
     <>
-      <Section
-        title="Guests and response"
-        blurb="Who the enquiries come from, and how long they wait for an answer"
-      />
+      <Section title="Guests and response" blurb="Who the enquiries come from, and how long they wait for an answer" />
 
       <div className="chart-grid">
         <ChartCard
@@ -31,25 +28,14 @@ export default function GuestSection({ guests, responseTimes }) {
               remainderLabel="Once"
             />
             <div className="detail-grid">
-              <Figure
-                label="Repeat rate"
-                value={`${guests.repeatRate}%`}
-                sub="Within this period only"
-              />
-              <Figure
-                label="Bookings from repeats"
-                value={formatNumber(guests.bookingsFromReturning)}
-              />
+              <Figure label="Repeat rate" value={`${guests.repeatRate}%`} sub="Within this period only" />
+              <Figure label="Bookings from repeats" value={formatNumber(guests.bookingsFromReturning)} />
               <Figure
                 label="Business addresses"
                 value={formatNumber(guests.business)}
                 sub={`${formatNumber(guests.consumer)} personal`}
               />
-              <Figure
-                label="No address"
-                value={formatNumber(guests.anonymous)}
-                sub="Cannot be counted as a guest"
-              />
+              <Figure label="No address" value={formatNumber(guests.anonymous)} sub="Cannot be counted as a guest" />
             </div>
           </div>
         </ChartCard>

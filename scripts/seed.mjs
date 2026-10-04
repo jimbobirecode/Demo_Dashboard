@@ -12,27 +12,61 @@
  * --reset only ever deletes rows carrying those marks. Real bookings and real
  * operators are never touched.
  */
-import 'dotenv/config';
+import '../server/src/env.js';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import bcrypt from 'bcryptjs';
 import { pool } from '../server/src/db.js';
 import { BRAND } from '../server/src/lib/brand.js';
+import { migrate } from '../server/src/db/migrate.js';
 
 const DEMO_PREFIX = 'RD-DEMO-';
 const USERNAME = process.env.SEED_USERNAME ?? 'demo';
 
 const FIRST_NAMES = [
-  'James', 'Sarah', 'Michael', 'Fiona', 'David', 'Aoife', 'Thomas', 'Claire',
-  'Robert', 'Niamh', 'William', 'Emma', 'Patrick', 'Hannah', 'Andrew', 'Laura',
-  'Stephen', 'Rachel', 'Conor', 'Megan', 'Daniel', 'Sophie', 'Mark', 'Orla',
+  'James',
+  'Sarah',
+  'Michael',
+  'Fiona',
+  'David',
+  'Aoife',
+  'Thomas',
+  'Claire',
+  'Robert',
+  'Niamh',
+  'William',
+  'Emma',
+  'Patrick',
+  'Hannah',
+  'Andrew',
+  'Laura',
+  'Stephen',
+  'Rachel',
+  'Conor',
+  'Megan',
+  'Daniel',
+  'Sophie',
+  'Mark',
+  'Orla',
 ];
 const LAST_NAMES = [
-  'Harrington', 'McAllister', 'Donnelly', 'Whitfield', 'O’Connor', 'Brennan',
-  'Fitzgerald', 'Kavanagh', 'Sinclair', 'Doherty', 'Armstrong', 'Gallagher',
-  'Pemberton', 'Hughes', 'Caldwell', 'Redmond', 'Thornton', 'Mulligan',
+  'Harrington',
+  'McAllister',
+  'Donnelly',
+  'Whitfield',
+  'O’Connor',
+  'Brennan',
+  'Fitzgerald',
+  'Kavanagh',
+  'Sinclair',
+  'Doherty',
+  'Armstrong',
+  'Gallagher',
+  'Pemberton',
+  'Hughes',
+  'Caldwell',
+  'Redmond',
+  'Thornton',
+  'Mulligan',
 ];
 const DOMAINS = ['gmail.com', 'outlook.com', 'btinternet.com', 'yahoo.co.uk', 'me.com'];
 
@@ -48,9 +82,24 @@ const COURSES = [
 
 // The sheet runs in roughly 10-minute intervals.
 const TEE_TIMES = [
-  '07:20 AM', '07:40 AM', '08:00 AM', '08:20 AM', '08:50 AM', '09:10 AM',
-  '09:40 AM', '10:04 AM', '10:24 AM', '10:50 AM', '11:20 AM', '11:50 AM',
-  '12:30 PM', '01:10 PM', '01:40 PM', '02:20 PM', '02:50 PM', '03:30 PM',
+  '07:20 AM',
+  '07:40 AM',
+  '08:00 AM',
+  '08:20 AM',
+  '08:50 AM',
+  '09:10 AM',
+  '09:40 AM',
+  '10:04 AM',
+  '10:24 AM',
+  '10:50 AM',
+  '11:20 AM',
+  '11:50 AM',
+  '12:30 PM',
+  '01:10 PM',
+  '01:40 PM',
+  '02:20 PM',
+  '02:50 PM',
+  '03:30 PM',
 ];
 
 const SOURCES = [
@@ -127,52 +176,6 @@ function buildNote({ name, email, teeDate, teeTime, players, course }) {
     .trim();
 }
 
-async function ensureSchema(client) {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS public.dashboard_users (
-      id SERIAL PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT,
-      temp_password TEXT,
-      customer_id TEXT NOT NULL,
-      full_name TEXT,
-      is_active BOOLEAN DEFAULT TRUE,
-      must_change_password BOOLEAN DEFAULT FALSE,
-      last_login TIMESTAMPTZ
-    )`);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS public.bookings (
-      id SERIAL PRIMARY KEY,
-      booking_id TEXT UNIQUE NOT NULL,
-      guest_email TEXT,
-      date DATE,
-      tee_time TEXT,
-      players INTEGER,
-      total NUMERIC(10,2),
-      status TEXT,
-      note TEXT,
-      club TEXT,
-      timestamp TIMESTAMPTZ DEFAULT NOW(),
-      customer_confirmed_at TIMESTAMPTZ,
-      updated_at TIMESTAMPTZ,
-      updated_by TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      hotel_required BOOLEAN DEFAULT FALSE,
-      hotel_checkin DATE,
-      hotel_checkout DATE,
-      golf_courses TEXT,
-      selected_tee_times TEXT,
-      guest_name TEXT,
-      pre_arrival_email_sent_at TIMESTAMPTZ,
-      post_play_email_sent_at TIMESTAMPTZ
-    )`);
-
-  await client.query(
-    'CREATE INDEX IF NOT EXISTS bookings_club_date_idx ON public.bookings (club, date)',
-  );
-}
-
 /**
  * Seeded rows are only visible to a user whose customer_id matches the row's
  * club, so guessing wrong makes the dashboard look empty. Prefer the club the
@@ -209,10 +212,7 @@ async function resolveClub(client) {
 }
 
 async function ensureUser(client, CLUB) {
-  const { rows } = await client.query(
-    'SELECT id FROM public.dashboard_users WHERE username = $1',
-    [USERNAME],
-  );
+  const { rows } = await client.query('SELECT id FROM public.dashboard_users WHERE username = $1', [USERNAME]);
 
   if (rows.length) {
     console.log(`User "${USERNAME}" already exists — password left unchanged.`);
@@ -310,7 +310,6 @@ function buildBookings(count) {
 
 const OPERATOR_PREFIX = `${DEMO_PREFIX}OP-`;
 const SAMPLE_OPERATOR_NOTE = 'Sample operator (seeded).';
-const MIGRATION_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../migration_add_tour_operators.sql');
 
 /**
  * Six fictional trade partners, one for each situation the Tour Operators page
@@ -376,7 +375,8 @@ const OPERATORS = [
     domain: 'highlandswing.example',
     terms: { days: 30, deposit: 0, depositBefore: null, balanceBefore: null, limit: 5000 },
     onHold: true,
-    notes: 'ON HOLD: two invoices over 90 days and over its credit limit. No new tee times until the account is settled.',
+    notes:
+      'ON HOLD: two invoices over 90 days and over its credit limit. No new tee times until the account is settled.',
     bookings: [
       { day: -130, players: 8, rounds: 1, status: 'Booked', invoiced: 140, paid: 0 },
       { day: -100, players: 4, rounds: 2, status: 'Booked', invoiced: 110, paid: 0.25 },
@@ -406,9 +406,7 @@ const OPERATORS = [
     terms: { days: 30, deposit: 20, depositBefore: 90, balanceBefore: 30, limit: 15000 },
     active: false,
     notes: 'Retired partner - ceased trading with the club. Kept for history.',
-    bookings: [
-      { day: -300, players: 8, rounds: 1, status: 'Booked', invoiced: 330, paid: 1 },
-    ],
+    bookings: [{ day: -300, players: 8, rounds: 1, status: 'Booked', invoiced: 330, paid: 1 }],
   },
 ];
 
@@ -463,10 +461,12 @@ function buildOperatorBooking(operator, line, index) {
       `Players: ${line.players} (${teeTimes.length} tee time${teeTimes.length === 1 ? '' : 's'})`,
       `Course: ${courses}`,
       line.rounds === 2 ? 'Playing 36 holes - second round charged at the 50% same-day replay rate.' : '',
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
     timestamp: `${requested}T09:30:00Z`,
     course: courses,
-    selectedTeeTimes: teeTimes.join(', '),
+    selectedTeeTimes: JSON.stringify(teeTimes),
     paymentStatus,
     amountPaid: paid.toFixed(2),
     invoiceNumber: line.invoiced == null ? null : `INV-${operator.code}-${String(2600 + index)}`,
@@ -474,25 +474,22 @@ function buildOperatorBooking(operator, line, index) {
   };
 }
 
-/** The tour_operators table and the bookings' payment columns, if not there yet. */
-async function ensureOperatorSchema(client) {
-  await client.query(fs.readFileSync(MIGRATION_FILE, 'utf8'));
-}
-
 /**
  * Seed the sample tour operators and their bookings. Operators are upserted
  * by name, so re-running refreshes their terms instead of duplicating them.
  */
 export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
-  await ensureOperatorSchema(client);
-
   if (reset) {
-    const bookings = await client.query('DELETE FROM public.bookings WHERE booking_id LIKE $1', [`${OPERATOR_PREFIX}%`]);
-    const operators = await client.query(
-      'DELETE FROM public.tour_operators WHERE club = $1 AND notes LIKE $2',
-      [CLUB, `${SAMPLE_OPERATOR_NOTE}%`],
+    const bookings = await client.query('DELETE FROM public.bookings WHERE booking_id LIKE $1', [
+      `${OPERATOR_PREFIX}%`,
+    ]);
+    const operators = await client.query('DELETE FROM public.tour_operators WHERE club = $1 AND notes LIKE $2', [
+      CLUB,
+      `${SAMPLE_OPERATOR_NOTE}%`,
+    ]);
+    console.log(
+      `--reset: removed ${operators.rowCount} sample operator(s) and ${bookings.rowCount} of their booking(s).`,
     );
-    console.log(`--reset: removed ${operators.rowCount} sample operator(s) and ${bookings.rowCount} of their booking(s).`);
   }
 
   let bookingsInserted = 0;
@@ -517,9 +514,22 @@ export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
        WHERE public.tour_operators.notes LIKE '${SAMPLE_OPERATOR_NOTE}%'
        RETURNING id`,
       [
-        CLUB, operator.name, operator.contact, `accounts@${operator.domain}`, operator.phone, operator.code,
-        [operator.domain], t.days, t.deposit, t.depositBefore, t.balanceBefore, t.limit, BRAND.currency,
-        Boolean(operator.onHold), operator.active !== false, `${SAMPLE_OPERATOR_NOTE} ${operator.notes}`,
+        CLUB,
+        operator.name,
+        operator.contact,
+        `accounts@${operator.domain}`,
+        operator.phone,
+        operator.code,
+        [operator.domain],
+        t.days,
+        t.deposit,
+        t.depositBefore,
+        t.balanceBefore,
+        t.limit,
+        BRAND.currency,
+        Boolean(operator.onHold),
+        operator.active !== false,
+        `${SAMPLE_OPERATOR_NOTE} ${operator.notes}`,
       ],
     );
     if (!rows.length) {
@@ -539,29 +549,44 @@ export async function seedTourOperators(client, CLUB, { reset = false } = {}) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$16,$17)
          ON CONFLICT (booking_id) DO NOTHING`,
         [
-          b.bookingId, b.email, b.date, b.teeTime, b.players, b.total, b.status, b.note, CLUB,
-          b.timestamp, b.course, b.selectedTeeTimes,
-          operatorId, b.paymentStatus, b.amountPaid, b.invoiceNumber, b.invoicedAt,
+          b.bookingId,
+          b.email,
+          b.date,
+          b.teeTime,
+          b.players,
+          b.total,
+          b.status,
+          b.note,
+          CLUB,
+          b.timestamp,
+          b.course,
+          b.selectedTeeTimes,
+          operatorId,
+          b.paymentStatus,
+          b.amountPaid,
+          b.invoiceNumber,
+          b.invoicedAt,
         ],
       );
       bookingsInserted += rowCount;
     }
   }
 
-  console.log(`Seeded ${OPERATORS.length} tour operator(s) and ${bookingsInserted} operator booking(s) for club "${CLUB}".`);
+  console.log(
+    `Seeded ${OPERATORS.length} tour operator(s) and ${bookingsInserted} operator booking(s) for club "${CLUB}".`,
+  );
   return { operators: OPERATORS.length, bookings: bookingsInserted };
 }
 
 export async function seed({ client, reset = false, operatorsOnly = false } = {}) {
-  // Schema first: resolveClub reads dashboard_users, which may not exist yet.
-  await ensureSchema(client);
+  // The schema comes from db/migrations: the server runs them at boot, and
+  // the CLI below runs them before seeding.
   const CLUB = await resolveClub(client);
   if (operatorsOnly) {
     const operators = await seedTourOperators(client, CLUB, { reset });
     return { club: CLUB, inserted: operators.bookings, operators, password: null };
   }
   {
-
     if (reset) {
       const { rowCount } = await client.query(
         'DELETE FROM public.bookings WHERE booking_id LIKE $1 AND booking_id NOT LIKE $2',
@@ -599,7 +624,8 @@ export async function seed({ client, reset = false, operatorsOnly = false } = {}
           booking.hotelCheckin,
           booking.hotelCheckout,
           booking.course,
-          booking.teeTime ? booking.teeTimeLabel : '',
+          // selected_tee_times is JSONB.
+          booking.teeTime ? JSON.stringify([booking.teeTimeLabel]) : null,
         ],
       );
       inserted += rowCount;
@@ -638,6 +664,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   }
 
+  await migrate({ pool });
   const client = await pool.connect();
   try {
     await seed({

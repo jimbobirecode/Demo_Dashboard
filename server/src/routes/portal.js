@@ -3,7 +3,7 @@
  *
  *   POST /login              email a one-time sign-in link (same reply either way)
  *   POST /session            redeem the link for a portal session
- *   POST /logout
+ *   POST /logout             revoke the session (operator_portal_sessions)
  *   GET  /me                 the operator, their terms and account summary
  *   GET  /bookings           every booking on their account, with what it owes
  *   GET  /statement.csv      the same, for their accounts team
@@ -15,14 +15,15 @@
  * routes refuse them (auth.js requireAuth), so a portal user never reaches the
  * staff dashboard and sees only their own operator's bookings.
  */
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../db.js';
 import { JWT_SECRET } from '../auth.js';
 import { BRAND, appBaseUrl } from '../lib/brand.js';
 import { sendHtmlEmail } from '../lib/sendgrid.js';
-import { hasEmailLog, logEmail } from '../lib/email-log.js';
-import { buildAuditSet, getBookingColumns, hasChangeRequests, hasOperatorsTable } from '../lib/schema.js';
+import { logEmail } from '../lib/email-log.js';
+import { buildAuditSet } from '../lib/schema.js';
 import { todayInClubZone } from '../lib/email-domain.js';
 import { createThrottle, hashToken, mintToken } from '../lib/password-reset-domain.js';
 import {
@@ -54,17 +55,19 @@ import {
   statementCsv,
 } from '../lib/portal-domain.js';
 import { loadBookings, loadOperators } from './operators.js';
+import { clientIp, maskForLog } from '../lib/request-guard.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('portal');
 
 const router = Router();
 
 const COOKIE = 'teemail_operator';
+// Per address asked for and per client, independently, so varying either one
+// alone buys no fresh budget.
 const loginThrottle = createThrottle({ limit: 5, windowMs: 15 * 60_000 });
+const loginIpThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
 const redeemThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
-
-function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
-}
 
 function mailConfig() {
   return {
@@ -78,30 +81,20 @@ function mailConfig() {
 async function sendMail(toEmail, email) {
   const config = mailConfig();
   if (!config.apiKey || !config.fromEmail) return false;
-  const outcome = await sendHtmlEmail({ ...config, toEmail, subject: email.subject, text: email.text, html: email.html });
-  if (!outcome.ok) console.error('[portal] email failed:', outcome.message);
+  const outcome = await sendHtmlEmail({
+    ...config,
+    toEmail,
+    subject: email.subject,
+    text: email.text,
+    html: email.html,
+  });
+  if (!outcome.ok) log.error('email failed:', outcome.message);
   return outcome.ok;
 }
 
 /* ---------- the one-time links ---------- */
 
-let schemaReady = false;
-async function ensurePortalSchema() {
-  if (schemaReady) return;
-  await query(`
-    CREATE TABLE IF NOT EXISTS public.operator_portal_links (
-      id           SERIAL PRIMARY KEY,
-      club         TEXT NOT NULL,
-      operator_id  INTEGER NOT NULL,
-      email        TEXT NOT NULL,
-      token_hash   TEXT NOT NULL UNIQUE,
-      expires_at   TIMESTAMPTZ NOT NULL,
-      used_at      TIMESTAMPTZ,
-      requested_ip TEXT,
-      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`);
-  schemaReady = true;
-}
+// operator_portal_links: db/migrations/0003; operator_portal_sessions: 0006.
 
 /** Every club's operators, for matching a sign-in address. */
 async function allActiveOperators() {
@@ -127,15 +120,20 @@ router.post('/login', async (req, res) => {
   res.json({ ok: true, message: PORTAL_NEUTRAL_REPLY });
 
   try {
-    if (!loginThrottle.check(`${email.toLowerCase()}|${clientIp(req)}`)) return;
-    if (!(await hasOperatorsTable())) return;
+    const ipAllowed = loginIpThrottle.check(clientIp(req));
+    if (!loginThrottle.check(email.toLowerCase()) || !ipAllowed) return;
     const operator = operatorForEmail(email, await allActiveOperators());
     if (!operator) {
-      console.warn('[portal] sign-in asked for an address on no operator account:', email);
+      log.warn('sign-in asked for an address on no operator account:', maskForLog(email));
       return;
     }
-    await ensurePortalSchema();
     const { token, tokenHash, expiresAt } = mintToken({ ttlMinutes: PORTAL_LINK_TTL_MINUTES });
+    // A new link supersedes any still unused for this address, so an older
+    // email someone else may hold stops working the moment the real user asks.
+    await query(
+      'UPDATE public.operator_portal_links SET used_at = NOW() WHERE lower(email) = lower($1) AND used_at IS NULL',
+      [email],
+    );
     await query(
       `INSERT INTO public.operator_portal_links (club, operator_id, email, token_hash, expires_at, requested_ip)
        VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -145,9 +143,9 @@ router.post('/login', async (req, res) => {
       email,
       buildPortalSignInEmail({ operatorName: operator.name, link: portalSignInLink(appBaseUrl(), token) }),
     );
-    if (!sent) console.warn('[portal] sign-in link not emailed (SendGrid not configured or failed)');
+    if (!sent) log.warn('sign-in link not emailed (SendGrid not configured or failed)');
   } catch (err) {
-    console.error('[portal] sign-in failed:', err.message);
+    log.error('sign-in failed:', err.message);
   }
 });
 
@@ -159,7 +157,6 @@ router.post('/session', async (req, res, next) => {
     const refused = { error: 'That sign-in link has expired or has already been used. Ask for a new one.' };
     const token = String(req.body?.token ?? '');
     if (!token) return res.status(400).json(refused);
-    await ensurePortalSchema();
 
     // Used once: the row is claimed in the same statement that checks it.
     const { rows } = await query(
@@ -175,8 +172,16 @@ router.post('/session', async (req, res, next) => {
     );
     if (!ops[0] || ops[0].active === false) return res.status(400).json(refused);
 
+    // The session is a row as well as a signed cookie, so signing out (or an
+    // administrator) can end it before it expires. Only the id's hash is stored.
+    const sid = crypto.randomBytes(32).toString('base64url');
+    await query(
+      `INSERT INTO public.operator_portal_sessions (sid_hash, club, operator_id, email, expires_at, requested_ip)
+       VALUES ($1, $2, $3, $4, NOW() + make_interval(hours => $5), $6)`,
+      [hashToken(sid), rows[0].club, ops[0].id, rows[0].email, PORTAL_SESSION_HOURS, clientIp(req)],
+    );
     const session = jwt.sign(
-      { kind: 'operator', operatorId: ops[0].id, club: rows[0].club, email: rows[0].email },
+      { kind: 'operator', operatorId: ops[0].id, club: rows[0].club, email: rows[0].email, sid },
       JWT_SECRET,
       { expiresIn: `${PORTAL_SESSION_HOURS}h` },
     );
@@ -192,23 +197,77 @@ router.post('/session', async (req, res, next) => {
   }
 });
 
-router.post('/logout', (req, res) => {
+/** Sign out: the session row is revoked, so a copy of the cookie is no use either. */
+router.post('/logout', async (req, res) => {
+  const token = req.cookies?.[COOKIE];
   res.clearCookie(COOKIE);
+  if (token) {
+    try {
+      const claims = jwt.verify(token, JWT_SECRET);
+      if (claims.kind === 'operator' && claims.sid) {
+        await query(
+          'UPDATE public.operator_portal_sessions SET revoked_at = NOW() WHERE sid_hash = $1 AND revoked_at IS NULL',
+          [hashToken(claims.sid)],
+        );
+      }
+    } catch (err) {
+      if (!(err instanceof jwt.JsonWebTokenError)) log.warn('could not revoke a portal session:', err.message);
+    }
+  }
   res.json({ ok: true });
 });
 
 /* ---------- signed in ---------- */
 
-function requireOperator(req, res, next) {
+/**
+ * A portal session is only as good as the account behind it. Each request
+ * re-reads the operator, so retiring the account — or taking the signed-in
+ * address off it (a domain removed, a contact changed) — ends the session at
+ * once rather than when the cookie expires.
+ */
+async function requireOperator(req, res, next) {
+  const ended = () => {
+    res.clearCookie(COOKIE);
+    res.status(401).json({ error: 'Your session has ended. Sign in again.' });
+  };
   const token = req.cookies?.[COOKIE];
   if (!token) return res.status(401).json({ error: 'Not signed in' });
+
+  let claims;
   try {
-    const claims = jwt.verify(token, JWT_SECRET);
-    if (claims.kind !== 'operator' || !claims.operatorId || !claims.club) throw new Error('not a portal session');
+    claims = jwt.verify(token, JWT_SECRET);
+    if (claims.kind !== 'operator' || !claims.operatorId || !claims.club || !claims.sid) {
+      throw new Error('not a portal session');
+    }
+  } catch {
+    return ended();
+  }
+
+  try {
+    const { rows: live } = await query(
+      `SELECT 1 FROM public.operator_portal_sessions
+        WHERE sid_hash = $1 AND operator_id = $2 AND club = $3 AND revoked_at IS NULL AND expires_at > NOW()`,
+      [hashToken(claims.sid), claims.operatorId, claims.club],
+    );
+    if (!live.length) return ended();
+
+    const { rows } = await query(
+      `SELECT id, club, name, contact_email, email_domains, active FROM public.tour_operators
+        WHERE id = $1 AND club = $2`,
+      [claims.operatorId, claims.club],
+    );
+    const operator = rows[0] && {
+      id: rows[0].id,
+      club: rows[0].club,
+      contactEmail: rows[0].contact_email,
+      emailDomains: rows[0].email_domains ?? [],
+      active: rows[0].active !== false,
+    };
+    if (!operator || operatorForEmail(claims.email, [operator])?.id !== operator.id) return ended();
     req.portal = claims;
     next();
-  } catch {
-    res.status(401).json({ error: 'Your session has ended. Sign in again.' });
+  } catch (err) {
+    next(err);
   }
 }
 
@@ -225,7 +284,7 @@ async function loadAccount(req) {
     .map((booking) => ({ ...booking, payment: paymentState(booking, operator, { today }) }));
 
   let pending = new Map();
-  if (bookings.length && (await hasChangeRequests())) {
+  if (bookings.length) {
     const { rows } = await query(
       `SELECT * FROM public.booking_change_requests
         WHERE club = $1 AND status = 'Pending' AND booking_id = ANY($2)`,
@@ -256,8 +315,6 @@ router.get('/me', async (req, res, next) => {
       },
       account: summarise(operator, bookings, { today }),
       canPayOnline: account.payable,
-      canEnquire: await hasEmailLog(),
-      canRequestChanges: await hasChangeRequests(),
     });
   } catch (err) {
     next(err);
@@ -288,7 +345,7 @@ router.get('/statement.csv', async (req, res, next) => {
     const name = account.operator.name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${name}-statement-${account.today}.csv"`);
-    res.send(`﻿${statementCsv(list)}`);
+    res.send(`\uFEFF${statementCsv(list)}`);
   } catch (err) {
     next(err);
   }
@@ -301,9 +358,6 @@ function ownBooking(account, bookingId) {
 
 router.post('/bookings/:bookingId/request', async (req, res, next) => {
   try {
-    if (!(await hasChangeRequests())) {
-      return res.status(503).json({ error: 'Requests are not available online yet. Please email the club.' });
-    }
     const account = await loadAccount(req);
     if (!account) return res.status(401).json({ error: 'This account is no longer active.' });
     const booking = ownBooking(account, req.params.bookingId);
@@ -323,20 +377,36 @@ router.post('/bookings/:bookingId/request', async (req, res, next) => {
           status, auto_applied, days_before_play, guest_email, requested_ip)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'Pending',FALSE,$8,$9,$10)`,
       [
-        booking.bookingId, booking.club, check.value.kind,
+        booking.bookingId,
+        booking.club,
+        check.value.kind,
         `[${account.operator.name}, via the portal] ${check.value.message ?? ''}`.trim(),
-        check.value.requestedDate, check.value.requestedTime, check.value.requestedPlayers,
-        options.daysUntilPlay, req.portal.email, clientIp(req),
+        check.value.requestedDate,
+        check.value.requestedTime,
+        check.value.requestedPlayers,
+        options.daysUntilPlay,
+        req.portal.email,
+        clientIp(req),
       ],
     );
     // Addressed to the operator, not the booking's lead guest.
-    const email = buildChangeEmail({ outcome: 'received', booking: { ...booking, guestName: '' }, request: { kind: check.value.kind } });
+    const email = buildChangeEmail({
+      outcome: 'received',
+      booking: { ...booking, guestName: '' },
+      request: { kind: check.value.kind },
+    });
     const emailed = await sendMail(req.portal.email, email).catch(() => false);
     if (emailed) {
       await logEmail({
-        club: booking.club, direction: 'outbound', booking_id: booking.bookingId,
-        from_email: process.env.FROM_EMAIL, to_email: req.portal.email, subject: email.subject,
-        body_text: email.text, sent_by: 'bot', kind: 'change_acknowledgement',
+        club: booking.club,
+        direction: 'outbound',
+        booking_id: booking.bookingId,
+        from_email: process.env.FROM_EMAIL,
+        to_email: req.portal.email,
+        subject: email.subject,
+        body_text: email.text,
+        sent_by: 'bot',
+        kind: 'change_acknowledgement',
       });
     }
     res.status(201).json({
@@ -354,11 +424,8 @@ router.post('/bookings/:bookingId/request', async (req, res, next) => {
 router.post('/bookings/:bookingId/pay', async (req, res, next) => {
   try {
     const config = readPaymentLinkConfig();
-    if (!config.configured) return res.status(409).json({ error: 'Online payment is not available. Please contact the club.' });
-    const columns = await getBookingColumns();
-    if (!columns.has('stripe_payment_link_id')) {
+    if (!config.configured)
       return res.status(409).json({ error: 'Online payment is not available. Please contact the club.' });
-    }
     const account = await loadAccount(req);
     if (!account) return res.status(401).json({ error: 'This account is no longer active.' });
     const booking = ownBooking(account, req.params.bookingId);
@@ -392,11 +459,11 @@ router.post('/bookings/:bookingId/pay', async (req, res, next) => {
       payment_link_sent_by: `portal:${req.portal.email}`,
       payment_status: PENDING_PAYMENT_STATUS,
     };
-    const names = Object.keys(updates).filter((name) => columns.has(name));
+    const names = Object.keys(updates);
     const params = names.map((name) => updates[name]);
     const sets = names.map((name, index) => `"${name}" = $${index + 1}`);
-    if (columns.has('payment_link_sent_at')) sets.push('payment_link_sent_at = NOW()');
-    const audit = buildAuditSet(columns, params.length + 1, `portal:${req.portal.email}`);
+    sets.push('payment_link_sent_at = NOW()');
+    const audit = buildAuditSet(params.length + 1, `portal:${req.portal.email}`);
     params.push(...audit.values, booking.bookingId, booking.club);
     await query(
       `UPDATE public.bookings SET ${[...sets, ...audit.clauses].join(', ')}
@@ -405,16 +472,16 @@ router.post('/bookings/:bookingId/pay', async (req, res, next) => {
     );
     res.json({ url, amount });
   } catch (err) {
-    if (/^Stripe /.test(err.message)) return res.status(502).json({ error: 'Stripe could not create the payment. Please try again or contact the club.' });
+    if (/^Stripe /.test(err.message))
+      return res
+        .status(502)
+        .json({ error: 'Stripe could not create the payment. Please try again or contact the club.' });
     next(err);
   }
 });
 
 router.post('/enquiries', async (req, res, next) => {
   try {
-    if (!(await hasEmailLog())) {
-      return res.status(503).json({ error: 'Online requests are not available yet. Please email the club.' });
-    }
     const account = await loadAccount(req);
     if (!account) return res.status(401).json({ error: 'This account is no longer active.' });
     const enquiry = buildEnquiry(req.body, account.operator, req.portal.email);
@@ -427,8 +494,13 @@ router.post('/enquiries', async (req, res, next) => {
           routed_to, review_status, review_reason)
        VALUES ($1, 'inbound', $2, $3, $4, $5, 'operator_request', $6, 'inbox', 'open', $7)`,
       [
-        req.portal.club, req.portal.email, process.env.FROM_EMAIL ?? null, enquiry.subject, enquiry.body,
-        enquiry.summary, 'Tee time request from the tour operator portal',
+        req.portal.club,
+        req.portal.email,
+        process.env.FROM_EMAIL ?? null,
+        enquiry.subject,
+        enquiry.body,
+        enquiry.summary,
+        'Tee time request from the tour operator portal',
       ],
     );
     res.status(201).json({ ok: true, message: 'Request sent. The club will reply by email with tee times.' });

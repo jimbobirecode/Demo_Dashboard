@@ -23,13 +23,7 @@ const TIMEOUT_MS = 15_000;
  * exercised a right, and the caller needs to skip the send rather than count a
  * failure and go looking for the fault.
  */
-export async function requestSurveyLink({
-  baseUrl,
-  apiKey,
-  source,
-  round,
-  fetchImpl = fetch,
-}) {
+export async function requestSurveyLink({ baseUrl, apiKey, source, round, fetchImpl = fetch }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -66,7 +60,11 @@ export async function requestSurveyLink({
     }
 
     if (payload?.dry_run) {
-      return { ok: true, dryRun: true, message: `Club Vero would create a survey for ${payload.outlet ?? 'the course'}` };
+      return {
+        ok: true,
+        dryRun: true,
+        message: `Club Vero would create a survey for ${payload.outlet ?? 'the course'}`,
+      };
     }
 
     if (!payload?.survey_url) {
@@ -81,51 +79,16 @@ export async function requestSurveyLink({
       unsubscribeUrl: payload.unsubscribe_url ?? null,
       created: payload.created !== false,
       answered: Boolean(payload.answered),
-      message: payload.created === false
-        ? (payload.answered ? 'Reusing the survey this guest has already answered' : 'Reusing the survey already created for this booking')
-        : `Survey created against ${payload.outlet ?? 'the course'}`,
+      message:
+        payload.created === false
+          ? payload.answered
+            ? 'Reusing the survey this guest has already answered'
+            : 'Reusing the survey already created for this booking'
+          : `Survey created against ${payload.outlet ?? 'the course'}`,
     };
   } catch (err) {
     const message = err?.name === 'AbortError' ? 'Club Vero timed out' : err.message;
     return { ok: false, status: 0, message };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Whether the integration is actually wired up, from Vero's own point of view.
- *
- * Answers the questions a settings screen is really asking — does the key
- * work, which club does it reach, is there a course for a round to be filed
- * against — before the first guest is emailed rather than after.
- */
-export async function checkVero({ baseUrl, apiKey, source, site, fetchImpl = fetch }) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  try {
-    const url = new URL(`${baseUrl}/api/partner/health`);
-    if (site) url.searchParams.set('site', site);
-
-    const response = await fetchImpl(url, {
-      headers: { 'x-partner-key': apiKey, 'x-partner-source': source },
-      signal: controller.signal,
-    });
-
-    const payload = await readJson(response);
-    if (!response.ok) {
-      return { ok: false, message: payload?.error ?? `Club Vero answered ${response.status}` };
-    }
-    return {
-      ok: Boolean(payload?.ok),
-      club: payload?.club ?? null,
-      outlet: payload?.outlet?.name ?? null,
-      message: payload?.error ?? null,
-    };
-  } catch (err) {
-    const message = err?.name === 'AbortError' ? 'Club Vero timed out' : err.message;
-    return { ok: false, message };
   } finally {
     clearTimeout(timer);
   }

@@ -10,14 +10,17 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import {
   authenticateUser,
+  bumpSessionVersion,
   clearSession,
   issueSession,
+  readSessionClaims,
   requireAuth,
   setPermanentPassword,
   updateLastLogin,
+  verifyCurrentPassword,
 } from '../auth.js';
 import { clubDisplayName } from '../lib/bookings-domain.js';
-import { getUserColumns, hasPasswordReset } from '../lib/schema.js';
+import { USER_SELECT } from '../lib/schema.js';
 import {
   NEUTRAL_REPLY,
   buildResetTemplateData,
@@ -33,6 +36,10 @@ import {
   validatePassword,
 } from '../lib/password-reset-domain.js';
 import { sendTemplateEmail } from '../lib/sendgrid.js';
+import { clientIp, maskForLog } from '../lib/request-guard.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child('auth');
 
 const router = Router();
 
@@ -42,7 +49,26 @@ const router = Router();
  * tokens. Neither survives a restart — see the note in the domain module.
  */
 const requestThrottle = createThrottle({ limit: 5, windowMs: 15 * 60_000 });
+const requestIpThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
 const redeemThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
+
+/**
+ * Sign-in failures, counted per account and per address, in memory (one
+ * Render instance; see lib/throttle.js). The account limit stops a password
+ * list being worked against one login from many addresses; the address limit
+ * stops one client spraying a common password across every login. Only
+ * failures count, and signing in successfully clears the account's tally.
+ */
+const loginAccountThrottle = createThrottle({ limit: 5, windowMs: 15 * 60_000 });
+const loginIpThrottle = createThrottle({ limit: 20, windowMs: 15 * 60_000 });
+
+function refuseThrottled(res, seconds) {
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  res.set('Retry-After', String(seconds));
+  return res.status(429).json({
+    error: `Too many sign-in attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+  });
+}
 
 router.post('/login', async (req, res, next) => {
   // `username` is still read so an older client keeps working; either field
@@ -54,12 +80,26 @@ router.post('/login', async (req, res, next) => {
     return res.status(400).json({ error: 'Email address and password are required' });
   }
 
+  const accountKey = String(identifier).trim().toLowerCase();
+  const ip = clientIp(req);
+  if (loginAccountThrottle.blocked(accountKey) || loginIpThrottle.blocked(ip)) {
+    return refuseThrottled(
+      res,
+      Math.max(loginAccountThrottle.retryAfterSeconds(accountKey), loginIpThrottle.retryAfterSeconds(ip)),
+    );
+  }
+
   try {
     const result = await authenticateUser(identifier, password);
     // The same answer whether the account does not exist or the password is
     // wrong: a different one would say which addresses have accounts here.
-    if (!result) return res.status(401).json({ error: 'Invalid email address or password' });
+    if (!result) {
+      loginAccountThrottle.fail(accountKey);
+      loginIpThrottle.fail(ip);
+      return res.status(401).json({ error: 'Invalid email address or password' });
+    }
 
+    loginAccountThrottle.clear(accountKey);
     const { user, mustChangePassword } = result;
     issueSession(res, user);
     if (!mustChangePassword) await updateLastLogin(user.id);
@@ -70,13 +110,35 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+/**
+ * Change your own password.
+ *
+ * The current one is required, so a session left open on a shared PC is not
+ * enough to take the account over — except on the forced first change, where
+ * the temporary password was proved moments ago at sign-in. Every other
+ * session the account had ends; this one is re-issued so the person changing
+ * it stays signed in.
+ */
 router.post('/change-password', requireAuth, async (req, res, next) => {
-  const { newPassword } = req.body ?? {};
+  const { currentPassword, newPassword } = req.body ?? {};
   const valid = validatePassword(newPassword);
   if (!valid.ok) return res.status(400).json({ error: valid.reason });
 
+  const accountKey = `id:${req.user.sub}`;
   try {
-    await setPermanentPassword(Number(req.user.sub), newPassword);
+    if (!req.user.mustChangePassword) {
+      if (loginAccountThrottle.blocked(accountKey)) {
+        return refuseThrottled(res, loginAccountThrottle.retryAfterSeconds(accountKey));
+      }
+      if (!(await verifyCurrentPassword(req.user.sub, currentPassword))) {
+        loginAccountThrottle.fail(accountKey);
+        return res.status(400).json({ error: 'Your current password is not correct' });
+      }
+      loginAccountThrottle.clear(accountKey);
+    }
+
+    const user = await setPermanentPassword(Number(req.user.sub), newPassword);
+    if (user) issueSession(res, user);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -91,30 +153,35 @@ router.get('/me', requireAuth, (req, res) => {
       fullName: req.user.fullName,
       customerId: req.user.customerId,
       clubName: clubDisplayName(req.user.customerId),
-      role: req.user.role ?? 'admin',
+      role: req.user.role,
     },
+    mustChangePassword: Boolean(req.user.mustChangePassword),
   });
 });
 
-router.post('/logout', (req, res) => {
+/**
+ * Sign out — everywhere. Clearing the cookie only helps the browser that
+ * asked; bumping the account's session version ends a copy of the cookie
+ * wherever else it is.
+ */
+router.post('/logout', async (req, res) => {
+  const claims = readSessionClaims(req);
   clearSession(res);
+  if (claims?.sub) {
+    await bumpSessionVersion(claims.sub).catch((err) => {
+      log.warn('could not end sessions on sign-out:', err.message);
+    });
+  }
   res.json({ ok: true });
 });
 
 /**
  * What the login screen needs to know before it offers a "forgot password"
- * link: whether the migration has been run and whether SendGrid is configured.
- * Unauthenticated by necessity, so it carries no key and no address.
+ * link: whether SendGrid is configured to send it. Unauthenticated by
+ * necessity, so it carries no key and no address.
  */
-router.get('/reset-config', async (req, res) => {
-  let migrated = false;
-  try {
-    migrated = await hasPasswordReset();
-  } catch {
-    // A database that cannot be reached is reported as "not available" rather
-    // than as an error; the login form itself still works.
-  }
-  res.json(publicResetConfig(readResetConfig(), { migrated }));
+router.get('/reset-config', (req, res) => {
+  res.json(publicResetConfig(readResetConfig()));
 });
 
 /**
@@ -131,18 +198,16 @@ router.post('/forgot-password', async (req, res) => {
   // Everything past here is best-effort and must never change the answer
   // above, so failures are logged rather than surfaced.
   try {
-    if (!requestThrottle.check(`${identifier}|${clientIp(req)}`)) {
-      console.warn('[auth] password reset throttled for', identifier);
+    // Per account and per address, independently: varying either alone gets
+    // nobody a fresh budget.
+    const ipAllowed = requestIpThrottle.check(clientIp(req));
+    if (!requestThrottle.check(identifier.toLowerCase()) || !ipAllowed) {
+      log.warn('password reset throttled for', maskForLog(identifier));
       return;
     }
-    if (!(await hasPasswordReset())) {
-      console.warn('[auth] password reset requested but migration_add_password_reset.sql has not been run');
-      return;
-    }
-
     const config = readResetConfig();
     if (!config.configured) {
-      console.warn('[auth] password reset requested but not configured:', config.missing.join(', '));
+      log.warn('password reset requested but not configured:', config.missing.join(', '));
       return;
     }
 
@@ -151,7 +216,7 @@ router.post('/forgot-password', async (req, res) => {
 
     const address = resolveResetEmail(user);
     if (!address) {
-      console.warn('[auth] no email address on file for', user.username);
+      log.warn('no email address on file for user', user.id);
       return;
     }
 
@@ -159,10 +224,7 @@ router.post('/forgot-password', async (req, res) => {
 
     // A new link supersedes any outstanding one, so a stolen older email stops
     // working the moment the real user asks again.
-    await query(
-      'UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL',
-      [user.id],
-    );
+    await query('UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL', [user.id]);
     await query(
       `INSERT INTO public.password_resets (user_id, token_hash, email, expires_at, requested_ip)
        VALUES ($1, $2, $3, $4, $5)`,
@@ -184,9 +246,9 @@ router.post('/forgot-password', async (req, res) => {
       }),
     });
 
-    if (!result.ok) console.error('[auth] reset email failed:', result.message);
+    if (!result.ok) log.error('reset email failed:', result.message);
   } catch (err) {
-    console.error('[auth] password reset failed:', err.message);
+    log.error('password reset failed:', err.message);
   }
 });
 
@@ -205,7 +267,7 @@ router.post('/reset-password/check', async (req, res, next) => {
       username: found.row.username,
       // 'invite' means this account has never had a password, so the page
       // says "set" rather than "reset" and does not imply they forgot one.
-      purpose: found.row.purpose ?? 'reset',
+      purpose: found.row.purpose,
       fullName: found.row.full_name ?? '',
       clubName: clubDisplayName(found.row.customer_id),
     });
@@ -231,10 +293,9 @@ router.post('/reset-password', async (req, res, next) => {
 
     await setPermanentPassword(found.row.user_id, newPassword);
     // Every outstanding link for this user dies with the one just used.
-    await query(
-      'UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL',
-      [found.row.user_id],
-    );
+    await query('UPDATE public.password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL', [
+      found.row.user_id,
+    ]);
 
     // The new password is proved by signing in with it, so no session is
     // issued here — a reset link should never be a way in by itself.
@@ -242,7 +303,7 @@ router.post('/reset-password', async (req, res, next) => {
     res.json({
       ok: true,
       username: found.row.username,
-      purpose: found.row.purpose ?? 'reset',
+      purpose: found.row.purpose,
     });
   } catch (err) {
     next(err);
@@ -251,19 +312,16 @@ router.post('/reset-password', async (req, res, next) => {
 
 /** By username or by the address on file; both are unique enough in practice. */
 async function findUserForReset(identifier) {
-  const columns = await getUserColumns();
-  const byEmail = columns.has('email') ? ' OR LOWER(email) = LOWER($1)' : '';
-
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.dashboard_users
-      WHERE LOWER(username) = LOWER($1)${byEmail}
+    `SELECT ${USER_SELECT} FROM public.dashboard_users
+      WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)
       ORDER BY id LIMIT 1`,
     [identifier],
   );
 
   const user = rows[0];
   if (!user) return null;
-  if (columns.has('is_active') && !user.is_active) return null;
+  if (user.is_active === false) return null;
   return user;
 }
 
@@ -272,10 +330,6 @@ async function findResetRow(token) {
   if (!token || typeof token !== 'string') {
     return { ok: false, reason: 'This reset link is not valid. Request a new one.' };
   }
-  if (!(await hasPasswordReset())) {
-    return { ok: false, reason: 'Password reset is not available on this install.' };
-  }
-
   const { rows } = await query(
     `SELECT r.*, u.username, u.full_name, u.customer_id, u.is_active
        FROM public.password_resets r
@@ -291,12 +345,6 @@ async function findResetRow(token) {
 
   const usable = resetRowUsable(rows[0]);
   return usable.ok ? { ok: true, row: rows[0] } : usable;
-}
-
-/** Behind a proxy the socket address is the proxy's, so trust the header. */
-function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 function publicUser(user) {

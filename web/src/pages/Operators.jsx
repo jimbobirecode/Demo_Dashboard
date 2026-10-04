@@ -19,13 +19,12 @@ import { describeDue } from '../lib/payments.js';
  * remember its operators — the repeat business names them, and an account is
  * opened from the suggestion with the domain already filled in.
  */
-export default function Operators() {
+export default function Operators({ user }) {
   const [data, setData] = useState(null);
   const [suggestions, setSuggestions] = useState(null);
   const [tab, setTab] = useState('accounts');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [migration, setMigration] = useState(null);
   const [notice, setNotice] = useState(null);
   const [editing, setEditing] = useState(null); // { operator } | { seed } | null
   const [openId, setOpenId] = useState(null);
@@ -37,13 +36,11 @@ export default function Operators() {
       const payload = await api.operators();
       setData(payload);
       setError(null);
-      setMigration(null);
       // Suggestions need the same full scan, so they are fetched alongside
       // rather than only when the tab is opened — the count belongs on the tab.
       setSuggestions(await api.operatorSuggestions());
     } catch (err) {
-      if (err.status === 409) setMigration(err.message);
-      else setError(err.message);
+      setError(err.message);
       setData(null);
     } finally {
       setLoading(false);
@@ -66,7 +63,7 @@ export default function Operators() {
     };
   }, [openId]);
 
-  const operators = data?.operators ?? [];
+  const operators = useMemo(() => data?.operators ?? [], [data]);
   const totals = data?.totals;
   const bands = data?.ageingBands ?? [];
 
@@ -83,9 +80,7 @@ export default function Operators() {
 
   async function save(payload) {
     const existing = editing?.operator;
-    const { operator } = existing
-      ? await api.updateOperator(existing.id, payload)
-      : await api.createOperator(payload);
+    const { operator } = existing ? await api.updateOperator(existing.id, payload) : await api.createOperator(payload);
 
     setEditing(null);
     setNotice({
@@ -119,20 +114,6 @@ export default function Operators() {
     }
   }
 
-  if (migration) {
-    return (
-      <div className="stack">
-        <h1>Tour Operators</h1>
-        <div className="banner error">
-          {migration}
-        </div>
-        <p className="secondary">
-          Until then, bookings still load and the rest of the dashboard is unaffected.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="stack">
       <div className="between">
@@ -155,13 +136,6 @@ export default function Operators() {
 
       {error && <div className="banner error">{error}</div>}
       {notice && <div className={`banner ${notice.kind}`}>{notice.text}</div>}
-      {data && data.tracking === false && (
-        <div className="banner error">
-          Bookings cannot carry an operator or a payment state on this database. Run{' '}
-          <code>migration_add_tour_operators.sql</code> — until then an account can be set up, but
-          nothing can be assigned to it by hand.
-        </div>
-      )}
 
       {totals && (
         <div className="kpi-row">
@@ -229,7 +203,6 @@ export default function Operators() {
           operators={operators}
           onOpenAccount={(seed) => setEditing({ seed })}
           onAssign={assign}
-          tracking={data?.tracking !== false}
         />
       )}
 
@@ -239,14 +212,12 @@ export default function Operators() {
           account={editing.operator?.account}
           seed={editing.seed}
           onSave={save}
-          onDelete={editing.operator ? remove : undefined}
+          onDelete={editing.operator && user?.role === 'admin' ? remove : undefined}
           onClose={() => setEditing(null)}
         />
       )}
 
-      {statement && (
-        <Statement statement={statement} onClose={() => setOpenId(null)} />
-      )}
+      {statement && <Statement statement={statement} onClose={() => setOpenId(null)} />}
     </div>
   );
 }
@@ -255,8 +226,8 @@ function AccountsTable({ operators, direct, onEdit, onOpen }) {
   if (!operators.length) {
     return (
       <div className="empty">
-        No trade accounts yet. Open the Unrecognised tab — the domains the club already books with
-        are listed there, ready to become accounts.
+        No trade accounts yet. Open the Unrecognised tab — the domains the club already books with are listed there,
+        ready to become accounts.
       </div>
     );
   }
@@ -355,9 +326,7 @@ function AccountsTable({ operators, direct, onEdit, onOpen }) {
               <td className="num">{formatNumber(direct.bookings)}</td>
               <td className="num">{formatCurrency(direct.committedGross)}</td>
               <td className="num">{formatCurrency(direct.outstanding)}</td>
-              <td className="num">
-                {direct.overdueAmount > 0 ? formatCurrency(direct.overdueAmount) : '—'}
-              </td>
+              <td className="num">{direct.overdueAmount > 0 ? formatCurrency(direct.overdueAmount) : '—'}</td>
               <td className="muted">—</td>
               <td className="muted">—</td>
               <td />
@@ -415,9 +384,7 @@ function AgeingTable({ operators, bands, totals }) {
                         : undefined
                     }
                   >
-                    {operator.account.ageing[band.id] > 0
-                      ? formatCurrency(operator.account.ageing[band.id])
-                      : '—'}
+                    {operator.account.ageing[band.id] > 0 ? formatCurrency(operator.account.ageing[band.id]) : '—'}
                   </td>
                 ))}
                 <td className="num" style={{ fontWeight: 700 }}>
@@ -442,8 +409,8 @@ function AgeingTable({ operators, bands, totals }) {
         </table>
       </div>
       <p className="secondary" style={{ fontSize: '0.8125rem', margin: 0 }}>
-        Bands are counted from each booking's own due date under its operator's terms, and only
-        committed bookings are included — an open enquiry is not money anybody owes.
+        Bands are counted from each booking&apos;s own due date under its operator&apos;s terms, and only committed
+        bookings are included — an open enquiry is not money anybody owes.
       </p>
     </div>
   );
@@ -454,7 +421,7 @@ function AgeingTable({ operators, bands, totals }) {
  * need different answers: a domain with no account at all, and a booking whose
  * text names an account it has not been attached to.
  */
-function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, tracking }) {
+function Unrecognised({ suggestions, operators, onOpenAccount, onAssign }) {
   const [assigning, setAssigning] = useState({});
 
   if (!suggestions) return <div className="empty">Loading…</div>;
@@ -467,8 +434,8 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, trackin
         <div>
           <h2 style={{ margin: 0 }}>Domains with no account</h2>
           <p className="secondary" style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem' }}>
-            Business addresses the club has taken more than one booking from. Personal mailboxes are
-            never listed — a family that books twice from Gmail is not a tour operator.
+            Business addresses the club has taken more than one booking from. Personal mailboxes are never listed — a
+            family that books twice from Gmail is not a tour operator.
           </p>
         </div>
 
@@ -528,9 +495,7 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, trackin
             </table>
           </div>
         ) : (
-          <div className="empty">
-            Every business domain the club books with already has an account.
-          </div>
+          <div className="empty">Every business domain the club books with already has an account.</div>
         )}
       </div>
 
@@ -539,18 +504,11 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, trackin
           <div>
             <h2 style={{ margin: 0 }}>Bookings that name an operator</h2>
             <p className="secondary" style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem' }}>
-              An operator's name appears in these enquiries, but the booking did not come from one of
-              their domains. A name in prose is not evidence of an account, so nothing has been
-              attached — confirm each one, or leave it as a direct booking.
+              An operator&apos;s name appears in these enquiries, but the booking did not come from one of their
+              domains. A name in prose is not evidence of an account, so nothing has been attached — confirm each one,
+              or leave it as a direct booking.
             </p>
           </div>
-
-          {!tracking && (
-            <div className="banner error">
-              Assigning needs the <code>tour_operator_id</code> column. Run{' '}
-              <code>migration_add_tour_operators.sql</code> first.
-            </div>
-          )}
 
           <div className="table-wrap">
             <table className="data">
@@ -593,7 +551,6 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, trackin
                             }))
                           }
                           style={{ width: 'auto' }}
-                          disabled={!tracking}
                         >
                           <option value="">Direct booking</option>
                           {operators.map((operator) => (
@@ -605,12 +562,10 @@ function Unrecognised({ suggestions, operators, onOpenAccount, onAssign, trackin
                         <button
                           type="button"
                           className="btn-sm"
-                          disabled={!tracking}
                           onClick={() => {
                             const raw = assigning[booking.bookingId] ?? String(booking.operatorId ?? '');
                             const id = raw === '' ? null : Number(raw);
-                            const label =
-                              operators.find((operator) => operator.id === id)?.name ?? 'direct bookings';
+                            const label = operators.find((operator) => operator.id === id)?.name ?? 'direct bookings';
                             onAssign([booking.bookingId], id, label);
                           }}
                         >
@@ -652,10 +607,7 @@ function Statement({ statement, onClose }) {
           <Cell label="Committed" value={formatCurrency(account.committedGross)} />
           <Cell label="Paid" value={formatCurrency(account.paid)} />
           <Cell label="Outstanding" value={formatCurrency(account.outstanding)} accent />
-          <Cell
-            label="Overdue"
-            value={account.overdueAmount > 0 ? formatCurrency(account.overdueAmount) : 'None'}
-          />
+          <Cell label="Overdue" value={account.overdueAmount > 0 ? formatCurrency(account.overdueAmount) : 'None'} />
           <Cell
             label="Credit headroom"
             value={account.headroom === null ? 'No limit' : formatCurrency(account.headroom)}
@@ -668,9 +620,7 @@ function Statement({ statement, onClose }) {
             {operator.contactEmail}
           </div>
         ) : (
-          <div className="banner error">
-            No contact email on this account, so it cannot be sent a reminder.
-          </div>
+          <div className="banner error">No contact email on this account, so it cannot be sent a reminder.</div>
         )}
 
         <div className="table-wrap">
@@ -700,7 +650,10 @@ function Statement({ statement, onClose }) {
                   <td className="num">{formatCurrency(booking.payment.outstanding)}</td>
                   <td className="secondary" style={{ fontSize: '0.8125rem' }}>
                     {booking.payment.dueDate ? formatDate(booking.payment.dueDate) : '—'}
-                    <div className={booking.payment.overdue ? undefined : 'muted'} style={{ color: booking.payment.overdue ? OVERDUE : undefined }}>
+                    <div
+                      className={booking.payment.overdue ? undefined : 'muted'}
+                      style={{ color: booking.payment.overdue ? OVERDUE : undefined }}
+                    >
                       {describeDue(booking.payment)}
                     </div>
                   </td>

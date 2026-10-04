@@ -9,7 +9,7 @@ import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../lib
  * 03/04 means 4 March imports perfectly and is wrong in every row. So nothing
  * is written until somebody has seen the dates it read.
  */
-export default function Import() {
+export default function Import({ user }) {
   const [config, setConfig] = useState(null);
   const [file, setFile] = useState(null);
   const [dayFirst, setDayFirst] = useState(true);
@@ -19,7 +19,10 @@ export default function Import() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api.importConfig().then(setConfig).catch((err) => setError(err.message));
+    api
+      .importConfig()
+      .then(setConfig)
+      .catch((err) => setError(err.message));
   }, []);
 
   async function read(selected) {
@@ -49,22 +52,13 @@ export default function Import() {
     }
   }
 
-  if (config && !config.available) {
-    return (
-      <div className="stack">
-        <h1>Upload tee sheet</h1>
-        <div className="banner error">{config.reason}</div>
-      </div>
-    );
-  }
-
   return (
     <div className="stack">
       <header>
         <h1>Upload tee sheet</h1>
         <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-          Bring in bookings made in the club's own system. They are marked as imported, so they
-          count as play and revenue but never as enquiries TeeMail converted.
+          Bring in bookings made in the club&apos;s own system. They are marked as imported, so they count as play and
+          revenue but never as enquiries TeeMail converted.
         </p>
       </header>
 
@@ -74,17 +68,16 @@ export default function Import() {
         <div className="toolbar">
           <label className="stack grow" style={{ gap: '0.35rem' }}>
             <span className="label">CSV or Excel file</span>
-            <input
-              type="file"
-              accept=".csv,.xlsx,.xlsm,text/csv"
-              onChange={(event) => read(event.target.files?.[0])}
-            />
+            <input type="file" accept=".csv,.xlsx,.xlsm,text/csv" onChange={(event) => read(event.target.files?.[0])} />
           </label>
           <label className="stack" style={{ gap: '0.35rem' }}>
             <span className="label">Dates read as</span>
             <select
               value={dayFirst ? 'day' : 'month'}
-              onChange={(event) => { setDayFirst(event.target.value === 'day'); setPreview(null); }}
+              onChange={(event) => {
+                setDayFirst(event.target.value === 'day');
+                setPreview(null);
+              }}
               style={{ width: 'auto' }}
             >
               <option value="day">Day first — 03/04 is 3 April</option>
@@ -110,7 +103,10 @@ export default function Import() {
             run(async () => {
               const outcome = await api.commitImport({ ...file, dayFirst });
               setPreview(null);
-              api.importConfig().then(setConfig).catch(() => {});
+              api
+                .importConfig()
+                .then(setConfig)
+                .catch(() => {});
               return outcome;
             }, setResult)
           }
@@ -130,11 +126,17 @@ export default function Import() {
         <Batches
           batches={config.batches}
           busy={busy}
+          // Undoing deletes bookings in bulk, which the API keeps for
+          // administrators; staff see the history without the button.
+          canUndo={user?.role === 'admin'}
           onUndo={(batch) =>
             run(async () => {
               const undone = await api.undoImport(batch.batchId);
               setError(null);
-              api.importConfig().then(setConfig).catch(() => {});
+              api
+                .importConfig()
+                .then(setConfig)
+                .catch(() => {});
               return { batchId: batch.batchId, inserted: 0, message: undone.message, ...undone };
             }, setResult)
           }
@@ -157,7 +159,9 @@ function Preview({ preview, onCommit, busy }) {
           </p>
         </div>
         <button type="button" className="btn-primary" disabled={busy || nothingToDo} onClick={onCommit}>
-          {nothingToDo ? 'Nothing to import' : `Import ${formatNumber(preview.fresh)} booking${preview.fresh === 1 ? '' : 's'}`}
+          {nothingToDo
+            ? 'Nothing to import'
+            : `Import ${formatNumber(preview.fresh)} booking${preview.fresh === 1 ? '' : 's'}`}
         </button>
       </div>
 
@@ -170,8 +174,8 @@ function Preview({ preview, onCommit, busy }) {
 
       {preview.unmapped.length > 0 && (
         <div className="banner">
-          <strong>Columns not used:</strong> {preview.unmapped.join(', ')}. If one of those is the
-          price or the date, rename its header and upload again.
+          <strong>Columns not used:</strong> {preview.unmapped.join(', ')}. If one of those is the price or the date,
+          rename its header and upload again.
         </div>
       )}
 
@@ -183,8 +187,12 @@ function Preview({ preview, onCommit, busy }) {
           <table className="data">
             <thead>
               <tr>
-                <th>Date</th><th>Tee time</th><th className="num">Players</th>
-                <th className="num">Total</th><th>Guest</th><th>Course</th>
+                <th>Date</th>
+                <th>Tee time</th>
+                <th className="num">Players</th>
+                <th className="num">Total</th>
+                <th>Guest</th>
+                <th>Course</th>
               </tr>
             </thead>
             <tbody>
@@ -208,7 +216,9 @@ function Preview({ preview, onCommit, busy }) {
           <summary className="btn-sm">Show the {preview.rejected.length} refused row(s)</summary>
           <ul className="stack" style={{ gap: '0.25rem', marginTop: '0.5rem', fontSize: '0.8125rem' }}>
             {preview.rejected.slice(0, 50).map((row) => (
-              <li key={row.line} className="muted">Row {row.line}: {row.reason}</li>
+              <li key={row.line} className="muted">
+                Row {row.line}: {row.reason}
+              </li>
             ))}
           </ul>
         </details>
@@ -217,21 +227,26 @@ function Preview({ preview, onCommit, busy }) {
   );
 }
 
-function Batches({ batches, onUndo, busy }) {
+function Batches({ batches, onUndo, busy, canUndo }) {
   return (
     <div className="card stack" style={{ gap: '0.75rem' }}>
       <div>
         <h3>Previous uploads</h3>
         <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8125rem' }}>
-          Undoing removes the rows nobody has edited since — anything worked on is left alone.
+          {canUndo
+            ? 'Undoing removes the rows nobody has edited since — anything worked on is left alone.'
+            : 'Only an administrator can undo an upload.'}
         </p>
       </div>
       <div className="table-wrap">
         <table className="data">
           <thead>
             <tr>
-              <th>Batch</th><th>Uploaded</th><th>Covering</th>
-              <th className="num">Bookings</th><th />
+              <th>Batch</th>
+              <th>Uploaded</th>
+              <th>Covering</th>
+              <th className="num">Bookings</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -245,19 +260,24 @@ function Batches({ batches, onUndo, busy }) {
                 </td>
                 <td className="num">{formatNumber(batch.bookings)}</td>
                 <td className="num">
-                  <button
-                    type="button"
-                    className="btn-sm btn-danger"
-                    disabled={busy}
-                    onClick={() => {
-                      if (window.confirm(
-                        `Remove the ${batch.bookings} booking(s) from ${batch.batchId}? ` +
-                        'Any that have been edited since are kept.',
-                      )) onUndo(batch);
-                    }}
-                  >
-                    Undo
-                  </button>
+                  {canUndo && (
+                    <button
+                      type="button"
+                      className="btn-sm btn-danger"
+                      disabled={busy}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Remove the ${batch.bookings} booking(s) from ${batch.batchId}? ` +
+                              'Any that have been edited since are kept.',
+                          )
+                        )
+                          onUndo(batch);
+                      }}
+                    >
+                      Undo
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

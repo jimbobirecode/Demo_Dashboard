@@ -5,4 +5,3 @@ export { CategoryBar } from './CategoryBar.jsx';
 export { ChartCard, TableView } from './ChartCard.jsx';
 export { ChartTooltip } from './ChartTooltip.jsx';
 export { Heatmap } from './Heatmap.jsx';
-

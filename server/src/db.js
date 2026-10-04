@@ -1,32 +1,40 @@
 import fs from 'node:fs';
 import pg from 'pg';
+import { logger } from './lib/logger.js';
+import { databaseOptions } from './lib/db-ssl.js';
+
+const log = logger.child('db');
 
 const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
-  console.warn('[db] DATABASE_URL is not set — database queries will fail.');
+  log.warn('DATABASE_URL is not set — database queries will fail.');
 }
 
-// TLS is driven by the connection string (append ?sslmode=require for managed
-// Postgres). Point PGSSLROOTCERT at the provider's CA bundle if its certificate
-// chain is not in the system trust store.
-function sslConfig() {
-  const caPath = process.env.PGSSLROOTCERT;
-  if (caPath && fs.existsSync(caPath)) {
-    return { ca: fs.readFileSync(caPath, 'utf8') };
-  }
-  return undefined;
+/** The CA bundle PGSSLROOTCERT names, or null (with a warning) if it cannot be read. */
+export function readCaFile(file) {
+  if (fs.existsSync(file)) return fs.readFileSync(file, 'utf8');
+  log.warn(`PGSSLROOTCERT=${file} does not exist; the certificate will not be verified against it.`);
+  return null;
+}
+
+// TLS for any non-local host, whatever the URL says: see lib/db-ssl.js.
+const options = databaseOptions(process.env.DATABASE_URL, process.env, readCaFile);
+if (options.mode === 'encrypt') {
+  log.info('database: TLS without certificate verification (set PGSSLROOTCERT or DATABASE_SSL_VERIFY=true to verify)');
+} else if (options.mode === 'disabled') {
+  log.warn('database: TLS disabled by DATABASE_SSL=disable for a remote host');
 }
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: sslConfig(),
+  connectionString: options.connectionString,
+  ssl: options.ssl,
   max: Number(process.env.PGPOOL_MAX ?? 10),
   idleTimeoutMillis: 30_000,
 });
 
 pool.on('error', (err) => {
-  console.error('[db] idle client error:', err.message);
+  log.error('idle client error:', err.message);
 });
 
 export function query(text, params) {

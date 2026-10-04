@@ -17,15 +17,7 @@ const TIMEOUT_MS = 15_000;
  * Resolves to `{ ok, status, message }` rather than throwing: a campaign run
  * sends to many guests, and one bad address must not abandon the rest.
  */
-export async function sendTemplateEmail({
-  apiKey,
-  fromEmail,
-  fromName,
-  toEmail,
-  templateId,
-  data,
-  fetchImpl = fetch,
-}) {
+export async function sendTemplateEmail({ apiKey, fromEmail, fromName, toEmail, templateId, data, fetchImpl = fetch }) {
   return post(apiKey, toEmail, fetchImpl, {
     from: { email: fromEmail, name: fromName },
     personalizations: [{ to: [{ email: toEmail }], dynamic_template_data: data }],
@@ -61,7 +53,6 @@ export async function sendHtmlEmail({
 }
 
 async function post(apiKey, toEmail, fetchImpl, body) {
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -99,7 +90,10 @@ async function describeFailure(response) {
     const payload = await response.json();
     const errors = payload?.errors;
     if (Array.isArray(errors) && errors.length) {
-      return errors.map((error) => error.message).filter(Boolean).join('; ');
+      return errors
+        .map((error) => error.message)
+        .filter(Boolean)
+        .join('; ');
     }
   } catch {
     /* falls through to the generic wording */

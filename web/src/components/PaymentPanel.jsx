@@ -13,7 +13,15 @@ import { PAYMENT_STATUSES, describeDue, describeStage, statusDisagrees } from '.
  * agreed differently — clearing a field hands it back to the terms rather than
  * leaving a blank.
  */
-export default function PaymentPanel({ booking, operators, onSave, onAssign, onSendLink, onSendReceipt, onCheckPayment }) {
+export default function PaymentPanel({
+  booking,
+  operators,
+  onSave,
+  onAssign,
+  onSendLink,
+  onSendReceipt,
+  onCheckPayment,
+}) {
   const payment = booking.payment;
   const [form, setForm] = useState(() => toForm(booking));
   const [busy, setBusy] = useState(false);
@@ -22,12 +30,22 @@ export default function PaymentPanel({ booking, operators, onSave, onAssign, onS
   useEffect(() => {
     setForm(toForm(booking));
     setMessage(null);
-  }, [booking.bookingId, booking.paymentStatus, booking.amountPaid, booking.invoiceNumber, booking.invoicedAt, booking.depositDueDate, booking.balanceDueDate]);
+    // Reset only when the stored payment fields change, so a re-render with a
+    // fresh booking object does not throw away what is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    booking.bookingId,
+    booking.paymentStatus,
+    booking.amountPaid,
+    booking.invoiceNumber,
+    booking.invoicedAt,
+    booking.depositDueDate,
+    booking.balanceDueDate,
+  ]);
 
   if (!payment) return null;
 
-  const set = (field) => (event) =>
-    setForm((current) => ({ ...current, [field]: event.target.value }));
+  const set = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
 
   const dirty = JSON.stringify(form) !== JSON.stringify(toForm(booking));
 
@@ -65,12 +83,11 @@ export default function PaymentPanel({ booking, operators, onSave, onAssign, onS
 
       <div className="secondary" style={{ fontSize: '0.8125rem' }}>
         {describeStage(payment)} ·{' '}
-        <span style={payment.overdue ? { color: OVERDUE, fontWeight: 600 } : undefined}>
-          {describeDue(payment)}
-        </span>
+        <span style={payment.overdue ? { color: OVERDUE, fontWeight: 600 } : undefined}>{describeDue(payment)}</span>
         {payment.depositAmount > 0 && (
           <>
-            {' '}· deposit {formatCurrency(payment.depositAmount)} by{' '}
+            {' '}
+            · deposit {formatCurrency(payment.depositAmount)} by{' '}
             {payment.depositDueDate ? formatDate(payment.depositDueDate) : 'the account terms'}
           </>
         )}
@@ -78,13 +95,20 @@ export default function PaymentPanel({ booking, operators, onSave, onAssign, onS
 
       {statusDisagrees(payment) && (
         <div className="banner">
-          The money recorded here reads as <strong>{payment.derivedStatus}</strong>, but the booking
-          is marked <strong>{payment.status}</strong>. Nothing has been changed — the club's own
-          record of what was agreed is not overwritten automatically.
+          The money recorded here reads as <strong>{payment.derivedStatus}</strong>, but the booking is marked{' '}
+          <strong>{payment.status}</strong>. Nothing has been changed — the club&apos;s own record of what was agreed is
+          not overwritten automatically.
         </div>
       )}
 
-      {onSendLink && <PaymentLinkPanel booking={booking} onSend={onSendLink} onSendReceipt={onSendReceipt} onCheck={onCheckPayment} />}
+      {onSendLink && (
+        <PaymentLinkPanel
+          booking={booking}
+          onSend={onSendLink}
+          onSendReceipt={onSendReceipt}
+          onCheck={onCheckPayment}
+        />
+      )}
 
       {onAssign && (
         <div className="stack" style={{ gap: '0.25rem' }}>
@@ -110,8 +134,8 @@ export default function PaymentPanel({ booking, operators, onSave, onAssign, onS
           </select>
           {booking.operatorName && booking.operatorMatch === 'domain' && !booking.tourOperatorId && (
             <span className="secondary" style={{ fontSize: '0.75rem' }}>
-              Currently matched to {booking.operatorName} on its sending domain. Choosing an account
-              here pins it, whatever address the next enquiry comes from.
+              Currently matched to {booking.operatorName} on its sending domain. Choosing an account here pins it,
+              whatever address the next enquiry comes from.
             </span>
           )}
         </div>
@@ -128,7 +152,14 @@ export default function PaymentPanel({ booking, operators, onSave, onAssign, onS
           </select>
         </Field>
         <Field label="Amount paid">
-          <input type="number" min="0" step="0.01" value={form.amountPaid} onChange={set('amountPaid')} disabled={busy} />
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.amountPaid}
+            onChange={set('amountPaid')}
+            disabled={busy}
+          />
         </Field>
         <Field label="Invoice number">
           <input value={form.invoiceNumber} onChange={set('invoiceNumber')} disabled={busy} />

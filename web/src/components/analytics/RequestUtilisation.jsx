@@ -35,19 +35,10 @@ export default function RequestUtilisation({ grid }) {
             ? `${formatNumber(totals.requests)} enquiries asked for a slot · ` +
               `${formatNumber(totals.converted)} booked (${totals.conversion}%) · ` +
               `${formatNumber(totals.missed)} did not` +
-              (totals.unplaced
-                ? ` · ${formatNumber(totals.unplaced)} carry no usable date or time`
-                : '')
+              (totals.unplaced ? ` · ${formatNumber(totals.unplaced)} carry no usable date or time` : '')
             : 'No enquiry in this period carries a date and a time to place'
         }
-        action={
-          <Segmented
-            label="Request measure"
-            options={REQUEST_MEASURES}
-            value={metric}
-            onChange={setMetric}
-          />
-        }
+        action={<Segmented label="Request measure" options={REQUEST_MEASURES} value={metric} onChange={setMetric} />}
         footer={
           <TableView
             label="the numbers"
@@ -73,7 +64,9 @@ export default function RequestUtilisation({ grid }) {
           days={grid.days}
           bands={grid.bands}
           valueKey={metric}
-          valueLabel={asPercent ? 'per cent converted' : REQUEST_MEASURES.find((m) => m.id === metric).label.toLowerCase()}
+          valueLabel={
+            asPercent ? 'per cent converted' : REQUEST_MEASURES.find((m) => m.id === metric).label.toLowerCase()
+          }
           valueFormatter={formatValue}
           tooltipRows={(cell) => [
             { label: 'Asked for', value: formatNumber(cell.requests ?? 0) },

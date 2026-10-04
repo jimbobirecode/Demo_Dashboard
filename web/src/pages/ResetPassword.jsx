@@ -92,9 +92,7 @@ export default function ResetPassword() {
             </h1>
             <p className="muted" style={{ margin: 0, fontSize: '0.8125rem' }}>
               {state.purpose === 'invite' && (
-                <>
-                  You have been given access to the {state.clubName ?? 'club'} dashboard.{' '}
-                </>
+                <>You have been given access to the {state.clubName ?? 'club'} dashboard. </>
               )}
               For {state.username}
               {state.email ? ` (${state.email})` : ''}. At least 8 characters.

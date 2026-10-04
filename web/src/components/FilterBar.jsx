@@ -1,15 +1,7 @@
 import { DATE_PRESETS } from '../lib/dateRanges.js';
 
 /** Filters live in one row above the data, per the interaction spec. */
-export default function FilterBar({
-  search,
-  onSearch,
-  preset,
-  onPreset,
-  custom,
-  onCustom,
-  onReset,
-}) {
+export default function FilterBar({ search, onSearch, preset, onPreset, custom, onCustom, onReset }) {
   // Status filtering lives on the tiles above, not here.
   return (
     <div className="toolbar">

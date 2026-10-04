@@ -17,11 +17,12 @@
  * receipt.
  */
 import { query } from '../db.js';
-import { serialiseBooking } from './bookings-domain.js';
-import { getBookingColumns } from './schema.js';
 import { paidSessionsForLink } from './stripe.js';
 import { readPaymentLinkConfig } from './payment-link-domain.js';
 import { recordStripePayment } from './record-payment.js';
+import { logger } from './logger.js';
+
+const log = logger.child('payment-sync');
 
 /** Links older than this are no longer polled; the drawer can still check one by hand. */
 const LOOKBACK_DAYS = 60;
@@ -36,8 +37,25 @@ export function setReceiptSender(fn) {
   defaultSendReceipt = fn;
 }
 
-export function lastSync() {
-  return lastRun;
+export function lastSync(club) {
+  return lastRun && scopeSyncResult(lastRun, club);
+}
+
+/**
+ * A sync run as one club may see it. The run covers every club this process
+ * serves; a club is shown only its own bookings, and errors that belong to no
+ * booking (Stripe unreachable, no key) without anything else's detail.
+ */
+export function scopeSyncResult(result, club) {
+  const { checkedClubs = [], ...rest } = result;
+  const own = (entry) => entry.club === club;
+  const strip = ({ club: _club, ...entry }) => entry;
+  return {
+    ...rest,
+    checked: checkedClubs.filter((owner) => owner === club).length,
+    recorded: result.recorded.filter(own).map(strip),
+    errors: result.errors.filter((entry) => own(entry) || entry.club === null).map(strip),
+  };
 }
 
 /**
@@ -61,31 +79,24 @@ export function syncIfStale({ maxAgeMs = 60_000, reason, sendReceipt } = {}) {
 async function runSync(reason, sendReceipt) {
   const startedAt = new Date().toISOString();
   const config = readPaymentLinkConfig();
-  const result = { reason, startedAt, checked: 0, recorded: [], errors: [], skipped: null };
+  const result = { reason, startedAt, checked: 0, checkedClubs: [], recorded: [], errors: [], skipped: null };
 
   try {
     if (!config.secretKey) {
       result.skipped = 'STRIPE_SECRET_KEY is not set';
       return result;
     }
-    const columns = await getBookingColumns();
-    if (!columns.has('stripe_payment_link_id') || !columns.has('stripe_checkout_session_id')) {
-      result.skipped = 'migration_add_stripe_payment_links.sql has not been run';
-      return result;
-    }
-
-    const sentFilter = columns.has('payment_link_sent_at')
-      ? `AND (payment_link_sent_at IS NULL OR payment_link_sent_at > NOW() - INTERVAL '${LOOKBACK_DAYS} days')`
-      : '';
     const { rows } = await query(
       `SELECT booking_id, club, stripe_payment_link_id FROM public.bookings
-        WHERE stripe_payment_link_id IS NOT NULL AND payment_status = 'Pending' ${sentFilter}
-        ORDER BY ${columns.has('payment_link_sent_at') ? 'payment_link_sent_at DESC NULLS LAST' : 'booking_id'}
+        WHERE stripe_payment_link_id IS NOT NULL AND payment_status = 'Pending'
+          AND (payment_link_sent_at IS NULL OR payment_link_sent_at > NOW() - INTERVAL '${LOOKBACK_DAYS} days')
+        ORDER BY payment_link_sent_at DESC NULLS LAST
         LIMIT ${MAX_PER_RUN}`,
     );
 
     for (const row of rows) {
       result.checked += 1;
+      result.checkedClubs.push(row.club);
       try {
         const sessions = await paidSessionsForLink({ secretKey: config.secretKey, linkId: row.stripe_payment_link_id });
         for (const session of sessions) {
@@ -93,21 +104,24 @@ async function runSync(reason, sendReceipt) {
           if (!recorded.booking) continue;
           let receipt = 'not attempted';
           if (sendReceipt) {
-            const outcome = await sendReceipt(recorded.booking, config).catch((err) => ({ ok: false, message: err.message }));
+            const outcome = await sendReceipt(recorded.booking, config).catch((err) => ({
+              ok: false,
+              message: err.message,
+            }));
             receipt = outcome.ok ? 'sent' : `not sent: ${outcome.message}`;
           }
-          result.recorded.push({ bookingId: row.booking_id, result: recorded.result, receipt });
-          console.log(`[payment-sync] ${row.booking_id}: ${recorded.result}; receipt ${receipt}`);
+          result.recorded.push({ bookingId: row.booking_id, club: row.club, result: recorded.result, receipt });
+          log.info(`${row.booking_id}: ${recorded.result}; receipt ${receipt}`);
         }
       } catch (err) {
-        result.errors.push({ bookingId: row.booking_id, error: err.message });
-        console.warn(`[payment-sync] ${row.booking_id}: ${err.message}`);
+        result.errors.push({ bookingId: row.booking_id, club: row.club, error: err.message });
+        log.warn(`${row.booking_id}: ${err.message}`);
       }
     }
     return result;
   } catch (err) {
-    result.errors.push({ bookingId: null, error: err.message });
-    console.error('[payment-sync] run failed:', err.message);
+    result.errors.push({ bookingId: null, club: null, error: err.message });
+    log.error('run failed:', err.message);
     return result;
   } finally {
     result.finishedAt = new Date().toISOString();
@@ -124,7 +138,7 @@ export function startPaymentSync({ sendReceipt, env = process.env } = {}) {
   const every = setInterval(() => syncPendingPayments({ reason: 'schedule', sendReceipt }), minutes * 60_000);
   first.unref?.();
   every.unref?.();
-  console.log(`[payment-sync] checking Stripe for pending payments every ${minutes} min`);
+  log.info(`checking Stripe for pending payments every ${minutes} min`);
   return () => {
     clearTimeout(first);
     clearInterval(every);

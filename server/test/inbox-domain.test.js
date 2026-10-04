@@ -36,9 +36,18 @@ test('a reply quotes the email it answers, and escapes both', () => {
 
 test('a stored row reads back with labels, and a JSON extraction is parsed', () => {
   const message = serialiseMessage({
-    id: 7, direction: 'inbound', booking_id: null, from_email: 'tom@example.com', subject: 'Buggies?',
-    body_text: 'Do you have buggies?', intent: 'question', routed_to: 'inbox', review_status: 'open',
-    review_reason: 'A question for the team', draft_reply: 'Yes…', extraction: '{"intent":"question","source":"claude"}',
+    id: 7,
+    direction: 'inbound',
+    booking_id: null,
+    from_email: 'tom@example.com',
+    subject: 'Buggies?',
+    body_text: 'Do you have buggies?',
+    intent: 'question',
+    routed_to: 'inbox',
+    review_status: 'open',
+    review_reason: 'A question for the team',
+    draft_reply: 'Yes…',
+    extraction: '{"intent":"question","source":"claude"}',
     created_at: '2026-09-27T10:00:00Z',
   });
   assert.equal(message.intentLabel, 'Question');
@@ -49,4 +58,17 @@ test('a stored row reads back with labels, and a JSON extraction is parsed', () 
 
 test('an HTML email reads back as text', () => {
   assert.equal(htmlToText('<p>Hi&nbsp;Tom</p><p>See <b>you</b> soon</p><style>x{}</style>'), 'Hi Tom\nSee you soon');
+});
+
+test('emails the core API is still working on are labelled and kept out of the Inbox', async () => {
+  const { IN_FLIGHT_ROUTES, ROUTE_LABELS, notInFlightSql, serialiseMessage } =
+    await import('../src/lib/inbox-domain.js');
+  assert.deepEqual(IN_FLIGHT_ROUTES, ['queued', 'processing']);
+  assert.equal(ROUTE_LABELS.queued, 'Queued');
+  assert.equal(ROUTE_LABELS.processing, 'Being processed');
+  assert.equal(
+    serialiseMessage({ id: 1, routed_to: 'processing', direction: 'inbound' }).routeLabel,
+    'Being processed',
+  );
+  assert.equal(notInFlightSql('m'), "COALESCE(m.routed_to, '') NOT IN ('queued', 'processing')");
 });

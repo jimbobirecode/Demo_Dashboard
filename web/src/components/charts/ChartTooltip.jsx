@@ -10,15 +10,9 @@ import { INK_SECONDARY } from '../../lib/palette.js';
 export function ChartTooltip({ title, rows }) {
   return (
     <div className="chart-tooltip">
-      {title && (
-        <div style={{ fontWeight: 700, marginBottom: rows.length ? '0.35rem' : 0 }}>{title}</div>
-      )}
+      {title && <div style={{ fontWeight: 700, marginBottom: rows.length ? '0.35rem' : 0 }}>{title}</div>}
       {rows.map((row) => (
-        <div
-          key={row.label}
-          className="row"
-          style={{ gap: '1rem', justifyContent: 'space-between' }}
-        >
+        <div key={row.label} className="row" style={{ gap: '1rem', justifyContent: 'space-between' }}>
           <span className="row" style={{ gap: '0.4rem' }}>
             {row.color && (
               <span

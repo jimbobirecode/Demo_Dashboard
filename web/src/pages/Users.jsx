@@ -66,26 +66,21 @@ export default function Users() {
 
       {error && <div className="banner error">{error}</div>}
       {notice && <div className="banner success">{notice}</div>}
-      {state.config && !state.config.migrated && (
-        <div className="banner error">
-          Run <code>migration_add_user_management.sql</code> before creating accounts.
-        </div>
-      )}
-      {state.config?.migrated && !state.config.canInvite && (
+      {state.config && !state.config.canInvite && (
         <div className="banner">
-          <strong>Invitation email is not configured.</strong> An account can still be created, but
-          nobody can be emailed a link until you set {state.config.missing.join(', ')}.
+          <strong>Invitation email is not configured.</strong> An account can still be created, but nobody can be
+          emailed a link until you set {state.config.missing.join(', ')}.
         </div>
       )}
       {state.config?.linkBase && (
         <p className="muted" style={{ fontSize: '0.8125rem', margin: 0 }}>
-          Invitation and password links open <strong className="secondary">{state.config.linkBase}</strong>
-          {' '}(the dashboard&rsquo;s APP_URL setting).
+          Invitation and password links open <strong className="secondary">{state.config.linkBase}</strong> (the
+          dashboard&rsquo;s APP_URL setting).
         </p>
       )}
 
       <NewUserForm
-        disabled={!state.config?.migrated || busy !== null}
+        disabled={!state.config || busy !== null}
         onCreate={(user) =>
           act('create', async () => {
             const result = await api.createUser(user);
@@ -97,9 +92,7 @@ export default function Users() {
       <UserTable
         users={state.users}
         busy={busy}
-        onInvite={(user) =>
-          act(`invite-${user.id}`, async () => (await api.inviteUser(user.id)).invite)
-        }
+        onInvite={(user) => act(`invite-${user.id}`, async () => (await api.inviteUser(user.id)).invite)}
         onPatch={(user, patch, message) =>
           act(`patch-${user.id}`, async () => {
             await api.updateUser(user.id, patch);
@@ -134,8 +127,8 @@ function NewUserForm({ onCreate, disabled }) {
       <div>
         <h3>Add someone</h3>
         <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8125rem' }}>
-          Their email address is their sign-in. They are emailed a link and choose their own
-          password — you never see it, and no password travels through an inbox.
+          Their email address is their sign-in. They are emailed a link and choose their own password — you never see
+          it, and no password travels through an inbox.
         </p>
       </div>
 
@@ -210,8 +203,11 @@ function UserTable({ users, busy, onInvite, onPatch, onDelete }) {
                   aria-label={`Role for ${user.username}`}
                   disabled={busy !== null}
                   onChange={(event) =>
-                    onPatch(user, { role: event.target.value },
-                      `${user.username} is now ${event.target.value === 'admin' ? 'an administrator' : 'staff'}`)
+                    onPatch(
+                      user,
+                      { role: event.target.value },
+                      `${user.username} is now ${event.target.value === 'admin' ? 'an administrator' : 'staff'}`,
+                    )
                   }
                   style={{ width: 'auto' }}
                 >
@@ -224,12 +220,7 @@ function UserTable({ users, busy, onInvite, onPatch, onDelete }) {
               <td className="num">
                 <div className="row" style={{ justifyContent: 'flex-end', gap: '0.4rem' }}>
                   {user.active && (
-                    <button
-                      type="button"
-                      className="btn-sm"
-                      disabled={busy !== null}
-                      onClick={() => onInvite(user)}
-                    >
+                    <button type="button" className="btn-sm" disabled={busy !== null} onClick={() => onInvite(user)}>
                       {user.pending ? 'Resend invite' : 'Send reset link'}
                     </button>
                   )}
@@ -238,8 +229,11 @@ function UserTable({ users, busy, onInvite, onPatch, onDelete }) {
                     className="btn-sm"
                     disabled={busy !== null}
                     onClick={() =>
-                      onPatch(user, { active: !user.active },
-                        `${user.username} ${user.active ? 'deactivated' : 'reactivated'}`)
+                      onPatch(
+                        user,
+                        { active: !user.active },
+                        `${user.username} ${user.active ? 'deactivated' : 'reactivated'}`,
+                      )
                     }
                   >
                     {user.active ? 'Deactivate' : 'Reactivate'}
@@ -249,10 +243,13 @@ function UserTable({ users, busy, onInvite, onPatch, onDelete }) {
                     className="btn-sm btn-danger"
                     disabled={busy !== null}
                     onClick={() => {
-                      if (window.confirm(
-                        `Delete ${user.username}? They lose access immediately and any outstanding ` +
-                        'invitation stops working. Deactivating keeps the account and its history.',
-                      )) onDelete(user);
+                      if (
+                        window.confirm(
+                          `Delete ${user.username}? They lose access immediately and any outstanding ` +
+                            'invitation stops working. Deactivating keeps the account and its history.',
+                        )
+                      )
+                        onDelete(user);
                     }}
                   >
                     Delete

@@ -8,9 +8,10 @@
  */
 import { Router } from 'express';
 import { pool, query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { getBookingColumns, hasWaitlist } from '../lib/schema.js';
+import { BOOKING_SELECT } from '../lib/schema.js';
+import { mintBookingReference } from '../lib/booking-ref.js';
 import {
   WAITLIST_STATUSES,
   buildWaitlistConversion,
@@ -25,28 +26,16 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-/** Everything the page needs, including whether the table is there at all. */
+/** Everything the page needs. */
 router.get('/', async (req, res, next) => {
   try {
-    if (!(await hasWaitlist())) {
-      return res.json({
-        available: false,
-        reason: 'Run migration_add_waitlist_conversion.sql to use the waitlist',
-        entries: [],
-      });
-    }
-
     const entries = await loadEntries(req.user.customerId);
     const bookings = await loadConvertedBookings(entries, req.user.customerId);
     // Conversions made outside the dashboard leave no link, so they are found
     // by looking rather than reported by the act that made them.
-    const suggestions = suggestConversions(
-      entries,
-      await loadCandidateBookings(entries, req.user.customerId),
-    );
+    const suggestions = suggestConversions(entries, await loadCandidateBookings(entries, req.user.customerId));
 
     res.json({
-      available: true,
       entries,
       statuses: WAITLIST_STATUSES,
       conversion: buildWaitlistConversion(entries, bookings),
@@ -60,10 +49,6 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    if (!(await hasWaitlist())) {
-      return res.status(409).json({ error: 'Run migration_add_waitlist_conversion.sql first' });
-    }
-
     const check = validateWaitlistEntry(req.body);
     if (!check.ok) return res.status(400).json({ error: check.errors.join('. ') });
 
@@ -75,8 +60,17 @@ router.post('/', async (req, res, next) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Waiting', $9, $10, $11)
        RETURNING *`,
       [
-        mintWaitlistId(), v.guestEmail, v.guestName, v.requestedDate, v.preferredTime,
-        v.timeFlexibility, v.players, v.golfCourse, v.priority, v.notes, req.user.customerId,
+        mintWaitlistId(),
+        v.guestEmail,
+        v.guestName,
+        v.requestedDate,
+        v.preferredTime,
+        v.timeFlexibility,
+        v.players,
+        v.golfCourse,
+        v.priority,
+        v.notes,
+        req.user.customerId,
       ],
     );
 
@@ -159,9 +153,9 @@ router.post('/:waitlistId/convert', async (req, res, next) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'A valid date is required' });
 
     const total = Number(req.body?.total ?? 0);
-    // Shaped like a booking, not like the waitlist entry it came from: the two
-    // ids sit in adjacent columns and a shared prefix makes them unreadable.
-    const bookingId = mintConvertedBookingId();
+    // A booking reference in the core API's format (lib/booking-ref.js), so a
+    // guest's reply quoting it is linked to the booking.
+    const bookingId = mintBookingReference();
 
     await client.query('BEGIN');
 
@@ -227,9 +221,8 @@ router.post('/:waitlistId/link', async (req, res, next) => {
     const bookingId = String(req.body?.bookingId ?? '').trim();
     if (!bookingId) return res.status(400).json({ error: 'A booking reference is required' });
 
-    const columns = await getBookingColumns();
     const { rows: bookingRows } = await query(
-      `SELECT ${columns.selectList} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+      `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
       [bookingId, req.user.customerId],
     );
     if (!bookingRows.length) return res.status(404).json({ error: 'No such booking at this club' });
@@ -263,7 +256,7 @@ router.post('/:waitlistId/link', async (req, res, next) => {
   }
 });
 
-router.delete('/:waitlistId', async (req, res, next) => {
+router.delete('/:waitlistId', requireAdmin, async (req, res, next) => {
   try {
     const entry = await findEntry(req.params.waitlistId, req.user.customerId);
     if (!entry) return res.status(404).json({ error: 'No such waitlist entry' });
@@ -274,8 +267,10 @@ router.delete('/:waitlistId', async (req, res, next) => {
       });
     }
 
-    await query('DELETE FROM public.waitlist WHERE waitlist_id = $1 AND club = $2',
-      [entry.waitlist_id, req.user.customerId]);
+    await query('DELETE FROM public.waitlist WHERE waitlist_id = $1 AND club = $2', [
+      entry.waitlist_id,
+      req.user.customerId,
+    ]);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -298,9 +293,8 @@ async function loadConvertedBookings(entries, club) {
   const ids = entries.map((entry) => entry.convertedBookingId).filter(Boolean);
   if (!ids.length) return [];
 
-  const columns = await getBookingColumns();
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings
+    `SELECT ${BOOKING_SELECT} FROM public.bookings
       WHERE club = $1 AND booking_id = ANY($2::text[])`,
     [club, ids],
   );
@@ -317,12 +311,14 @@ async function loadCandidateBookings(entries, club) {
   if (!open.length) return [];
 
   const emails = [...new Set(open.map((entry) => entry.guestEmail))];
-  const dates = open.map((entry) => entry.requestedDate).filter(Boolean).sort();
+  const dates = open
+    .map((entry) => entry.requestedDate)
+    .filter(Boolean)
+    .sort();
   if (!dates.length) return [];
 
-  const columns = await getBookingColumns();
   const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings
+    `SELECT ${BOOKING_SELECT} FROM public.bookings
       WHERE club = $1
         AND LOWER(guest_email) = ANY($2::text[])
         AND date BETWEEN $3::date - 7 AND $4::date + 7`,
@@ -332,18 +328,11 @@ async function loadCandidateBookings(entries, club) {
 }
 
 async function findEntry(waitlistId, club) {
-  const { rows } = await query(
-    'SELECT * FROM public.waitlist WHERE waitlist_id = $1 AND club = $2',
-    [String(waitlistId), club],
-  );
+  const { rows } = await query('SELECT * FROM public.waitlist WHERE waitlist_id = $1 AND club = $2', [
+    String(waitlistId),
+    club,
+  ]);
   return rows[0] ?? null;
-}
-
-/** `BOOK-20260923-8F2A` — the shape the Streamlit conversion used. */
-function mintConvertedBookingId(now = new Date()) {
-  const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const suffix = Math.floor(Math.random() * 0xffff).toString(16).toUpperCase().padStart(4, '0');
-  return `BOOK-${stamp}-${suffix}`;
 }
 
 function toDateOnly(value) {

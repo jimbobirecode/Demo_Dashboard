@@ -1,0 +1,7 @@
+node_modules
+web/dist
+package-lock.json
+*.md
+*.sql
+*.html
+sendgrid-templates

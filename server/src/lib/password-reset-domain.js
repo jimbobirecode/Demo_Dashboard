@@ -45,8 +45,6 @@ export const TOKEN_PURPOSES = {
   },
 };
 
-export const PURPOSES = Object.keys(TOKEN_PURPOSES);
-
 /** The shortest password the dashboard accepts, matching the change-password screen. */
 export const MIN_PASSWORD_LENGTH = 8;
 
@@ -55,8 +53,7 @@ export const MIN_PASSWORD_LENGTH = 8;
  * deliberately the same for an unknown username, a known one with no address
  * on file and a link that really went out.
  */
-export const NEUTRAL_REPLY =
-  'If that account exists and has an email address on file, a reset link is on its way.';
+export const NEUTRAL_REPLY = 'If that account exists and has an email address on file, a reset link is on its way.';
 
 /** Reset email settings, with the SendGrid key reduced to a yes/no. */
 export function readResetConfig(env = process.env) {
@@ -97,14 +94,13 @@ export function readResetConfig(env = process.env) {
 }
 
 /** Strips the API key, for anything that crosses the wire. */
-export function publicResetConfig(config, { migrated = true } = {}) {
+export function publicResetConfig(config) {
   const { apiKey, ...rest } = config;
   return {
     ...rest,
-    migrated,
     // The login screen only offers the link when a click could actually
     // produce an email; otherwise it says what an administrator has to do.
-    available: migrated && config.missing.length === 0,
+    available: config.missing.length === 0,
   };
 }
 
@@ -156,7 +152,9 @@ export function resolveResetEmail(user) {
 
 /** A plausible address, lowercased and trimmed, or null. */
 export function cleanAddress(value) {
-  const text = String(value ?? '').trim().toLowerCase();
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) ? text : null;
 }
 
@@ -193,9 +191,7 @@ export function buildResetTemplateData({
     // the same branding as the emails the dashboard builds itself.
     ...brandTemplateData(),
     purpose,
-    subject: inviting
-      ? `You have been given access to the ${club} dashboard`
-      : `Reset your ${club} dashboard password`,
+    subject: inviting ? `You have been given access to the ${club} dashboard` : `Reset your ${club} dashboard password`,
     // An invitation has to say what the link is for and who sent it; somebody
     // who was not expecting the email has no other way to tell it apart from
     // a phishing attempt.
@@ -221,7 +217,7 @@ export function buildResetTemplateData({
     url: link,
     // Who the account is for. `email` is where it went, `role` what it grants.
     email: toEmail ?? user?.email ?? null,
-    role: role ? ROLE_LABELS[role] ?? role : null,
+    role: role ? (ROLE_LABELS[role] ?? role) : null,
     expires_in_minutes: ttlMinutes,
     expires_in: describeMinutes(ttlMinutes),
     support_email: fromEmail ?? null,
@@ -252,34 +248,9 @@ export function validatePassword(password, confirm) {
   return { ok: true };
 }
 
-/**
- * A crude per-key throttle, in memory.
- *
- * It exists so one script cannot mail a user hundreds of links, not to survive
- * a restart or to coordinate across instances — a real rate limiter belongs in
- * front of the app. Keys are dropped as they expire, so the map does not grow
- * without bound.
- */
-export function createThrottle({ limit = 5, windowMs = 15 * 60_000 } = {}) {
-  const hits = new Map();
-
-  return {
-    /** True when this key may proceed; the call itself counts as an attempt. */
-    check(key, now = Date.now()) {
-      const recent = (hits.get(key) ?? []).filter((time) => now - time < windowMs);
-      recent.push(now);
-      hits.set(key, recent);
-
-      for (const [other, times] of hits) {
-        if (!times.some((time) => now - time < windowMs)) hits.delete(other);
-      }
-      return recent.length <= limit;
-    },
-    reset() {
-      hits.clear();
-    },
-  };
-}
+// The throttle used to live here; it is shared by every unauthenticated
+// surface now, so it has a module of its own. Re-exported for older imports.
+export { createThrottle } from './throttle.js';
 
 /** '45 minutes', '1 hour', '7 days' — an invitation lives too long to read in hours. */
 export function describeMinutes(minutes) {

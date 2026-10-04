@@ -127,9 +127,14 @@ export function surveyTemplateData({ surveyUrl, unsubscribeUrl } = {}) {
 
 function parseList(value, fallback) {
   if (value === undefined || value === null || value === '') return fallback;
-  return String(value).split(',').map((entry) => entry.trim()).filter(Boolean);
+  return String(value)
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function trimSlashes(value) {
-  return String(value ?? '').trim().replace(/\/+$/, '');
+  return String(value ?? '')
+    .trim()
+    .replace(/\/+$/, '');
 }

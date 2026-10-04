@@ -147,10 +147,7 @@ export function targetDate(campaign, days, today) {
  * days of play for post-play. Rows already emailed are kept in the list and
  * flagged, so the page can offer a deliberate resend.
  */
-export function selectCandidates(
-  bookings,
-  { campaign, days, today, scope = 'due', requirePayment = true } = {},
-) {
+export function selectCandidates(bookings, { campaign, days, today, scope = 'due', requirePayment = true } = {}) {
   const inScope =
     scope === 'all'
       ? (date) =>
@@ -172,9 +169,7 @@ export function selectCandidates(
       sentAt: booking[campaign.field] ?? null,
       clockStartedAt: prePlayClockStart(booking),
     }))
-    .sort((a, b) =>
-      campaign.direction === 'before' ? compare(a, b) : compare(b, a),
-    );
+    .sort((a, b) => (campaign.direction === 'before' ? compare(a, b) : compare(b, a)));
 }
 
 /**
@@ -188,9 +183,7 @@ export function countAwaitingPayment(bookings, options) {
 }
 
 function compare(a, b) {
-  return a.date === b.date
-    ? String(a.teeTime).localeCompare(String(b.teeTime))
-    : a.date.localeCompare(b.date);
+  return a.date === b.date ? String(a.teeTime).localeCompare(String(b.teeTime)) : a.date.localeCompare(b.date);
 }
 
 /**
@@ -303,9 +296,7 @@ function formatLongDate(isoDate) {
   const date = new Date(`${isoDate}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return String(isoDate);
 
-  const parts = Object.fromEntries(
-    LONG_DATE_PARTS.formatToParts(date).map(({ type, value }) => [type, value]),
-  );
+  const parts = Object.fromEntries(LONG_DATE_PARTS.formatToParts(date).map(({ type, value }) => [type, value]));
   return `${parts.weekday} ${parts.day} ${parts.month} ${parts.year}`;
 }
 

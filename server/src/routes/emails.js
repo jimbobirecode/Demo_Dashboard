@@ -15,7 +15,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { getBookingColumns } from '../lib/schema.js';
+import { BOOKING_SELECT } from '../lib/schema.js';
 import {
   CAMPAIGN_IDS,
   buildTemplateData,
@@ -32,12 +32,7 @@ import {
 } from '../lib/email-domain.js';
 import { sendTemplateEmail } from '../lib/sendgrid.js';
 import { logEmail } from '../lib/email-log.js';
-import {
-  buildRoundPayload,
-  publicVeroConfig,
-  readVeroConfig,
-  veroEnabledFor,
-} from '../lib/vero-domain.js';
+import { buildRoundPayload, publicVeroConfig, readVeroConfig, veroEnabledFor } from '../lib/vero-domain.js';
 import { requestSurveyLink } from '../lib/vero.js';
 
 const router = Router();
@@ -47,27 +42,17 @@ router.use(requireAuth);
 const MAX_BATCH = 200;
 
 async function loadClubBookings(club) {
-  const columns = await getBookingColumns();
-  const { rows } = await query(
-    `SELECT ${columns.selectList} FROM public.bookings WHERE club = $1`,
-    [club],
-  );
-  return { bookings: rows.map(serialiseBooking), columns };
+  const { rows } = await query(`SELECT ${BOOKING_SELECT} FROM public.bookings WHERE club = $1`, [club]);
+  return rows.map(serialiseBooking);
 }
 
-/**
- * Record the send. Installs that have not run
- * `migration_add_journey_emails.sql` have no column to write to — the email
- * still goes out, it just cannot be de-duplicated, which the page warns about.
- */
-async function markSent(campaign, bookingId, club, columns) {
-  if (!columns.has(campaign.column)) return false;
+/** Record the send, so the guest is not emailed twice. */
+async function markSent(campaign, bookingId, club) {
   await query(
     `UPDATE public.bookings SET "${campaign.column}" = NOW()
       WHERE booking_id = $1 AND club = $2`,
     [bookingId, club],
   );
-  return true;
 }
 
 function resolveCampaign(req, res) {
@@ -80,21 +65,12 @@ function resolveCampaign(req, res) {
   return campaign;
 }
 
-/** What is configured, and whether sends can be de-duplicated. */
-router.get('/config', async (req, res, next) => {
-  try {
-    const columns = await getBookingColumns();
-    res.json({
-      ...publicEmailConfig(readEmailConfig()),
-      tracking: {
-        pre_arrival: columns.has('pre_arrival_email_sent_at'),
-        post_play: columns.has('post_play_email_sent_at'),
-      },
-      vero: publicVeroConfig(readVeroConfig()),
-    });
-  } catch (err) {
-    next(err);
-  }
+/** What is configured for sending. */
+router.get('/config', (req, res) => {
+  res.json({
+    ...publicEmailConfig(readEmailConfig()),
+    vero: publicVeroConfig(readVeroConfig()),
+  });
 });
 
 /** The bookings a campaign would send to, due today or across the wider window. */
@@ -108,7 +84,7 @@ router.get('/pending', async (req, res, next) => {
     const config = readEmailConfig();
     const { days } = config.campaigns[campaign.id];
     const today = todayInClubZone();
-    const { bookings } = await loadClubBookings(req.user.customerId);
+    const bookings = await loadClubBookings(req.user.customerId);
     const options = { campaign, days, today, scope, requirePayment: config.requirePayment };
 
     res.json({
@@ -156,7 +132,7 @@ router.post('/send', async (req, res, next) => {
   }
 
   try {
-    const { bookings, columns } = await loadClubBookings(req.user.customerId);
+    const bookings = await loadClubBookings(req.user.customerId);
     const byId = new Map(bookings.map((booking) => [booking.bookingId, booking]));
 
     const vero = readVeroConfig();
@@ -169,7 +145,6 @@ router.post('/send', async (req, res, next) => {
     // not a fault to investigate — lumping them in with the bad addresses is
     // how a working opt-out gets "fixed".
     let skipped = 0;
-    let tracked = true;
 
     for (const bookingId of bookingIds) {
       const booking = byId.get(bookingId);
@@ -247,7 +222,7 @@ router.post('/send', async (req, res, next) => {
 
       if (outcome.ok) {
         sent += 1;
-        const recorded = await markSent(campaign, bookingId, req.user.customerId, columns);
+        await markSent(campaign, bookingId, req.user.customerId);
         // On the booking's conversation. The words live in the SendGrid
         // template, so what is recorded is which email went, and when.
         await logEmail({
@@ -261,7 +236,6 @@ router.post('/send', async (req, res, next) => {
           sent_by: req.user.username,
           kind: campaign.id,
         });
-        if (!recorded) tracked = false;
       } else {
         failed += 1;
       }
@@ -280,7 +254,6 @@ router.post('/send', async (req, res, next) => {
       sent,
       failed,
       skipped,
-      tracked,
       vero: handOverToVero,
       results,
     });

@@ -5,7 +5,9 @@ import {
   daysUntilPlay,
   describeOptions,
   describeRequest,
+  MANAGE_LINK_GRACE_DAYS,
   manageLink,
+  manageLinkExpired,
   readChangePolicy,
   serialiseChangeRequest,
   signBooking,
@@ -117,8 +119,14 @@ test('a request reads as a sentence in the club’s list', () => {
 
 test('a stored request serialises without surprises', () => {
   const request = serialiseChangeRequest({
-    id: 3, booking_id: 'RDG-1', kind: 'cancel', message: null, status: 'Pending',
-    auto_applied: false, days_before_play: 31, created_at: new Date('2026-05-01T09:00:00Z'),
+    id: 3,
+    booking_id: 'RDG-1',
+    kind: 'cancel',
+    message: null,
+    status: 'Pending',
+    auto_applied: false,
+    days_before_play: 31,
+    created_at: new Date('2026-05-01T09:00:00Z'),
     requested_date: new Date('2026-06-02T00:00:00'),
   });
 
@@ -127,4 +135,19 @@ test('a stored request serialises without surprises', () => {
   assert.equal(request.open, true);
   assert.equal(request.createdAt, '2026-05-01T09:00:00.000Z');
   assert.equal(serialiseChangeRequest({ id: 1, status: 'Applied' }).open, false);
+});
+
+test('a manage link stops opening a month after the round', () => {
+  assert.equal(MANAGE_LINK_GRACE_DAYS, 30);
+  const today = '2026-10-03';
+  assert.equal(manageLinkExpired({ date: '2026-11-01' }, today), false, 'upcoming');
+  assert.equal(manageLinkExpired({ date: '2026-09-03' }, today), false, 'exactly 30 days ago');
+  assert.equal(manageLinkExpired({ date: '2026-09-02' }, today), true, '31 days ago');
+  assert.equal(manageLinkExpired({ date: null }, today), false, 'undated bookings are left to the club');
+  assert.equal(manageLinkExpired({ date: '2026-09-25' }, today, { graceDays: 7 }), true);
+});
+
+test('the link format is unchanged — the booking service mints the same one', () => {
+  // Same value the booking service's test expects for this booking and secret.
+  assert.equal(signBooking('TMG-20261018-AB12', 'secret', 'royal_dornoch'), 'cd-7OB3iyxwKtt_lDyMPgmM7UK1P86nJ');
 });

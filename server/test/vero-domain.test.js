@@ -89,8 +89,19 @@ test('the handover carries what Vero needs and nothing else', () => {
   // changes.
   for (const key of Object.keys(payload)) {
     assert.ok(
-      ['external_ref', 'play_date', 'guest_name', 'guest_email', 'guest_phone',
-       'course_name', 'tee_time', 'players', 'spend_amount', 'site', 'dry_run'].includes(key),
+      [
+        'external_ref',
+        'play_date',
+        'guest_name',
+        'guest_email',
+        'guest_phone',
+        'course_name',
+        'tee_time',
+        'players',
+        'spend_amount',
+        'site',
+        'dry_run',
+      ].includes(key),
       `unexpected field sent to Club Vero: ${key}`,
     );
   }
@@ -108,7 +119,10 @@ test('the club slug travels only where one is configured', () => {
 });
 
 test('a survey link reaches the template under both spellings', () => {
-  const data = surveyTemplateData({ surveyUrl: 'https://vero.example.com/s/abc', unsubscribeUrl: 'https://vero.example.com/u/abc' });
+  const data = surveyTemplateData({
+    surveyUrl: 'https://vero.example.com/s/abc',
+    unsubscribeUrl: 'https://vero.example.com/u/abc',
+  });
   assert.equal(data.survey_url, 'https://vero.example.com/s/abc');
   assert.equal(data.feedback_url, 'https://vero.example.com/s/abc');
   assert.equal(data.unsubscribe_url, 'https://vero.example.com/u/abc');
@@ -161,7 +175,12 @@ test('the key travels in a header, never in the body', async () => {
 test('a minted survey comes back as a link', async () => {
   const fetchImpl = stubFetch({
     status: 200,
-    body: { created: true, survey_url: 'https://vero.example.com/s/abc', unsubscribe_url: 'https://vero.example.com/u/abc', outlet: 'Championship Course' },
+    body: {
+      created: true,
+      survey_url: 'https://vero.example.com/s/abc',
+      unsubscribe_url: 'https://vero.example.com/u/abc',
+      outlet: 'Championship Course',
+    },
   });
   const outcome = await requestSurveyLink({ ...CALL, round: buildRoundPayload(booking()), fetchImpl });
 
@@ -213,7 +232,9 @@ test('a 200 with no link in it is a failure, not an email with an empty button',
 });
 
 test('an unreachable Vero is reported, not thrown', async () => {
-  const fetchImpl = async () => { throw new Error('ECONNREFUSED'); };
+  const fetchImpl = async () => {
+    throw new Error('ECONNREFUSED');
+  };
   const outcome = await requestSurveyLink({ ...CALL, round: buildRoundPayload(booking()), fetchImpl });
 
   assert.equal(outcome.ok, false);
@@ -221,7 +242,10 @@ test('an unreachable Vero is reported, not thrown', async () => {
 });
 
 test('a preview asks Vero what it would do and is told, without a link', async () => {
-  const fetchImpl = stubFetch({ status: 200, body: { dry_run: true, would_create: true, outlet: 'Championship Course' } });
+  const fetchImpl = stubFetch({
+    status: 200,
+    body: { dry_run: true, would_create: true, outlet: 'Championship Course' },
+  });
   const outcome = await requestSurveyLink({
     ...CALL,
     round: buildRoundPayload(booking(), { dryRun: true }),

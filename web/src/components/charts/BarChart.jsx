@@ -46,11 +46,7 @@ export function BarChart({
       <RechartsBar
         data={data}
         layout={layout}
-        margin={
-          horizontal
-            ? { top: 4, right: 56, bottom: 4, left: 8 }
-            : { top: 12, right: 12, bottom: 4, left: 0 }
-        }
+        margin={horizontal ? { top: 4, right: 56, bottom: 4, left: 8 } : { top: 12, right: 12, bottom: 4, left: 0 }}
         barCategoryGap="18%"
       >
         <CartesianGrid stroke={GRID} horizontal={!horizontal} vertical={horizontal} />
@@ -71,9 +67,7 @@ export function BarChart({
             const row = payload[0].payload;
             return {
               title: labelFormatter(row[index]),
-              rows: tooltipRows
-                ? tooltipRows(row)
-                : [{ label: 'Bookings', value: valueFormatter(row[category]) }],
+              rows: tooltipRows ? tooltipRows(row) : [{ label: 'Bookings', value: valueFormatter(row[category]) }],
             };
           })}
         />

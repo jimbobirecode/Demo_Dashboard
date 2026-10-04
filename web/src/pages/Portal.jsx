@@ -68,10 +68,14 @@ function SignIn({ notice = null }) {
         <Wordmark showTagline={false} />
         <h1 style={{ fontSize: '1.125rem' }}>Tour operator portal</h1>
         <p className="muted" style={{ margin: 0, fontSize: '0.8125rem' }}>
-          See all your bookings with {BRAND.fullName}, what is due and when, pay online and send us requests. Enter
-          your work email and we will send you a sign-in link - no password needed.
+          See all your bookings with {BRAND.fullName}, what is due and when, pay online and send us requests. Enter your
+          work email and we will send you a sign-in link - no password needed.
         </p>
-        {message && <div className={`banner ${message.kind}`} role="status">{message.text}</div>}
+        {message && (
+          <div className={`banner ${message.kind}`} role="status">
+            {message.text}
+          </div>
+        )}
         {!message?.sent && (
           <>
             <label className="stack" style={{ gap: '0.35rem' }}>
@@ -136,12 +140,11 @@ function PortalHome() {
     );
   }
 
-  const { operator, account, canPayOnline, canEnquire, canRequestChanges, email } = me.data;
+  const { operator, account, canPayOnline, email } = me.data;
   const today = list?.today ?? '';
   const bookings = list?.bookings ?? [];
-  const shown = view === 'current'
-    ? bookings.filter((b) => (b.date && b.date >= today) || b.outstanding > 0)
-    : bookings;
+  const shown =
+    view === 'current' ? bookings.filter((b) => (b.date && b.date >= today) || b.outstanding > 0) : bookings;
 
   async function signOut() {
     await api.portalLogout().catch(() => {});
@@ -179,7 +182,9 @@ function PortalHome() {
             </div>
           </div>
         </div>
-        <button type="button" className="btn-sm" onClick={signOut}>Sign out</button>
+        <button type="button" className="btn-sm" onClick={signOut}>
+          Sign out
+        </button>
       </header>
 
       <main className="portal-main stack" style={{ gap: '1.25rem' }}>
@@ -188,7 +193,11 @@ function PortalHome() {
             Your account is on hold. Existing bookings stand, but please contact the club before making new ones.
           </div>
         )}
-        {notice && <div className={`banner ${notice.kind}`} role="status">{notice.text}</div>}
+        {notice && (
+          <div className={`banner ${notice.kind}`} role="status">
+            {notice.text}
+          </div>
+        )}
 
         <div className="kpi-row">
           <KpiTile
@@ -199,7 +208,11 @@ function PortalHome() {
           <KpiTile
             label="Overdue"
             value={formatCurrency(account.overdueAmount)}
-            sub={account.overdueCount ? `${account.overdueCount} booking${account.overdueCount === 1 ? '' : 's'}, oldest ${account.maxDaysOverdue} days` : 'Nothing overdue'}
+            sub={
+              account.overdueCount
+                ? `${account.overdueCount} booking${account.overdueCount === 1 ? '' : 's'}, oldest ${account.maxDaysOverdue} days`
+                : 'Nothing overdue'
+            }
             accent={account.overdueCount ? 'var(--status-rejected)' : undefined}
           />
           {account.creditLimit !== null && (
@@ -227,12 +240,12 @@ function PortalHome() {
               </button>
             </div>
             <div className="row" style={{ gap: '0.5rem' }}>
-              <a className="button-link btn-sm" href={portalStatementUrl} download>Download statement (CSV)</a>
-              {canEnquire && (
-                <button type="button" className="btn-sm btn-primary" onClick={() => setEnquiring(!enquiring)}>
-                  {enquiring ? 'Close' : 'Request new tee times'}
-                </button>
-              )}
+              <a className="button-link btn-sm" href={portalStatementUrl} download>
+                Download statement (CSV)
+              </a>
+              <button type="button" className="btn-sm btn-primary" onClick={() => setEnquiring(!enquiring)}>
+                {enquiring ? 'Close' : 'Request new tee times'}
+              </button>
             </div>
           </div>
 
@@ -266,7 +279,6 @@ function PortalHome() {
                       booking={b}
                       today={today}
                       canPayOnline={canPayOnline}
-                      canRequest={canRequestChanges}
                       paying={paying === b.bookingId}
                       open={open?.bookingId === b.bookingId ? open.kind : null}
                       onOpen={(kind) => setOpen(kind ? { bookingId: b.bookingId, kind } : null)}
@@ -289,7 +301,7 @@ function PortalHome() {
   );
 }
 
-function BookingRow({ booking: b, today, canPayOnline, canRequest, paying, open, onOpen, onPay, onDone }) {
+function BookingRow({ booking: b, today, canPayOnline, paying, open, onOpen, onPay, onDone }) {
   const played = b.date && b.date < today;
   const live = !['Cancelled', 'Rejected'].includes(b.status) && !played;
   const teeTimes = Array.isArray(b.teeTimes) && b.teeTimes.length ? b.teeTimes.join(', ') : b.teeTime;
@@ -298,8 +310,14 @@ function BookingRow({ booking: b, today, canPayOnline, canRequest, paying, open,
     <>
       <tr>
         <td>
-          <div className="mono" style={{ whiteSpace: 'nowrap' }}>{b.bookingId}</div>
-          {b.guestName && <div className="muted" style={{ fontSize: '0.75rem' }}>{b.guestName}</div>}
+          <div className="mono" style={{ whiteSpace: 'nowrap' }}>
+            {b.bookingId}
+          </div>
+          {b.guestName && (
+            <div className="muted" style={{ fontSize: '0.75rem' }}>
+              {b.guestName}
+            </div>
+          )}
         </td>
         <td>{b.date ? formatDate(b.date) : '-'}</td>
         <td>{teeTimes || '-'}</td>
@@ -314,7 +332,9 @@ function BookingRow({ booking: b, today, canPayOnline, canRequest, paying, open,
         </td>
         <td style={{ textAlign: 'right' }}>{formatCurrency(b.total)}</td>
         <td style={{ textAlign: 'right' }}>{formatCurrency(b.paid)}</td>
-        <td style={{ textAlign: 'right', fontWeight: b.outstanding > 0 ? 700 : 400 }}>{formatCurrency(b.outstanding)}</td>
+        <td style={{ textAlign: 'right', fontWeight: b.outstanding > 0 ? 700 : 400 }}>
+          {formatCurrency(b.outstanding)}
+        </td>
         <td>
           {b.dueDate && b.outstanding > 0 ? (
             <span style={b.overdue ? { color: 'var(--status-rejected)', fontWeight: 700 } : undefined}>
@@ -328,16 +348,32 @@ function BookingRow({ booking: b, today, canPayOnline, canRequest, paying, open,
         <td>
           <div className="row" style={{ gap: '0.35rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             {canPayOnline && b.canPay && (
-              <button type="button" className="btn-sm btn-primary" style={{ whiteSpace: 'nowrap' }} disabled={paying} onClick={onPay}>
+              <button
+                type="button"
+                className="btn-sm btn-primary"
+                style={{ whiteSpace: 'nowrap' }}
+                disabled={paying}
+                onClick={onPay}
+              >
                 {paying ? 'Opening…' : `Pay ${formatCurrency(b.outstanding)}`}
               </button>
             )}
-            {canRequest && live && !b.pendingRequest && (
+            {live && !b.pendingRequest && (
               <>
-                <button type="button" className="btn-sm" aria-pressed={open === 'amend'} onClick={() => onOpen(open === 'amend' ? null : 'amend')}>
+                <button
+                  type="button"
+                  className="btn-sm"
+                  aria-pressed={open === 'amend'}
+                  onClick={() => onOpen(open === 'amend' ? null : 'amend')}
+                >
                   Change
                 </button>
-                <button type="button" className="btn-sm" aria-pressed={open === 'cancel'} onClick={() => onOpen(open === 'cancel' ? null : 'cancel')}>
+                <button
+                  type="button"
+                  className="btn-sm"
+                  aria-pressed={open === 'cancel'}
+                  onClick={() => onOpen(open === 'cancel' ? null : 'cancel')}
+                >
                   Cancel
                 </button>
               </>
@@ -383,12 +419,11 @@ function RequestForm({ booking, kind, onDone, onCancel }) {
 
   return (
     <form className="stack" style={{ gap: '0.6rem', padding: '0.5rem 0' }} onSubmit={submit}>
-      <strong>
-        {kind === 'cancel' ? `Ask to cancel ${booking.bookingId}` : `Ask to change ${booking.bookingId}`}
-      </strong>
+      <strong>{kind === 'cancel' ? `Ask to cancel ${booking.bookingId}` : `Ask to change ${booking.bookingId}`}</strong>
       {kind === 'cancel' && (
         <div className="muted" style={{ fontSize: '0.8125rem' }}>
-          The booking is not cancelled until the club confirms it by email. Any cancellation terms on your account apply.
+          The booking is not cancelled until the club confirms it by email. Any cancellation terms on your account
+          apply.
         </div>
       )}
       {kind === 'amend' && (
@@ -403,7 +438,14 @@ function RequestForm({ booking, kind, onDone, onCancel }) {
           </label>
           <label className="stack" style={{ gap: '0.25rem' }}>
             <span className="label">Players (optional)</span>
-            <input type="number" min="1" max="40" value={form.requestedPlayers} onChange={set('requestedPlayers')} style={{ width: '6rem' }} />
+            <input
+              type="number"
+              min="1"
+              max="40"
+              value={form.requestedPlayers}
+              onChange={set('requestedPlayers')}
+              style={{ width: '6rem' }}
+            />
           </label>
         </div>
       )}
@@ -416,7 +458,9 @@ function RequestForm({ booking, kind, onDone, onCancel }) {
         <button type="submit" className="btn-primary" disabled={busy}>
           {busy ? 'Sending…' : kind === 'cancel' ? 'Send cancellation request' : 'Send change request'}
         </button>
-        <button type="button" onClick={onCancel} disabled={busy}>Close</button>
+        <button type="button" onClick={onCancel} disabled={busy}>
+          Close
+        </button>
       </div>
     </form>
   );
@@ -454,7 +498,15 @@ function EnquiryForm({ onDone, onCancel }) {
         </label>
         <label className="stack" style={{ gap: '0.25rem' }}>
           <span className="label">Players</span>
-          <input type="number" min="1" max="200" value={form.players} onChange={set('players')} required style={{ width: '6rem' }} />
+          <input
+            type="number"
+            min="1"
+            max="200"
+            value={form.players}
+            onChange={set('players')}
+            required
+            style={{ width: '6rem' }}
+          />
         </label>
         <label className="stack" style={{ gap: '0.25rem' }}>
           <span className="label">Preferred time</span>
@@ -471,12 +523,21 @@ function EnquiryForm({ onDone, onCancel }) {
       </div>
       <label className="stack" style={{ gap: '0.25rem' }}>
         <span className="label">Anything else</span>
-        <textarea rows={3} value={form.notes} onChange={set('notes')} placeholder="Multiple days, replay rounds, buggies…" />
+        <textarea
+          rows={3}
+          value={form.notes}
+          onChange={set('notes')}
+          placeholder="Multiple days, replay rounds, buggies…"
+        />
       </label>
       {error && <div className="banner error">{error}</div>}
       <div className="row" style={{ gap: '0.5rem' }}>
-        <button type="submit" className="btn-primary" disabled={busy}>{busy ? 'Sending…' : 'Send request'}</button>
-        <button type="button" onClick={onCancel} disabled={busy}>Close</button>
+        <button type="submit" className="btn-primary" disabled={busy}>
+          {busy ? 'Sending…' : 'Send request'}
+        </button>
+        <button type="button" onClick={onCancel} disabled={busy}>
+          Close
+        </button>
       </div>
     </form>
   );

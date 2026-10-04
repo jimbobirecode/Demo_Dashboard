@@ -1,11 +1,15 @@
 services:
   - type: web
+    # Historical name from the Royal Dornoch demo profile. Render matches a
+    # Blueprint to its service by name, so renaming it creates a new service.
     name: royal-dornoch-dashboard
     runtime: node
     plan: free
     # --include=dev is required: NODE_ENV=production makes npm skip
     # devDependencies, and vite (the build tool) is one of them.
     buildCommand: npm install --include=dev && npm run build
+    # The server applies pending db/migrations before it listens, and exits
+    # (failing the deploy's health check) if one cannot be applied.
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -13,7 +17,27 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22"
+      - key: LOG_FORMAT
+        value: json
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # Shared with the core API, which issues the manage-booking links: the
+      # same value must be set on both services, so it is never generated here.
+      - key: BOOKING_LINK_SECRET
+        sync: false
+      # The dashboard's public address: emailed links and the CSRF origin check.
+      - key: APP_URL
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Optional: error reporting. Leave empty to keep it off.
+      - key: SENTRY_DSN
+        sync: false

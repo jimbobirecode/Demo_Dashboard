@@ -22,7 +22,6 @@ import { useInboxCount } from './lib/useInboxCount.js';
 // the initial bundle so the bookings table loads fast.
 const Analytics = lazy(() => import('./pages/Analytics.jsx'));
 
-import { BRAND } from './lib/brand.js';
 import Wordmark from './components/Wordmark.jsx';
 
 export default function App() {
@@ -130,6 +129,9 @@ function StaffApp() {
               {user.clubName}
             </div>
           </div>
+          <NavLink to="/account/password" className={navClass}>
+            Change password
+          </NavLink>
           <button type="button" onClick={logout}>
             Sign out
           </button>
@@ -143,18 +145,19 @@ function StaffApp() {
             {/* A guest's link works for a signed-in member of staff too —
                 they are often the one checking it. */}
             <Route path="/manage-booking" element={<ManageBooking />} />
-            <Route path="/import" element={<Import />} />
+            <Route path="/import" element={<Import user={user} />} />
+            <Route
+              path="/account/password"
+              element={<ChangePassword requireCurrent onSubmit={completePasswordChange} />}
+            />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/requests" element={<Requests />} />
             <Route path="/inbox" element={<Inbox onCountChange={setInboxCount} />} />
-            <Route path="/waitlist" element={<Waitlist />} />
-            <Route path="/operators" element={<Operators />} />
+            <Route path="/waitlist" element={<Waitlist user={user} />} />
+            <Route path="/operators" element={<Operators user={user} />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/reminders" element={<Reminders />} />
-            <Route
-              path="/users"
-              element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />}
-            />
+            <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />
             {/* A signed-in reader following an old reset link goes to the
                 bookings table rather than to a form they no longer need. */}
             <Route path="*" element={<Navigate to="/bookings" replace />} />

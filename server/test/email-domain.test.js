@@ -91,7 +91,10 @@ test('a welcome falls due days before play and stays due until play', () => {
     today: '2026-03-15',
   });
 
-  assert.deepEqual(due.map((b) => b.bookingId), ['RD-TODAY', 'RD-MISSED', 'RD-DUE']);
+  assert.deepEqual(
+    due.map((b) => b.bookingId),
+    ['RD-TODAY', 'RD-MISSED', 'RD-DUE'],
+  );
 });
 
 test('a thank you is due on the single play date the campaign targets', () => {
@@ -101,7 +104,10 @@ test('a thank you is due on the single play date the campaign targets', () => {
     booking({ bookingId: 'RD-LATER', date: '2026-03-14' }),
   ];
   const due = selectCandidates(bookings, { campaign: CAMPAIGNS.post_play, days: 2, today: '2026-03-15' });
-  assert.deepEqual(due.map((b) => b.bookingId), ['RD-DUE']);
+  assert.deepEqual(
+    due.map((b) => b.bookingId),
+    ['RD-DUE'],
+  );
 });
 
 test('payment starts the pre-play clock; an unpaid booking is not welcomed', () => {
@@ -168,7 +174,11 @@ test('the catch-up window looks forward for welcomes and back for thank yous', (
     today,
     scope: 'all',
   });
-  assert.deepEqual(welcomes.map((b) => b.bookingId), ['RD-TODAY', 'RD-SOON'], 'earliest first');
+  assert.deepEqual(
+    welcomes.map((b) => b.bookingId),
+    ['RD-TODAY', 'RD-SOON'],
+    'earliest first',
+  );
 
   const thanks = selectCandidates(bookings, {
     campaign: CAMPAIGNS.post_play,
@@ -184,19 +194,20 @@ test('the catch-up window looks forward for welcomes and back for thank yous', (
 });
 
 test('an already-emailed booking stays listed, carrying when it was sent', () => {
-  const [candidate] = selectCandidates(
-    [booking({ preArrivalEmailSentAt: '2026-03-15T09:00:00.000Z' })],
-    { campaign: CAMPAIGNS.pre_arrival, days: 3, today: '2026-03-15' },
-  );
+  const [candidate] = selectCandidates([booking({ preArrivalEmailSentAt: '2026-03-15T09:00:00.000Z' })], {
+    campaign: CAMPAIGNS.pre_arrival,
+    days: 3,
+    today: '2026-03-15',
+  });
 
   assert.equal(candidate.sentAt, '2026-03-15T09:00:00.000Z');
 });
 
 test('template data matches the field names the SendGrid templates use', () => {
-  const data = buildTemplateData(
-    booking({ hotelRequired: true, hotelCheckin: '2026-03-17', lodgingNights: 2 }),
-    { fromEmail: ENV.FROM_EMAIL, now: new Date('2026-01-01T00:00:00Z') },
-  );
+  const data = buildTemplateData(booking({ hotelRequired: true, hotelCheckin: '2026-03-17', lodgingNights: 2 }), {
+    fromEmail: ENV.FROM_EMAIL,
+    now: new Date('2026-01-01T00:00:00Z'),
+  });
 
   assert.equal(data.guest_name, 'Ann McLeod');
   assert.equal(data.booking_date, 'Wednesday 18 March 2026');

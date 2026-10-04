@@ -14,8 +14,16 @@ import { parseCsv } from '../src/routes/imports.js';
 
 test('columns are found whatever the club calls them', () => {
   const { mapping, unmapped, missingRequired } = mapColumns([
-    'Confirmation Number', 'Customer Name', 'Email Address', 'Playing Date',
-    'Start Time', 'Pax', 'Green Fees', 'Course', 'Remarks', 'Handicap',
+    'Confirmation Number',
+    'Customer Name',
+    'Email Address',
+    'Playing Date',
+    'Start Time',
+    'Pax',
+    'Green Fees',
+    'Course',
+    'Remarks',
+    'Handicap',
   ]);
 
   assert.equal(mapping.bookingId, 0);
@@ -78,7 +86,10 @@ test('money survives currency symbols, separators and accountants', () => {
 
 test('CSV quoting is handled, including commas and quotes inside a field', () => {
   const rows = parseCsv('a,b\n"one, two","he said ""hi"""\n');
-  assert.deepEqual(rows, [['a', 'b'], ['one, two', 'he said "hi"']]);
+  assert.deepEqual(rows, [
+    ['a', 'b'],
+    ['one, two', 'he said "hi"'],
+  ]);
   assert.deepEqual(parseCsv('﻿a,b\n1,2')[0], ['a', 'b'], 'Excel writes a byte-order mark');
 });
 
@@ -95,7 +106,11 @@ test('a sheet becomes bookings, and the rest becomes complaints', () => {
 
   assert.equal(parsed.ok, true);
   assert.equal(parsed.bookings.length, 1, 'the blank spacer is skipped silently');
-  assert.deepEqual(parsed.rejected.map((row) => row.line), [4, 5], 'the bad date and the totals line');
+  assert.deepEqual(
+    parsed.rejected.map((row) => row.line),
+    [4, 5],
+    'the bad date and the totals line',
+  );
   assert.match(parsed.rejected[0].reason, /Could not read the date "not a date"/);
 
   const [booking] = parsed.bookings;
@@ -109,7 +124,10 @@ test('a sheet becomes bookings, and the rest becomes complaints', () => {
 });
 
 test('a sheet with no date column is refused rather than half-read', () => {
-  const parsed = parseTeeSheet([['Name', 'Handicap'], ['Alan', '12']]);
+  const parsed = parseTeeSheet([
+    ['Name', 'Handicap'],
+    ['Alan', '12'],
+  ]);
 
   assert.equal(parsed.ok, false);
   assert.match(parsed.error, /Could not find a date column/);
@@ -131,17 +149,19 @@ test('duplicates are found by reference and by slot, including within one file',
     { bookingId: null, guestEmail: 'c@d.com', date: '2026-04-03', teeTime: '10:00 AM' },
     { bookingId: 'CLB-9', guestEmail: 'e@f.com', date: '2026-04-04', teeTime: '11:00 AM' },
   ];
-  const existing = [
-    { bookingId: 'CLB-1', guestEmail: 'zzz@other.com', date: '2026-01-01', teeTime: '08:00 AM' },
-  ];
+  const existing = [{ bookingId: 'CLB-1', guestEmail: 'zzz@other.com', date: '2026-01-01', teeTime: '08:00 AM' }];
 
   const { fresh, duplicates } = markDuplicates(parsed, existing);
   assert.equal(duplicates.length, 2, 'the known reference, and the row the file repeats');
-  assert.deepEqual(fresh.map((row) => row.guestEmail), ['c@d.com', 'e@f.com']);
+  assert.deepEqual(
+    fresh.map((row) => row.guestEmail),
+    ['c@d.com', 'e@f.com'],
+  );
 });
 
 test('generated references are dated and traceable to their batch', () => {
-  const batch = mintBatchId(new Date('2026-09-23T10:00:00Z'), () => 0.5);
-  assert.match(batch, /^IMP-20260923-[0-9A-F]{4}$/);
-  assert.equal(mintImportedBookingId(batch, 7), `${batch}-0007`);
+  const batch = mintBatchId(new Date('2026-09-23T10:00:00Z'), () => 1);
+  assert.equal(batch, 'IMP-20260923-BBBBBB');
+  // A row without a reference gets one in the core API's format.
+  assert.match(mintImportedBookingId(), /^[A-Z]{2,6}-\d{8}-[A-Z0-9]{10}$/);
 });

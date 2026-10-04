@@ -104,20 +104,34 @@ test('money converts to and from Stripe minor units', () => {
 });
 
 test('nested params are form-encoded the way Stripe reads them', () => {
-  const body = formEncode({ line_items: { 0: { price: 'price_1', quantity: 1 } }, metadata: { booking_id: 'A' } }).toString();
-  assert.equal(decodeURIComponent(body), 'line_items[0][price]=price_1&line_items[0][quantity]=1&metadata[booking_id]=A');
+  const body = formEncode({
+    line_items: { 0: { price: 'price_1', quantity: 1 } },
+    metadata: { booking_id: 'A' },
+  }).toString();
+  assert.equal(
+    decodeURIComponent(body),
+    'line_items[0][price]=price_1&line_items[0][quantity]=1&metadata[booking_id]=A',
+  );
 });
 
 test('a link is a price plus a single-use payment link, carrying the booking', async () => {
   const calls = [];
   const fetchImpl = async (url, init) => {
     calls.push({ url, body: new URLSearchParams(init.body) });
-    const payload = url.endsWith('/prices') ? { id: 'price_1' } : { id: 'plink_1', url: 'https://buy.stripe.com/test_1' };
+    const payload = url.endsWith('/prices')
+      ? { id: 'price_1' }
+      : { id: 'plink_1', url: 'https://buy.stripe.com/test_1' };
     return { ok: true, json: async () => payload };
   };
   const link = await createPaymentLink({
-    secretKey: 'sk_test', amount: 360, currency: 'GBP', productName: 'Booking', bookingId: 'TMG-1', club: 'rd',
-    confirmationMessage: 'Thanks', fetchImpl,
+    secretKey: 'sk_test',
+    amount: 360,
+    currency: 'GBP',
+    productName: 'Booking',
+    bookingId: 'TMG-1',
+    club: 'rd',
+    confirmationMessage: 'Thanks',
+    fetchImpl,
   });
 
   assert.deepEqual(link, { id: 'plink_1', url: 'https://buy.stripe.com/test_1' });
@@ -130,9 +144,21 @@ test('a link is a price plus a single-use payment link, carrying the booking', a
 });
 
 test('a Stripe refusal surfaces its own message', async () => {
-  const fetchImpl = async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'Invalid currency' } }) });
+  const fetchImpl = async () => ({
+    ok: false,
+    status: 400,
+    json: async () => ({ error: { message: 'Invalid currency' } }),
+  });
   await assert.rejects(
-    createPaymentLink({ secretKey: 'sk', amount: 1, currency: 'GBP', productName: 'x', bookingId: 'a', club: 'b', fetchImpl }),
+    createPaymentLink({
+      secretKey: 'sk',
+      amount: 1,
+      currency: 'GBP',
+      productName: 'x',
+      bookingId: 'a',
+      club: 'b',
+      fetchImpl,
+    }),
     /Stripe error 400: Invalid currency/,
   );
 });
@@ -153,7 +179,9 @@ function sign(body, secret, t) {
 test('a webhook signed with the endpoint secret verifies', () => {
   const body = '{"id":"evt_1"}';
   const now = 1_800_000_000;
-  assert.deepEqual(verifyWebhookSignature(Buffer.from(body), sign(body, 'whsec_1', now), 'whsec_1', { now }), { ok: true });
+  assert.deepEqual(verifyWebhookSignature(Buffer.from(body), sign(body, 'whsec_1', now), 'whsec_1', { now }), {
+    ok: true,
+  });
 });
 
 test('a forged, altered, stale or unsigned webhook is refused', () => {
@@ -182,25 +210,45 @@ const session = (overrides = {}) => ({
 test('only events that mean money arrived are acted on', () => {
   assert.ok(paidSessionFromEvent({ type: 'checkout.session.completed', data: { object: session() } }));
   assert.equal(
-    paidSessionFromEvent({ type: 'checkout.session.completed', data: { object: session({ payment_status: 'unpaid' }) } }),
+    paidSessionFromEvent({
+      type: 'checkout.session.completed',
+      data: { object: session({ payment_status: 'unpaid' }) },
+    }),
     null,
     'a bank debit completes before it pays',
   );
-  assert.ok(paidSessionFromEvent({ type: 'checkout.session.async_payment_succeeded', data: { object: session({ payment_status: 'unpaid' }) } }));
-  assert.equal(paidSessionFromEvent({ type: 'payment_intent.created', data: { object: { object: 'payment_intent' } } }), null);
+  assert.ok(
+    paidSessionFromEvent({
+      type: 'checkout.session.async_payment_succeeded',
+      data: { object: session({ payment_status: 'unpaid' }) },
+    }),
+  );
+  assert.equal(
+    paidSessionFromEvent({ type: 'payment_intent.created', data: { object: { object: 'payment_intent' } } }),
+    null,
+  );
 });
 
 test('the booking is found from metadata, or the client reference, or the link', () => {
-  assert.deepEqual(bookingRefFromSession(session()), { bookingId: 'TMG-1', club: 'royal_dornoch', paymentLinkId: 'plink_1' });
-  assert.deepEqual(
-    bookingRefFromSession(session({ metadata: {}, client_reference_id: 'TMG-9' })),
-    { bookingId: 'TMG-9', club: null, paymentLinkId: 'plink_1' },
-  );
+  assert.deepEqual(bookingRefFromSession(session()), {
+    bookingId: 'TMG-1',
+    club: 'royal_dornoch',
+    paymentLinkId: 'plink_1',
+  });
+  assert.deepEqual(bookingRefFromSession(session({ metadata: {}, client_reference_id: 'TMG-9' })), {
+    bookingId: 'TMG-9',
+    club: null,
+    paymentLinkId: 'plink_1',
+  });
 });
 
 test('a payment covering the total marks the booking Paid', () => {
   assert.deepEqual(applyPaidSession(booking({ paymentStatus: 'Pending' }), session({ payment_intent: 'pi_1' })), {
-    received: 1440, amountPaid: 1440, paymentStatus: 'Paid', bookingStatus: 'Booked', reference: 'pi_1',
+    received: 1440,
+    amountPaid: 1440,
+    paymentStatus: 'Paid',
+    bookingStatus: 'Booked',
+    reference: 'pi_1',
   });
 });
 
@@ -213,7 +261,11 @@ test('payment moves an open enquiry to Booked, and never revives a cancelled one
 
 test('a part payment adds to what was paid and reads Deposit paid', () => {
   assert.deepEqual(applyPaidSession(booking(), session({ amount_total: 36000 })), {
-    received: 360, amountPaid: 360, paymentStatus: 'Deposit paid', bookingStatus: 'Booked', reference: 'cs_1',
+    received: 360,
+    amountPaid: 360,
+    paymentStatus: 'Deposit paid',
+    bookingStatus: 'Booked',
+    reference: 'cs_1',
   });
   assert.equal(applyPaidSession(booking({ amountPaid: 360 }), session({ amount_total: 108000 })).paymentStatus, 'Paid');
 });
@@ -225,7 +277,11 @@ test('the same payment delivered twice is only counted once', () => {
 // --- the email -----------------------------------------------------------------------
 
 test('the email names the amount, the booking and the link', () => {
-  const data = buildPaymentEmailData(booking(), { amount: 1440, currency: 'GBP', url: 'https://buy.stripe.com/x?a=1&b=2' });
+  const data = buildPaymentEmailData(booking(), {
+    amount: 1440,
+    currency: 'GBP',
+    url: 'https://buy.stripe.com/x?a=1&b=2',
+  });
   assert.equal(data.first_name, 'Tom');
   assert.equal(data.amount, '£1,440.00');
   assert.equal(data.play_date, 'Wednesday 12 May 2027');
@@ -239,7 +295,10 @@ test('the email names the amount, the booking and the link', () => {
 
 test('the receipt states what was paid, the running total and any balance', () => {
   const part = buildReceiptEmailData(booking({ amountPaid: 360 }), {
-    received: 360, currency: 'GBP', paidAt: '2026-09-27T10:00:00Z', reference: 'pi_1',
+    received: 360,
+    currency: 'GBP',
+    paidAt: '2026-09-27T10:00:00Z',
+    reference: 'pi_1',
   });
   assert.equal(part.amount_received, '£360.00');
   assert.equal(part.total_paid, '£360.00');
@@ -251,7 +310,11 @@ test('the receipt states what was paid, the running total and any balance', () =
   assert.match(partEmail.text, /A balance of £1,080\.00 remains/);
   assert.match(partEmail.html, /pi_1/);
 
-  const full = buildReceiptEmailData(booking({ amountPaid: 1440 }), { received: 1080, currency: 'GBP', reference: 'pi_2' });
+  const full = buildReceiptEmailData(booking({ amountPaid: 1440 }), {
+    received: 1080,
+    currency: 'GBP',
+    reference: 'pi_2',
+  });
   assert.equal(full.paid_in_full, true);
   const fullEmail = buildReceiptEmail(full);
   assert.match(fullEmail.text, /paid in full and confirmed/);
@@ -259,7 +322,11 @@ test('the receipt states what was paid, the running total and any balance', () =
 });
 
 test('guest-supplied text is escaped in the email', () => {
-  const data = buildPaymentEmailData(booking({ guestName: '<script>x</script>' }), { amount: 1, currency: 'GBP', url: 'https://x' });
+  const data = buildPaymentEmailData(booking({ guestName: '<script>x</script>' }), {
+    amount: 1,
+    currency: 'GBP',
+    url: 'https://x',
+  });
   assert.ok(!buildPaymentEmail(data).html.includes('<script>'));
 });
 
@@ -270,11 +337,21 @@ test('an HTML email posts subject and both bodies to SendGrid', async () => {
     return { status: 202 };
   };
   const outcome = await sendHtmlEmail({
-    apiKey: 'SG', fromEmail: 'a@b.com', fromName: 'Club', toEmail: 'g@x.com', subject: 'S', text: 'T', html: '<p>H</p>', fetchImpl,
+    apiKey: 'SG',
+    fromEmail: 'a@b.com',
+    fromName: 'Club',
+    toEmail: 'g@x.com',
+    subject: 'S',
+    text: 'T',
+    html: '<p>H</p>',
+    fetchImpl,
   });
   assert.equal(outcome.ok, true);
   assert.equal(sent.subject, 'S');
-  assert.deepEqual(sent.content.map((c) => c.type), ['text/plain', 'text/html']);
+  assert.deepEqual(
+    sent.content.map((c) => c.type),
+    ['text/plain', 'text/html'],
+  );
   assert.equal(sent.template_id, undefined);
 });
 
@@ -283,12 +360,26 @@ test('an HTML email posts subject and both bodies to SendGrid', async () => {
 test('a payment_intent.succeeded event is read as the same payment', () => {
   const payment = paidSessionFromEvent({
     type: 'payment_intent.succeeded',
-    data: { object: { object: 'payment_intent', id: 'pi_9', amount_received: 72000, currency: 'gbp', metadata: { booking_id: 'TMG-1', club: 'royal_dornoch' } } },
+    data: {
+      object: {
+        object: 'payment_intent',
+        id: 'pi_9',
+        amount_received: 72000,
+        currency: 'gbp',
+        metadata: { booking_id: 'TMG-1', club: 'royal_dornoch' },
+      },
+    },
   });
   assert.equal(payment.amount_total, 72000);
   assert.equal(paymentKey(payment), 'pi_9');
   assert.deepEqual(bookingRefFromSession(payment), { bookingId: 'TMG-1', club: 'royal_dornoch', paymentLinkId: null });
-  assert.equal(paidSessionFromEvent({ type: 'payment_intent.created', data: { object: { object: 'payment_intent', id: 'pi_9' } } }), null);
+  assert.equal(
+    paidSessionFromEvent({
+      type: 'payment_intent.created',
+      data: { object: { object: 'payment_intent', id: 'pi_9' } },
+    }),
+    null,
+  );
 });
 
 test('the Checkout and PaymentIntent events for one payment count it once', () => {
@@ -311,11 +402,16 @@ test('checking a link asks Stripe for its completed sessions and keeps the paid 
     asked = { url, method: init.method, body: init.body };
     return {
       ok: true,
-      json: async () => ({ data: [session({ id: 'cs_paid' }), session({ id: 'cs_unpaid', payment_status: 'unpaid' })] }),
+      json: async () => ({
+        data: [session({ id: 'cs_paid' }), session({ id: 'cs_unpaid', payment_status: 'unpaid' })],
+      }),
     };
   };
   const paid = await paidSessionsForLink({ secretKey: 'sk_test', linkId: 'plink_1', fetchImpl });
-  assert.deepEqual(paid.map((s) => s.id), ['cs_paid']);
+  assert.deepEqual(
+    paid.map((s) => s.id),
+    ['cs_paid'],
+  );
   assert.equal(asked.method, 'GET');
   assert.equal(asked.body, undefined);
   const query = new URL(asked.url).searchParams;
@@ -323,7 +419,7 @@ test('checking a link asks Stripe for its completed sessions and keeps the paid 
   assert.equal(query.get('status'), 'complete');
 });
 
-test('the setup check reads Stripe\'s webhook endpoints as they are registered', async () => {
+test("the setup check reads Stripe's webhook endpoints as they are registered", async () => {
   const { listWebhookEndpoints } = await import('../src/lib/stripe.js');
   let asked;
   const fetchImpl = async (url, init) => {
@@ -331,7 +427,15 @@ test('the setup check reads Stripe\'s webhook endpoints as they are registered',
     return {
       ok: true,
       json: async () => ({
-        data: [{ id: 'we_1', url: 'https://dash.example.com/api/stripe/webhook', status: 'enabled', enabled_events: ['checkout.session.completed'], livemode: false }],
+        data: [
+          {
+            id: 'we_1',
+            url: 'https://dash.example.com/api/stripe/webhook',
+            status: 'enabled',
+            enabled_events: ['checkout.session.completed'],
+            livemode: false,
+          },
+        ],
       }),
     };
   };
@@ -339,6 +443,12 @@ test('the setup check reads Stripe\'s webhook endpoints as they are registered',
   assert.equal(asked.method, 'GET');
   assert.match(asked.url, /\/v1\/webhook_endpoints\?limit=100$/);
   assert.deepEqual(endpoints, [
-    { id: 'we_1', url: 'https://dash.example.com/api/stripe/webhook', status: 'enabled', events: ['checkout.session.completed'], livemode: false },
+    {
+      id: 'we_1',
+      url: 'https://dash.example.com/api/stripe/webhook',
+      status: 'enabled',
+      events: ['checkout.session.completed'],
+      livemode: false,
+    },
   ]);
 });

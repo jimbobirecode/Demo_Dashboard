@@ -76,14 +76,13 @@ test('status vocabulary', () => {
 });
 
 test('audit placeholders line up with the caller’s parameters', () => {
-  const columns = { has: (name) => ['updated_at', 'updated_by'].includes(name) };
-  const audit = buildAuditSet(columns, 3, 'jane');
+  const audit = buildAuditSet(3, 'jane');
 
   assert.deepEqual(audit.clauses, ['updated_at = NOW()', 'updated_by = $3']);
   assert.deepEqual(audit.values, ['jane']);
   assert.equal(3 + audit.values.length, 4, 'club lands on $4');
 });
 
-test('an install without audit columns writes none', () => {
-  assert.deepEqual(buildAuditSet({ has: () => false }, 3, 'jane'), { clauses: [], values: [] });
+test('without a username only the timestamp is stamped', () => {
+  assert.deepEqual(buildAuditSet(3, null), { clauses: ['updated_at = NOW()'], values: [] });
 });

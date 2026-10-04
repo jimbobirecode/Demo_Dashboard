@@ -12,7 +12,6 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
-import { getBookingColumns, hasOperatorsTable } from '../lib/schema.js';
 import { todayInClubZone } from '../lib/email-domain.js';
 import { sendTemplateEmail } from '../lib/sendgrid.js';
 import {
@@ -31,8 +30,6 @@ import { loadBookings, loadOperators } from './operators.js';
 const router = Router();
 router.use(requireAuth);
 
-const MIGRATION = 'migration_add_tour_operators.sql';
-
 /** One run never writes to more than this many accounts. */
 const MAX_BATCH = 100;
 
@@ -48,43 +45,18 @@ function resolveCampaign(req, res) {
   return campaign;
 }
 
-async function requireOperatorSchema(res) {
-  if (await hasOperatorsTable()) return true;
-  res.status(409).json({
-    error:
-      `This database has no tour_operators table. Run ${MIGRATION} to add it — ` +
-      'the dashboard picks it up within 30 seconds, with no restart. If this ' +
-      'persists after the migration has run, the dashboard is pointed at a ' +
-      'different database than the one it was run against.',
-    migration: MIGRATION,
+/** What is configured for sending. */
+router.get('/config', (req, res) => {
+  res.json({
+    ...publicReminderConfig(readReminderConfig()),
+    resendGuardDays: RESEND_GUARD_DAYS,
   });
-  return false;
-}
-
-/** What is configured, and whether reminder sends can be de-duplicated. */
-router.get('/config', async (req, res, next) => {
-  try {
-    const columns = await getBookingColumns();
-    res.json({
-      ...publicReminderConfig(readReminderConfig()),
-      resendGuardDays: RESEND_GUARD_DAYS,
-      operators: await hasOperatorsTable(),
-      tracking: {
-        booking_status: columns.has('operator_status_email_sent_at'),
-        payment_due: columns.has('operator_payment_email_sent_at'),
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
 });
 
 /** The reminders that would go out today, one per operator. */
 router.get('/pending', async (req, res, next) => {
   const campaign = resolveCampaign(req, res);
   if (!campaign) return;
-  if (!(await requireOperatorSchema(res))) return;
-
   const scope = req.query.scope === 'all' ? 'all' : 'due';
 
   try {
@@ -116,8 +88,6 @@ router.get('/pending', async (req, res, next) => {
 router.post('/send', async (req, res, next) => {
   const campaign = resolveCampaign(req, res);
   if (!campaign) return;
-  if (!(await requireOperatorSchema(res))) return;
-
   const { operatorIds, dryRun = false, scope = 'due' } = req.body ?? {};
   if (!Array.isArray(operatorIds) || operatorIds.length === 0) {
     return res.status(400).json({ error: 'operatorIds must be a non-empty array' });
@@ -137,8 +107,6 @@ router.post('/send', async (req, res, next) => {
     const club = req.user.customerId;
     const today = todayInClubZone();
     const { days } = config.campaigns[campaign.id];
-    const columns = await getBookingColumns();
-
     const [operators, bookings] = await Promise.all([loadOperators(club), loadBookings(club)]);
     // Re-selected here rather than taken from the request: the browser may have
     // been looking at this list for an hour, and the club's own rules decide
@@ -155,7 +123,6 @@ router.post('/send', async (req, res, next) => {
     const results = [];
     let sent = 0;
     let failed = 0;
-    let tracked = columns.has(campaign.column);
 
     for (const operatorId of wanted) {
       const reminder = byId.get(operatorId);
@@ -220,8 +187,7 @@ router.post('/send', async (req, res, next) => {
 
       if (outcome.ok) {
         sent += 1;
-        const recorded = await markReminded(campaign, reminder, club, columns);
-        if (!recorded) tracked = false;
+        await markReminded(campaign, reminder, club);
       } else {
         failed += 1;
       }
@@ -236,7 +202,7 @@ router.post('/send', async (req, res, next) => {
       });
     }
 
-    res.json({ campaign: campaign.id, dryRun, sent, failed, tracked, results });
+    res.json({ campaign: campaign.id, dryRun, sent, failed, results });
   } catch (err) {
     next(err);
   }
@@ -249,14 +215,12 @@ router.post('/send', async (req, res, next) => {
  * resend guard reads: an account chased last week about four bookings should
  * still be chased today about the fifth one that has just fallen due.
  */
-async function markReminded(campaign, reminder, club, columns) {
-  if (!columns.has(campaign.column)) return false;
+async function markReminded(campaign, reminder, club) {
   await query(
     `UPDATE public.bookings SET "${campaign.column}" = NOW()
       WHERE booking_id = ANY($1::text[]) AND club = $2`,
     [reminder.bookings.map((line) => line.bookingId), club],
   );
-  return true;
 }
 
 export default router;

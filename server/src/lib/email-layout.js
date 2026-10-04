@@ -18,6 +18,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BRAND, appBaseUrl } from './brand.js';
+import { logger } from './logger.js';
+
+const log = logger.child('email');
 
 export const LOGO_CID = 'club-logo';
 
@@ -32,7 +35,7 @@ try {
   // has at 240px wide. Read from the PNG header (width, height at bytes 16-24).
   logoHeight = Math.round((bytes.readUInt32BE(20) * 240) / bytes.readUInt32BE(16));
 } catch (err) {
-  console.warn(`[email] ${LOGO_FILE} not readable (${err.message}); emails will link to the logo instead`);
+  log.warn(`${LOGO_FILE} not readable (${err.message}); emails will link to the logo instead`);
 }
 
 /** The inline attachment for an email whose HTML uses cid:club-logo, or null. */
@@ -67,7 +70,10 @@ function headerLogoSrc(source) {
 }
 
 export const escapeHtml = (value) =>
-  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
 
 /** Merge fields for SendGrid templates, so a template can use the same branding. */
 export function brandTemplateData(source = env) {

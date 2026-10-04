@@ -22,10 +22,7 @@ export default function BookingsTable({ bookings, selectedId, onSelect, onAdvanc
   // recorded a payment. On an install with neither, the table looks exactly as
   // it did before this feature existed.
   const showTrade = useMemo(
-    () =>
-      bookings.some(
-        (booking) => booking.operatorName || (booking.payment && booking.payment.status !== 'Unpaid'),
-      ),
+    () => bookings.some((booking) => booking.operatorName || (booking.payment && booking.payment.status !== 'Unpaid')),
     [bookings],
   );
 
@@ -176,9 +173,7 @@ export default function BookingsTable({ bookings, selectedId, onSelect, onAdvanc
                       key={header.id}
                       data-sortable={sortable}
                       onClick={sortable ? header.column.getToggleSortingHandler() : undefined}
-                      aria-sort={
-                        direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'
-                      }
+                      aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'}
                       className={header.column.columnDef.meta?.align === 'num' ? 'num' : undefined}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
@@ -198,10 +193,7 @@ export default function BookingsTable({ bookings, selectedId, onSelect, onAdvanc
                 style={{ cursor: 'pointer' }}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className={cell.column.columnDef.meta?.align === 'num' ? 'num' : undefined}
-                  >
+                  <td key={cell.id} className={cell.column.columnDef.meta?.align === 'num' ? 'num' : undefined}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -223,12 +215,7 @@ export default function BookingsTable({ bookings, selectedId, onSelect, onAdvanc
         >
           Previous
         </button>
-        <button
-          type="button"
-          className="btn-sm"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        >
+        <button type="button" className="btn-sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
           Next
         </button>
         <select

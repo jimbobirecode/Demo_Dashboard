@@ -10,7 +10,13 @@ import {
 } from '../src/lib/portal-domain.js';
 
 const operators = [
-  { id: 1, name: 'Links Tours', contactEmail: 'Bookings@LinksTours.com', emailDomains: ['linkstours.com'], active: true },
+  {
+    id: 1,
+    name: 'Links Tours',
+    contactEmail: 'Bookings@LinksTours.com',
+    emailDomains: ['linkstours.com'],
+    active: true,
+  },
   { id: 2, name: 'Old Co', contactEmail: 'ops@oldco.ie', emailDomains: ['oldco.ie'], active: false },
   { id: 3, name: 'Gmail Guy', contactEmail: 'guy@gmail.com', emailDomains: ['gmail.com'], active: true },
 ];
@@ -36,12 +42,21 @@ test('operatorForEmail ignores retired accounts and junk', () => {
 });
 
 test('portalSignInLink trims trailing slashes and encodes the token', () => {
-  assert.equal(portalSignInLink('https://democlub.teemail.io/', 'a+b'), 'https://democlub.teemail.io/portal/sign-in?token=a%2Bb');
+  assert.equal(
+    portalSignInLink('https://democlub.teemail.io/', 'a+b'),
+    'https://democlub.teemail.io/portal/sign-in?token=a%2Bb',
+  );
 });
 
 const booking = {
-  bookingId: 'B-1', date: '2026-10-10', teeTime: 'Not Specified', players: 8, status: 'Confirmed', total: 3440,
-  notes: 'internal', payment: { paid: 1000, outstanding: 2440, dueDate: '2026-09-20', overdue: true, daysOverdue: 9 },
+  bookingId: 'B-1',
+  date: '2026-10-10',
+  teeTime: 'Not Specified',
+  players: 8,
+  status: 'Confirmed',
+  total: 3440,
+  notes: 'internal',
+  payment: { paid: 1000, outstanding: 2440, dueDate: '2026-09-20', overdue: true, daysOverdue: 9 },
 };
 
 test('portalBooking exposes the trade view, not internal notes', () => {
@@ -80,10 +95,24 @@ test('buildEnquiry validates the date and party size', () => {
 });
 
 test('buildEnquiry writes an email the club can act on', () => {
-  const out = buildEnquiry({ date: '2026-11-02', players: '12', course: 'Old Course', notes: 'Buggies x2' }, operators[0], 'sarah@linkstours.com');
+  const out = buildEnquiry(
+    { date: '2026-11-02', players: '12', course: 'Old Course', notes: 'Buggies x2' },
+    operators[0],
+    'sarah@linkstours.com',
+  );
   assert.equal(out.error, undefined);
   assert.match(out.subject, /12 players on 2026-11-02 - Links Tours/);
   assert.match(out.body, /Requested by: sarah@linkstours.com/);
   assert.match(out.body, /Buggies x2/);
   assert.match(out.summary, /\(Old Course\)/);
+});
+
+test('statementCsv defuses spreadsheet formulas but keeps amounts numeric', () => {
+  const csv = statementCsv([
+    portalBooking({ ...booking, golfCourses: '=HYPERLINK("http://evil","x")', guestName: '@me' }),
+  ]);
+  const row = csv.trim().split('\r\n')[1];
+  assert.match(row, /"'=HYPERLINK\(""http:\/\/evil"",""x""\)"/);
+  assert.doesNotMatch(row, /,=/);
+  assert.match(row, /3440\.00,1000\.00,2440\.00/);
 });
