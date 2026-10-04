@@ -506,3 +506,10 @@ test('the CSV columns read from the serialised application', () => {
   assert.equal(values[3], '=cmd', 'defused by lib/csv.js when written');
   assert.ok(values.every((value) => typeof value === 'string'));
 });
+
+test('the token matches the core API’s cross-service test vector exactly', () => {
+  // Verified on the core API side against the same contract.
+  const token = signMembership('MEM-20261004-ABCDEFGH', 'test-secret', 'royal_dornoch');
+  assert.equal(token, '6G-gH72yiTObhng71GzSOIjhJBwKH2MD');
+  assert.ok(verifyMembershipToken('MEM-20261004-ABCDEFGH', token, 'test-secret', 'royal_dornoch'));
+});
