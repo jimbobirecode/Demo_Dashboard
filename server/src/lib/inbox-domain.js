@@ -19,6 +19,7 @@ export const INTENT_LABELS = {
   question: 'Question',
   complaint: 'Complaint',
   operator_request: 'Tour operator',
+  membership_enquiry: 'Membership enquiry',
   not_booking: 'Not a booking',
   other: 'Other',
 };
@@ -30,6 +31,9 @@ export const ROUTE_LABELS = {
   inbox: 'Held for the team',
   change_request: 'Filed as a Guest Request',
   ignored: 'Ignored',
+  // A membership enquiry, answered by the core API with the categories (or the
+  // waitlist when applications are closed) and filed on the Membership page.
+  membership: 'Sent to Membership',
   // The core API records an inbound email before it answers SendGrid and
   // claims it while a worker handles it. Neither needs a person yet: an email
   // stuck there is handed to the Inbox ('inbox', review open) by the core
