@@ -305,6 +305,30 @@ describe('HTTP routes against Postgres', { skip }, () => {
         /uq_email_messages_inbound_message_id/,
       );
     });
+
+    test('membership email is read on the Membership page, so it is in no Inbox list or count', async () => {
+      const agent = await signIn('staff@club-a.test');
+      const before = await agent.get('/api/inbox').query({ status: 'open' });
+
+      await pool.query(
+        `INSERT INTO email_messages (club, direction, from_email, subject, body_text, routed_to, review_status, review_reason, message_id)
+         VALUES ('club_a', 'inbound', 'joiner@a.test', 'joining', 'b', 'membership', 'none', NULL, '<11@a.test>'),
+                ('club_a', 'inbound', 'joiner@a.test', 'about my application', 'b', 'membership', 'none',
+                 'Reply about membership application MEM-1 - for the team.', '<12@a.test>')`,
+      );
+
+      const open = await agent.get('/api/inbox').query({ status: 'open' });
+      assert.equal(open.status, 200);
+      assert.equal(open.body.counts.open, before.body.counts.open, 'membership email adds nothing to the Inbox');
+      assert.deepEqual(
+        open.body.messages.map((m) => m.subject),
+        before.body.messages.map((m) => m.subject),
+      );
+
+      // Not under 'all' either: the Membership page is where it is read.
+      const subjects = (await agent.get('/api/inbox').query({ status: 'all' })).body.messages.map((m) => m.subject);
+      assert.ok(!subjects.includes('joining') && !subjects.includes('about my application'), subjects.join());
+    });
   });
 
   describe('operator portal', () => {

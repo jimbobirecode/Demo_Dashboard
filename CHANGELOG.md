@@ -2,6 +2,14 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – membership out of the Inbox (October 2026)
+
+### Changed
+
+- The Inbox no longer lists or counts membership correspondence (`routed_to = 'membership'`), under any status including `all`: it is read on the Membership page, beside the application, its timeline and the club's decisions. A membership email that produced no application — membership misconfigured, database unreachable, tables missing — is still routed to `inbox` and does appear, so an enquirer nobody answered is never invisible.
+- `GET /api/membership/applications/:id` returns `thread` (the whole conversation with the applicant, by address plus the enquiry itself — they may have given a different address on the form) and `needsReply` (what the core API could not finish: an unanswered reply, an automatic email that did not send). The application drawer shows the conversation and puts `needsReply` at the top of the Enquiry section.
+- An Inbox item for a membership enquiry says it was not answered and no application was created, instead of claiming it was answered automatically — only a fault reaches the Inbox now.
+
 ## Unreleased – membership contract v2 (October 2026)
 
 ### Fixed

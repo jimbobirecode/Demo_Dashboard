@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatCurrency, formatDate, formatDateTime } from '../lib/format.js';
 import { MEMBERSHIP_ACTIONS } from '../lib/membership.js';
+import ChatThread from './ChatThread.jsx';
 import MembershipStatusPill from './MembershipStatusPill.jsx';
 
 /**
@@ -75,6 +76,7 @@ export default function MembershipDrawer({ applicationId, enabled, onClose, onCh
   }
 
   const application = data?.application;
+  const thread = data?.thread ?? [];
 
   return (
     <>
@@ -183,20 +185,32 @@ export default function MembershipDrawer({ applicationId, enabled, onClose, onCh
               )}
             </section>
 
-            {(application.enquirySummary || data.sourceEmail) && (
+            {(application.enquirySummary || data.needsReply || thread.length || data.sourceEmail) && (
               <section className="stack" style={{ gap: '0.6rem' }}>
                 <h3>Enquiry</h3>
+                {/* Membership email is read here, not in the Inbox, so what the
+                    core API could not finish has to say so on the application. */}
+                {data.needsReply && <div className="banner error">{data.needsReply}</div>}
                 {application.enquirySummary && <p style={{ margin: 0 }}>{application.enquirySummary}</p>}
-                {data.sourceEmail && (
-                  <details className="chart-table">
+                {thread.length ? (
+                  <details className="chart-table" open={Boolean(data.needsReply)}>
                     <summary>
-                      Original email from {data.sourceEmail.fromEmail} · {formatDateTime(data.sourceEmail.createdAt)}
+                      {thread.length === 1 ? '1 email' : `${thread.length} emails`} with {application.email}
                     </summary>
-                    {data.sourceEmail.subject && <div className="chat-subject">{data.sourceEmail.subject}</div>}
-                    <div className="chat-body" style={{ whiteSpace: 'pre-wrap' }}>
-                      {data.sourceEmail.body}
-                    </div>
+                    <ChatThread thread={thread} guestName={application.name || application.email} />
                   </details>
+                ) : (
+                  data.sourceEmail && (
+                    <details className="chart-table">
+                      <summary>
+                        Original email from {data.sourceEmail.fromEmail} · {formatDateTime(data.sourceEmail.createdAt)}
+                      </summary>
+                      {data.sourceEmail.subject && <div className="chat-subject">{data.sourceEmail.subject}</div>}
+                      <div className="chat-body" style={{ whiteSpace: 'pre-wrap' }}>
+                        {data.sourceEmail.body}
+                      </div>
+                    </details>
+                  )
                 )}
               </section>
             )}

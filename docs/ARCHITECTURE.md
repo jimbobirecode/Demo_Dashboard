@@ -154,7 +154,7 @@ sequenceDiagram
     end
 ```
 
-- **Schema**: `club_settings`, `membership_categories`, `membership_applications`, `membership_events` (migration `0008`, owned here). The core API tolerates their absence by holding the enquiry in the Inbox.
+- **Schema**: `club_settings`, `membership_categories`, `membership_applications`, `membership_events` (migration `0008`, owned here). The core API tolerates their absence by holding the enquiry in the Inbox — the one case where a membership email goes there, since without the tables there is no application to read it beside.
 - **Reference**: `MEM-YYYYMMDD-XXXXXXXX` (8 × `[A-Z0-9]`, CSPRNG), unique. A repeat enquiry reuses an open (`enquired`, `invited`, `waitlisted`) application.
 - **Token**: `base64url(HMAC-SHA256(BOOKING_LINK_SECRET, "<club>|membership|<reference>"))`, `=` stripped, first 32 characters; constant-time compare. Pinned on both sides by a shared test vector. No secret → no links.
 - **Links**: `<MEMBERSHIP_FORM_BASE_URL>/membership/apply?ref=&token=` and `/membership/waitlist?…` — the dashboard's `MEMBERSHIP_FORM_BASE_URL` is the core API's public URL.
