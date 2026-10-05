@@ -2,6 +2,18 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – deleting mail, and notes with a user stamp (October 2026)
+
+### Added
+
+- **Delete an email from the mailbox**, recoverably (`DELETE /api/inbox/:id`, `POST /api/inbox/:id/restore`). The email leaves every list, count and conversation — a booking's thread and a membership application's thread included — and a new **Deleted** filter shows them with who deleted them and when, and puts one back. The row itself is kept: a membership application's enquiry, a guest request, a reply's `in_reply_to` and the Message-ID that stops SendGrid delivering the same email twice all point at it. A deleted email accepts nothing but restore (reply, status, link and notes answer 409), and one the core API still has in hand (`routed_to` `queued`/`processing`) cannot be deleted at all — it re-processes those, and would answer a guest whose email the club had just deleted.
+- **Notes on an email** (`POST /api/inbox/:id/notes`), each stamped with the username that wrote it and the time, shown under the conversation. For the team only — never sent to the guest, never editable afterwards. New table `email_notes` (migration `0010`), one row per note.
+
+### Fixed
+
+- A club email in a conversation read `You (alice)` whoever was looking at it, telling every other user they had written alice's reply. It now shows the username as it is, the same for everybody; `bot` and `Stripe` keep reading as "Sent automatically" and "Sent on payment".
+- A dismissed email now says when it was closed, not only by whom.
+
 ## Unreleased – membership out of the Inbox (October 2026)
 
 ### Changed

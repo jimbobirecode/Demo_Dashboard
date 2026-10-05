@@ -11,6 +11,16 @@ import { brandedEmail } from './email-layout.js';
 
 export const REVIEW_STATUSES = ['open', 'replied', 'dismissed'];
 
+/**
+ * Filters the Inbox list understands. `deleted` is not a review status — an
+ * email keeps whatever it had when it was deleted — so it is a filter of its
+ * own, and every other filter shows live emails only.
+ */
+export const DELETED_FILTER = 'deleted';
+
+/** Longest note we store. Long enough for a phone call, short enough to read. */
+export const NOTE_MAX = 2000;
+
 export const INTENT_LABELS = {
   new_enquiry: 'Enquiry',
   booking_reply: 'Reply to our email',
@@ -67,6 +77,38 @@ export function belongsInInboxSql(alias = '') {
   return excludedRoutesSql(ROUTES_READ_ELSEWHERE, alias);
 }
 
+/**
+ * SQL: this email is still in the mailbox (not deleted). `alias` is the table
+ * alias, if any.
+ *
+ * Deleting is recoverable: the row stays, because a membership application, a
+ * guest request and a reply's own thread all point at it. Everything that
+ * reads the mailbox — the lists, the counts, a booking's conversation, an
+ * application's thread — has to say so, or a deleted email comes back.
+ */
+export function notDeletedSql(alias = '') {
+  return `${alias ? `${alias}.` : ''}deleted_at IS NULL`;
+}
+
+/** Why this note cannot be saved, or null. */
+export function noteProblem({ note }) {
+  const text = String(note ?? '').trim();
+  if (!text) return 'The note is empty';
+  if (text.length > NOTE_MAX) return `A note can be at most ${NOTE_MAX} characters`;
+  return null;
+}
+
+/** One note on an email, as the dashboard reads it. */
+export function serialiseNote(row) {
+  return {
+    id: row.id,
+    messageId: row.message_id,
+    note: row.note ?? '',
+    createdBy: row.created_by ?? null,
+    createdAt: iso(row.created_at),
+  };
+}
+
 function excludedRoutesSql(routes, alias) {
   const column = alias ? `${alias}.routed_to` : 'routed_to';
   return `COALESCE(${column}, '') NOT IN (${routes.map((route) => `'${route}'`).join(', ')})`;
@@ -105,6 +147,8 @@ export function serialiseMessage(row) {
     draftReply: row.draft_reply ?? '',
     handledAt: iso(row.handled_at),
     handledBy: row.handled_by ?? null,
+    deletedAt: iso(row.deleted_at),
+    deletedBy: row.deleted_by ?? null,
     sentBy: row.sent_by ?? null,
     kind: row.kind ?? null,
     inReplyTo: row.in_reply_to ?? null,

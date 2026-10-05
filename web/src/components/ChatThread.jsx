@@ -25,10 +25,14 @@ const KIND_LABELS = {
 };
 
 /** Who an email the club sent came from, as the reader thinks of it. */
+/**
+ * Who sent a club email. A person's username is shown as it is: the stamp has
+ * to read the same for everybody, and "You (alice)" told bob he wrote it.
+ */
 function sender(message) {
   if (message.sentBy === 'bot') return 'Sent automatically';
   if (message.sentBy === 'Stripe') return 'Sent on payment';
-  return message.sentBy ? `You (${message.sentBy})` : 'The club';
+  return message.sentBy || 'The club';
 }
 
 /**

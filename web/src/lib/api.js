@@ -125,6 +125,11 @@ export const api = {
   inboxReply: (id, body, subject) => request(`/inbox/${id}/reply`, { method: 'POST', body: { body, subject } }),
   inboxStatus: (id, status) => request(`/inbox/${id}/status`, { method: 'POST', body: { status } }),
   inboxLink: (id, bookingId) => request(`/inbox/${id}/link`, { method: 'POST', body: { bookingId } }),
+  inboxNote: (id, note) => request(`/inbox/${id}/notes`, { method: 'POST', body: { note } }),
+  // Deleting is recoverable: the email leaves the mailbox and the Deleted
+  // filter puts it back.
+  inboxDelete: (id) => request(`/inbox/${id}`, { method: 'DELETE' }),
+  inboxRestore: (id) => request(`/inbox/${id}/restore`, { method: 'POST', body: {} }),
   bookingThread: (bookingId) => request(`/inbox/booking/${encodeURIComponent(bookingId)}`),
   emailPreview: (body, replyToId = null) => request('/inbox/preview', { method: 'POST', body: { body, replyToId } }),
   emailGuest: (bookingId, body, subject) =>

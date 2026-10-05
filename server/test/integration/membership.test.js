@@ -353,6 +353,18 @@ describe('membership routes against Postgres', { skip }, () => {
       );
       const again = await staffA.get(`/api/membership/applications/${ids.submitted}`);
       assert.ok(!again.body.thread.some((m) => m.body === 'club b email'));
+
+      // An email deleted from the mailbox is out of this thread too.
+      await pool.query(
+        `UPDATE email_messages SET deleted_at = NOW(), deleted_by = 'staff@club-a.test'
+          WHERE club = 'club_a' AND body_text = 'Any news on my application?'`,
+      );
+      const pruned = await staffA.get(`/api/membership/applications/${ids.submitted}`);
+      assert.deepEqual(
+        pruned.body.thread.map((m) => m.body),
+        ['I would like to join the club.'],
+      );
+      assert.equal(pruned.body.needsReply, null, 'nothing is owed on an email that was deleted');
     });
 
     test('another club’s application is a 404 everywhere (no IDOR)', async () => {

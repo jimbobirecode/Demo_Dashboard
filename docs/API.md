@@ -80,14 +80,19 @@ Every route served by the Express app (`server/src/app.js`, routers in `server/s
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/` | `?status=open\|replied\|dismissed\|all` — inbound emails for review, with counts. Rows the core API is still handling (`routed_to` `queued`/`processing`) are left out of every status and count except `all`, where they are labelled `Queued` / `Being processed`. Membership correspondence (`routed_to = 'membership'`) is left out of **every** status and count, `all` included: it is read on the Membership page with the application. A membership email that produced no application (membership misconfigured, database unreachable) is routed to `inbox` like anything else needing a person, and does appear |
+| GET | `/` | `?status=open\|replied\|dismissed\|deleted\|all` — inbound emails for review, with counts. Rows the core API is still handling (`routed_to` `queued`/`processing`) are left out of every status and count except `all`, where they are labelled `Queued` / `Being processed`. Membership correspondence (`routed_to = 'membership'`) is left out of **every** status and count, `all` included: it is read on the Membership page with the application. A membership email that produced no application (membership misconfigured, database unreachable) is routed to `inbox` like anything else needing a person, and does appear. A deleted email (`deleted_at`) is listed and counted only under `status=deleted`, never under `all` |
 | GET | `/booking/:bookingId` | A booking's whole conversation |
 | POST | `/booking/:bookingId/send` | `{subject, body}` — email the booking's guest (address taken from the booking, not the request); logged in `email_messages` |
 | POST | `/preview` | `{body, replyToId}` — render the HTML a reply would send |
-| GET | `/:id` | One email and its thread |
+| GET | `/:id` | One email, its thread and its notes (`{message, thread, booking, notes}`; a note is `{id, messageId, note, createdBy, createdAt}`, oldest first) |
 | POST | `/:id/reply` | `{subject, body}` — reply to the sender of a received email; closes it in the Inbox |
 | POST | `/:id/status` | `{status: dismissed\|open}` |
 | POST | `/:id/link` | `{bookingId}` — attach to a booking of this club |
+| POST | `/:id/notes` | `{note}` (trimmed, 1–2000 chars) — a note for the team on this email, stamped with the signed-in username and not editable afterwards. Internal: never sent to the guest. Returns the detail payload |
+| DELETE | `/:id` | Delete it from the mailbox. **Recoverable**: the row is kept (a membership application, a guest request and a reply's thread point at it — see migration `0010`), stamped `deleted_at`/`deleted_by`, and it leaves every list, count and conversation but `status=deleted`. 409 while the core API still has it (`routed_to` `queued`/`processing`), which it would otherwise re-process and answer |
+| POST | `/:id/restore` | Put a deleted email back, with the review status it had |
+
+A deleted email accepts nothing but `restore`: reply, status, link and notes all answer 409 `This email was deleted. Restore it first.`
 
 Outgoing staff emails include the booking's signed manage link when the email is about a booking.
 

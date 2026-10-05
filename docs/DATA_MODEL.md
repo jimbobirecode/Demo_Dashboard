@@ -22,6 +22,7 @@ erDiagram
     membership_categories ||--o{ membership_applications : "category_id (FK, ON DELETE SET NULL)"
     membership_applications ||--o{ membership_events : "application_id (FK, ON DELETE CASCADE)"
     email_messages ||..o| membership_applications : "source_message_id"
+    email_messages ||--o{ email_notes : "message_id (FK, ON DELETE CASCADE)"
     club_settings ||..o{ membership_categories : "club"
 
     bookings {
@@ -135,6 +136,16 @@ erDiagram
         jsonb extraction "PII"
         text draft_reply "PII"
         text review_status
+        timestamptz deleted_at "deleted from the mailbox, recoverably"
+        text deleted_by
+    }
+    email_notes {
+        serial id PK
+        text club
+        int message_id FK
+        text note "PII (free text)"
+        text created_by "dashboard username"
+        timestamptz created_at
     }
     club_settings {
         text club PK
@@ -201,6 +212,7 @@ Who reads (R) and writes (W: insert/update/delete) each table, from `grep` of bo
 |---|---|---|---|---|
 | `bookings` | `0001` | R/W (`routes/bookings.js`, `imports.js`, `waitlist.js`, `payments.js`, `portal.js`, `emails.js`, `reminders.js`, `operators.js`, `changes.js`, `lib/record-payment.js`, `lib/payment-sync.js`, `analytics.js`, `inbox.js`) | R/W (`db.py`, `booking_form.py`) | Core API creates enquiries and sets `Requested`; dashboard does everything else |
 | `email_messages` | `0004` | R/W (`routes/inbox.js`, `lib/email-log.js`, `routes/portal.js`) | R/W (`email_log.py`, `Conolidated.py`) | Core API writes inbound + its outbound; dashboard writes its outbound, portal enquiries, review state |
+| `email_notes` | `0010` | R/W (`routes/inbox.js`) | — | The team's notes on one email; written by people, never the bot |
 | `booking_change_requests` | `0004` | R/W (`routes/changes.js`, `routes/portal.js`) | W (`email_log.py`) | Core API only inserts (`source = 'email'`) |
 | `tee_times` | `0001` | — | R (`demo_tee_sheet.py`) | Optional; rows override the synthetic sheet. Loaded by hand (core API's `seed_royal_dornoch_tee_sheet.sql`) |
 | `waitlist` | `0001` | R/W (`routes/waitlist.js`) | — | |
@@ -267,7 +279,13 @@ Guest/operator requests to amend or cancel: `booking_id`, `club`, `kind` (`cance
 
 ### `email_messages`
 
-Every guest email in and out; `review_status = 'open'` is the Inbox. `club`, `direction`, `booking_id`; `message_id` (inbound Message-ID; unique per club among inbound rows via `uq_email_messages_inbound_message_id`, migration `0007`); `from_email`, `to_email`, `subject`, `body_text` (inbound bodies up to 100,000 chars) — **PII**; `intent`, `summary`, `extraction` (JSONB: the Anthropic extraction and inbound metadata incl. SPF/DKIM, From header, Message-ID) — **PII**; `routed_to` (`queued`/`processing` while the core API handles it; index `idx_email_messages_pending`); `change_request_id`; `review_status`, `review_reason`, `draft_reply` (**PII**), `handled_at/by`; `sent_by` (`bot`, `Stripe`, a username or `portal:<email>`), `kind`, `in_reply_to` (FK), `created_at`.
+Every guest email in and out; `review_status = 'open'` is the Inbox. `club`, `direction`, `booking_id`; `message_id` (inbound Message-ID; unique per club among inbound rows via `uq_email_messages_inbound_message_id`, migration `0007`); `from_email`, `to_email`, `subject`, `body_text` (inbound bodies up to 100,000 chars) — **PII**; `intent`, `summary`, `extraction` (JSONB: the Anthropic extraction and inbound metadata incl. SPF/DKIM, From header, Message-ID) — **PII**; `routed_to` (`queued`/`processing` while the core API handles it; index `idx_email_messages_pending`); `change_request_id`; `review_status`, `review_reason`, `draft_reply` (**PII**), `handled_at/by`; `sent_by` (`bot`, `Stripe`, a username or `portal:<email>`), `kind`, `in_reply_to` (FK), `created_at`; `deleted_at`/`deleted_by` (migration `0010`).
+
+Deleting an email from the mailbox is recoverable and keeps the row: a membership application's enquiry, a guest request, a reply's `in_reply_to` and the Message-ID that stops SendGrid delivering the same email twice all point at it. `deleted_at IS NULL` is what is still in the mailbox, and every read of it says so — the Inbox lists and counts, a booking's conversation, an application's thread (indexes `idx_email_messages_live`, `idx_email_messages_deleted`). The core API neither reads nor writes these columns; the dashboard refuses to delete a row still `queued`/`processing`, which the core API would otherwise re-process.
+
+### `email_notes`
+
+What the team wrote to itself about one email, so the next person reading it knows what has happened off-email. One row per note — `club`, `message_id` (FK, `ON DELETE CASCADE`), `note` (free text, **PII**), `created_by` (dashboard username; never the bot), `created_at` — rather than a text column, so the stamp cannot be edited into something else and the newest is a plain `ORDER BY`. Notes are internal: they are never sent to the guest and never shown outside the dashboard. Index `idx_email_notes_message` on `(club, message_id, created_at)`. Migration `0010`.
 
 ### `club_settings`
 
