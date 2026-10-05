@@ -1,13 +1,20 @@
 /**
  * The Inbox and booking conversations.
  *
- *   GET  /api/inbox?status=open|replied|dismissed|all   inbound emails for review
+ *   GET  /api/inbox?status=open|replied|dismissed|deleted|all   inbound emails for review
  *   GET  /api/inbox/booking/:bookingId                  a booking's whole conversation
  *   POST /api/inbox/booking/:bookingId/send             email the guest from the drawer
- *   GET  /api/inbox/:id                                 one email and its thread
+ *   GET  /api/inbox/:id                                 one email, its thread and its notes
  *   POST /api/inbox/:id/reply                           reply to any guest email (closes it if in the Inbox)
  *   POST /api/inbox/:id/status                          dismiss or reopen
  *   POST /api/inbox/:id/link                            attach it to a booking
+ *   POST /api/inbox/:id/notes                           add a note, stamped with the user
+ *   DELETE /api/inbox/:id                               delete it from the mailbox (recoverable)
+ *   POST /api/inbox/:id/restore                         put a deleted one back
+ *
+ * Deleting is recoverable and the row is kept — other things point at it (see
+ * migration 0010). A deleted email is in no list or count but the `deleted`
+ * filter, and the only thing that can be done to it is restore.
  *
  * Every query is scoped to the signed-in user's club. The core API writes the
  * inbound rows (with what Claude understood and a drafted reply); this only
@@ -22,13 +29,18 @@ import { logEmail } from '../lib/email-log.js';
 import { LOGO_CID, inlineLogoAttachment } from '../lib/email-layout.js';
 import { manageUrlFor } from '../lib/change-request-domain.js';
 import {
+  DELETED_FILTER,
+  IN_FLIGHT_ROUTES,
   REVIEW_STATUSES,
   belongsInInboxSql,
   buildReplyEmail,
+  noteProblem,
+  notDeletedSql,
   notInFlightSql,
   replyProblem,
   replySubject,
   serialiseMessage,
+  serialiseNote,
 } from '../lib/inbox-domain.js';
 
 const router = Router();
@@ -46,10 +58,12 @@ function mailConfig() {
 async function loadThread(club, { bookingId, guestEmail }) {
   // A booking's thread is everything filed against it, plus anything from the
   // guest's address that was never attached to a booking — the first email in
-  // a conversation often arrives before there is a reference to quote.
+  // a conversation often arrives before there is a reference to quote. An
+  // email deleted from the mailbox is left out: it is gone from the
+  // conversation too, until somebody restores it.
   const { rows } = await query(
     `SELECT * FROM public.email_messages
-      WHERE club = $1
+      WHERE club = $1 AND ${notDeletedSql()}
         AND (($2::text IS NOT NULL AND booking_id = $2)
           OR ($3::text IS NOT NULL AND booking_id IS NULL
               AND (lower(from_email) = lower($3) OR lower(to_email) = lower($3))))
@@ -58,6 +72,15 @@ async function loadThread(club, { bookingId, guestEmail }) {
     [club, bookingId ?? null, guestEmail ?? null],
   );
   return rows.map(serialiseMessage);
+}
+
+/** The team's notes on one email, oldest first. */
+async function loadNotes(club, messageId) {
+  const { rows } = await query(
+    `SELECT * FROM public.email_notes WHERE club = $1 AND message_id = $2 ORDER BY created_at ASC, id ASC`,
+    [club, messageId],
+  );
+  return rows.map(serialiseNote);
 }
 
 async function sendAndRecord(req, { to, subject, body, bookingId = null, original = null }) {
@@ -106,12 +129,17 @@ router.get('/', async (req, res, next) => {
     // Membership correspondence is read on the Membership page, so it is not
     // in the Inbox under any status — including 'all' — nor in the counts.
     const inbound = `m.direction = 'inbound' AND ${belongsInInboxSql('m')}`;
+    // A deleted email is only ever listed by the filter of its own; every
+    // other filter, 'all' included, shows what is still in the mailbox.
+    const live = `${inbound} AND ${notDeletedSql('m')}`;
     const where =
-      status === 'all'
-        ? inbound
-        : REVIEW_STATUSES.includes(status)
-          ? `${inbound} AND m.review_status = '${status}' AND ${notInFlightSql('m')}`
-          : `${inbound} AND m.review_status = 'open' AND ${notInFlightSql('m')}`;
+      status === DELETED_FILTER
+        ? `${inbound} AND NOT ${notDeletedSql('m')}`
+        : status === 'all'
+          ? live
+          : REVIEW_STATUSES.includes(status)
+            ? `${live} AND m.review_status = '${status}' AND ${notInFlightSql('m')}`
+            : `${live} AND m.review_status = 'open' AND ${notInFlightSql('m')}`;
     // The guest's name from their booking, so the list reads as people rather
     // than addresses.
 
@@ -124,10 +152,14 @@ router.get('/', async (req, res, next) => {
           ORDER BY m.created_at DESC LIMIT 200`,
         [club],
       ),
+      // One pass for every count the filter bar shows: a deleted email counts
+      // as deleted and nothing else, whatever review status it kept.
       query(
-        `SELECT review_status, COUNT(*)::int AS n FROM public.email_messages
+        `SELECT CASE WHEN ${notDeletedSql()} THEN review_status ELSE '${DELETED_FILTER}' END AS review_status,
+                COUNT(*)::int AS n
+           FROM public.email_messages
           WHERE club = $1 AND direction = 'inbound' AND ${notInFlightSql()} AND ${belongsInInboxSql()}
-          GROUP BY review_status`,
+          GROUP BY 1`,
         [club],
       ),
     ]);
@@ -224,7 +256,17 @@ async function withThread(req, message) {
       };
     }
   }
-  return { message, thread, booking };
+  return { message, thread, booking, notes: await loadNotes(req.user.customerId, message.id) };
+}
+
+/**
+ * A deleted email is out of the mailbox: the one thing that can be done to it
+ * is restore. Returns true when it has already been answered with a 409.
+ */
+function refusedBecauseDeleted(res, message) {
+  if (!message.deletedAt) return false;
+  res.status(409).json({ error: 'This email was deleted. Restore it first.' });
+  return true;
 }
 
 /**
@@ -272,6 +314,7 @@ router.post('/:id/reply', async (req, res, next) => {
     if (!message) return;
     if (message.direction !== 'inbound')
       return res.status(400).json({ error: 'Only a received email can be replied to' });
+    if (refusedBecauseDeleted(res, message)) return;
 
     const subject = replySubject(req.body?.subject || message.subject, message.bookingId);
     const result = await sendAndRecord(req, {
@@ -303,6 +346,7 @@ router.post('/:id/status', async (req, res, next) => {
   try {
     const message = await loadMessage(req, res);
     if (!message) return;
+    if (refusedBecauseDeleted(res, message)) return;
     const status = req.body?.status;
     if (!['dismissed', 'open'].includes(status)) {
       return res.status(400).json({ error: 'Status must be dismissed or open' });
@@ -326,6 +370,7 @@ router.post('/:id/link', async (req, res, next) => {
   try {
     const message = await loadMessage(req, res);
     if (!message) return;
+    if (refusedBecauseDeleted(res, message)) return;
     const bookingId = String(req.body?.bookingId ?? '')
       .trim()
       .toUpperCase();
@@ -341,6 +386,80 @@ router.post('/:id/link', async (req, res, next) => {
     ]);
     const updated = await loadMessage(req, res);
     res.json(await withThread(req, updated));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * A note on an email: what the team wants the next person reading it to know.
+ * Stamped with the user who wrote it, and never editable afterwards — a stamp
+ * that can be rewritten says nothing.
+ */
+router.post('/:id/notes', async (req, res, next) => {
+  try {
+    const message = await loadMessage(req, res);
+    if (!message) return;
+    if (refusedBecauseDeleted(res, message)) return;
+    const problem = noteProblem({ note: req.body?.note });
+    if (problem) return res.status(400).json({ error: problem });
+
+    await query(`INSERT INTO public.email_notes (club, message_id, note, created_by) VALUES ($1, $2, $3, $4)`, [
+      req.user.customerId,
+      message.id,
+      String(req.body.note).trim(),
+      req.user.username,
+    ]);
+    res.json({ ...(await withThread(req, message)), notice: 'Note added' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Delete an email from the mailbox. Recoverable: the row is kept (other
+ * things point at it — see migration 0010), marked with who deleted it and
+ * when, and it leaves every list and count but the `deleted` filter.
+ *
+ * Refused while the core API still has the email in hand: it re-processes one
+ * left `queued` by a worker that died, and would answer a guest whose email
+ * the club had just deleted.
+ */
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const message = await loadMessage(req, res);
+    if (!message) return;
+    if (IN_FLIGHT_ROUTES.includes(message.routedTo)) {
+      return res.status(409).json({
+        error: 'The bot is still working on this email. Try again in a moment.',
+      });
+    }
+    // Already deleted: say so and change nothing, rather than moving the stamp.
+    if (!message.deletedAt) {
+      await query(
+        `UPDATE public.email_messages SET deleted_at = NOW(), deleted_by = $1
+          WHERE id = $2 AND club = $3 AND deleted_at IS NULL`,
+        [req.user.username, message.id, req.user.customerId],
+      );
+    }
+    const updated = await loadMessage(req, res);
+    res.json({ ...(await withThread(req, updated)), notice: 'Deleted from the mailbox' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Put a deleted email back in the mailbox, with the status it had. */
+router.post('/:id/restore', async (req, res, next) => {
+  try {
+    const message = await loadMessage(req, res);
+    if (!message) return;
+    await query(`UPDATE public.email_messages SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND club = $2`, [
+      message.id,
+      req.user.customerId,
+    ]);
+    const updated = await loadMessage(req, res);
+    res.json({ ...(await withThread(req, updated)), notice: 'Back in the mailbox' });
   } catch (err) {
     next(err);
   }

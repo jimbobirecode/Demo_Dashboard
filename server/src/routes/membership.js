@@ -31,7 +31,7 @@ import { BRAND } from '../lib/brand.js';
 import { csvLine } from '../lib/csv.js';
 import { sendHtmlEmail } from '../lib/sendgrid.js';
 import { logEmail } from '../lib/email-log.js';
-import { serialiseMessage } from '../lib/inbox-domain.js';
+import { notDeletedSql, serialiseMessage } from '../lib/inbox-domain.js';
 import { logger } from '../lib/logger.js';
 import {
   CSV_COLUMNS,
@@ -439,10 +439,11 @@ router.get('/applications/:id', async (req, res, next) => {
       // the whole conversation with the applicant comes with the application
       // — their later replies included, not just the enquiry we answered.
       // By address, plus the enquiry itself: the applicant may have given a
-      // different address on the form than the one they wrote from.
+      // different address on the form than the one they wrote from. One
+      // deleted from the mailbox is left out here too.
       query(
         `SELECT * FROM public.email_messages
-          WHERE club = $1
+          WHERE club = $1 AND ${notDeletedSql()}
             AND (lower(from_email) = lower($2) OR lower(to_email) = lower($2) OR id = $3)
           ORDER BY created_at ASC, id ASC LIMIT 100`,
         [club, application.email, application.sourceMessageId ?? null],

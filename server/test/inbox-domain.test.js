@@ -73,6 +73,53 @@ test('emails the core API is still working on are labelled and kept out of the I
   assert.equal(notInFlightSql('m'), "COALESCE(m.routed_to, '') NOT IN ('queued', 'processing')");
 });
 
+test('a deleted email is out of the mailbox, and says who took it out', async () => {
+  const { notDeletedSql, serialiseMessage } = await import('../src/lib/inbox-domain.js');
+
+  assert.equal(notDeletedSql('m'), 'm.deleted_at IS NULL');
+  assert.equal(notDeletedSql(), 'deleted_at IS NULL');
+
+  const live = serialiseMessage({ id: 1, direction: 'inbound' });
+  assert.equal(live.deletedAt, null);
+  assert.equal(live.deletedBy, null);
+
+  const gone = serialiseMessage({
+    id: 2,
+    direction: 'inbound',
+    deleted_at: '2026-10-05T09:30:00Z',
+    deleted_by: 'alice@club-a.test',
+  });
+  assert.equal(gone.deletedAt, '2026-10-05T09:30:00.000Z');
+  assert.equal(gone.deletedBy, 'alice@club-a.test');
+});
+
+test('a note is for the team, stamped with who wrote it', async () => {
+  const { NOTE_MAX, noteProblem, serialiseNote } = await import('../src/lib/inbox-domain.js');
+
+  assert.equal(noteProblem({ note: 'Called her back, happy with the Tuesday' }), null);
+  assert.equal(noteProblem({ note: '   ' }), 'The note is empty');
+  assert.equal(noteProblem({ note: undefined }), 'The note is empty');
+  assert.match(noteProblem({ note: 'x'.repeat(NOTE_MAX + 1) }), /at most 2000/);
+  assert.equal(noteProblem({ note: 'x'.repeat(NOTE_MAX) }), null);
+
+  assert.deepEqual(
+    serialiseNote({
+      id: 5,
+      message_id: 9,
+      note: 'Called her back',
+      created_by: 'alice@club-a.test',
+      created_at: '2026-10-05T09:30:00Z',
+    }),
+    {
+      id: 5,
+      messageId: 9,
+      note: 'Called her back',
+      createdBy: 'alice@club-a.test',
+      createdAt: '2026-10-05T09:30:00.000Z',
+    },
+  );
+});
+
 test('membership email is labelled as such, and belongs to the Membership page not the Inbox', async () => {
   const { ROUTES_READ_ELSEWHERE, belongsInInboxSql, serialiseMessage } = await import('../src/lib/inbox-domain.js');
   const message = serialiseMessage({

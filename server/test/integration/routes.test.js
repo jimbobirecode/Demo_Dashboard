@@ -329,6 +329,113 @@ describe('HTTP routes against Postgres', { skip }, () => {
       const subjects = (await agent.get('/api/inbox').query({ status: 'all' })).body.messages.map((m) => m.subject);
       assert.ok(!subjects.includes('joining') && !subjects.includes('about my application'), subjects.join());
     });
+
+    test('deleting takes an email out of every list and count, and putting it back undoes that', async () => {
+      const { rows } = await pool.query(
+        `INSERT INTO email_messages (club, direction, from_email, subject, body_text, routed_to, review_status, message_id)
+         VALUES ('club_a', 'inbound', 'bin@a.test', 'delete me', 'b', 'inbox', 'open', '<20@a.test>') RETURNING id`,
+      );
+      const id = rows[0].id;
+      const agent = await signIn('staff@club-a.test');
+      const before = (await agent.get('/api/inbox').query({ status: 'open' })).body;
+
+      const deleted = await agent.delete(`/api/inbox/${id}`).set(CSRF);
+      assert.equal(deleted.status, 200);
+      assert.equal(deleted.body.message.deletedBy, 'staff@club-a.test');
+      assert.ok(deleted.body.message.deletedAt, 'stamped with when');
+
+      for (const status of ['open', 'all']) {
+        const list = (await agent.get('/api/inbox').query({ status })).body;
+        assert.ok(!list.messages.some((m) => m.id === id), `still listed under ${status}`);
+      }
+      const after = (await agent.get('/api/inbox').query({ status: 'open' })).body;
+      assert.equal(after.counts.open, before.counts.open - 1);
+      assert.equal(after.counts.deleted, (before.counts.deleted ?? 0) + 1);
+
+      // Only the filter of its own lists it, and it keeps the status it had.
+      const bin = (await agent.get('/api/inbox').query({ status: 'deleted' })).body;
+      const row = bin.messages.find((m) => m.id === id);
+      assert.ok(row, 'not in the Deleted filter');
+      assert.equal(row.reviewStatus, 'open');
+
+      // Out of the conversation too, until it is back.
+      await pool.query('UPDATE email_messages SET booking_id = $1 WHERE id = $2', ['A-1', id]);
+      const thread = (await agent.get('/api/inbox/booking/A-1')).body;
+      assert.ok(!thread.thread.some((m) => m.id === id), 'a deleted email is still in the booking conversation');
+
+      // The only thing it accepts is being put back.
+      assert.equal((await agent.post(`/api/inbox/${id}/reply`).set(CSRF).send({ body: 'hi' })).status, 409);
+      assert.equal((await agent.post(`/api/inbox/${id}/status`).set(CSRF).send({ status: 'dismissed' })).status, 409);
+      assert.equal((await agent.post(`/api/inbox/${id}/link`).set(CSRF).send({ bookingId: 'A-1' })).status, 409);
+      assert.equal((await agent.post(`/api/inbox/${id}/notes`).set(CSRF).send({ note: 'x' })).status, 409);
+
+      const restored = await agent.post(`/api/inbox/${id}/restore`).set(CSRF).send({});
+      assert.equal(restored.status, 200);
+      assert.equal(restored.body.message.deletedAt, null);
+      assert.equal(restored.body.message.deletedBy, null);
+      assert.equal(restored.body.message.reviewStatus, 'open', 'it comes back as it went');
+      assert.ok(
+        restored.body.thread.some((m) => m.id === id),
+        'back in the conversation',
+      );
+    });
+
+    test('an email the core API still has in hand cannot be deleted', async () => {
+      const { rows } = await pool.query(
+        `INSERT INTO email_messages (club, direction, from_email, subject, body_text, routed_to, review_status, message_id)
+         VALUES ('club_a', 'inbound', 'busy@a.test', 'mid-flight', 'b', 'queued', 'open', '<21@a.test>') RETURNING id`,
+      );
+      const agent = await signIn('staff@club-a.test');
+      const refused = await agent.delete(`/api/inbox/${rows[0].id}`).set(CSRF);
+      assert.equal(refused.status, 409);
+      assert.match(refused.body.error, /still working on this email/);
+      const { rows: after } = await pool.query('SELECT deleted_at FROM email_messages WHERE id = $1', [rows[0].id]);
+      assert.equal(after[0].deleted_at, null);
+    });
+
+    test('a note is stamped with the user who wrote it, and is another club\u2019s business never', async () => {
+      const { rows } = await pool.query(
+        `INSERT INTO email_messages (club, direction, from_email, subject, body_text, routed_to, review_status, message_id)
+         VALUES ('club_a', 'inbound', 'noted@a.test', 'notes', 'b', 'inbox', 'open', '<22@a.test>') RETURNING id`,
+      );
+      const id = rows[0].id;
+      const staff = await signIn('staff@club-a.test');
+      const admin = await signIn('admin@club-a.test');
+
+      assert.equal((await staff.post(`/api/inbox/${id}/notes`).set(CSRF).send({ note: '  ' })).status, 400);
+      assert.equal(
+        (
+          await staff
+            .post(`/api/inbox/${id}/notes`)
+            .set(CSRF)
+            .send({ note: 'x'.repeat(2001) })
+        ).status,
+        400,
+      );
+
+      await staff.post(`/api/inbox/${id}/notes`).set(CSRF).send({ note: 'Called her back' });
+      const second = await admin.post(`/api/inbox/${id}/notes`).set(CSRF).send({ note: 'Moved to the Tuesday' });
+      assert.equal(second.status, 200);
+      assert.deepEqual(
+        second.body.notes.map((n) => [n.note, n.createdBy]),
+        [
+          ['Called her back', 'staff@club-a.test'],
+          ['Moved to the Tuesday', 'admin@club-a.test'],
+        ],
+        'oldest first, each with its own author',
+      );
+      assert.ok(second.body.notes.every((n) => n.createdAt));
+
+      // The notes come back with the email every time it is read.
+      assert.equal((await staff.get(`/api/inbox/${id}`)).body.notes.length, 2);
+
+      // Another club cannot read or write them.
+      const other = await signIn('admin@club-b.test');
+      assert.equal((await other.get(`/api/inbox/${id}`)).status, 404);
+      assert.equal((await other.post(`/api/inbox/${id}/notes`).set(CSRF).send({ note: 'x' })).status, 404);
+      assert.equal((await other.delete(`/api/inbox/${id}`).set(CSRF)).status, 404);
+      assert.equal((await other.post(`/api/inbox/${id}/restore`).set(CSRF).send({})).status, 404);
+    });
   });
 
   describe('operator portal', () => {

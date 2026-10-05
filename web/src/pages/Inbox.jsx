@@ -19,6 +19,9 @@ const FILTERS = [
   { id: 'open', label: 'To answer' },
   { id: 'replied', label: 'Replied' },
   { id: 'dismissed', label: 'Closed without reply' },
+  // Deleting is recoverable, so the deleted ones stay reachable - and
+  // countable - here. 'Everything' means everything still in the mailbox.
+  { id: 'deleted', label: 'Deleted' },
   { id: 'all', label: 'Everything' },
 ];
 
@@ -234,8 +237,9 @@ function InboxDetail({ id, onChanged, onHandled }) {
   }
 
   if (!detail) return <div className="empty">{notice?.text ?? 'Loading…'}</div>;
-  const { message, thread, booking } = detail;
-  const open = message.reviewStatus === 'open';
+  const { message, thread, booking, notes = [] } = detail;
+  const deleted = Boolean(message.deletedAt);
+  const open = message.reviewStatus === 'open' && !deleted;
 
   async function dismiss() {
     setBusy(true);
@@ -251,11 +255,12 @@ function InboxDetail({ id, onChanged, onHandled }) {
   const guestName = booking?.guestName || message.guestName || '';
   const firstName = guestName.trim().split(/\s+/)[0] || '';
   const why = message.reviewReason || message.routeLabel || '';
-  const status =
-    message.reviewStatus === 'replied'
+  const status = deleted
+    ? `Deleted by ${message.deletedBy} · ${formatDateTime(message.deletedAt)}`
+    : message.reviewStatus === 'replied'
       ? `Replied by ${message.handledBy} · ${formatDateTime(message.handledAt)}`
       : message.reviewStatus === 'dismissed'
-        ? `Dismissed by ${message.handledBy}`
+        ? `Dismissed by ${message.handledBy} · ${formatDateTime(message.handledAt)}`
         : 'Needs a reply';
 
   return (
@@ -268,19 +273,46 @@ function InboxDetail({ id, onChanged, onHandled }) {
             {guestName ? `${message.fromEmail} · ` : ''}wrote {formatDateTime(message.createdAt)}
           </div>
         </div>
-        <span
-          className="chip"
-          style={{
-            padding: '0.25rem 0.7rem',
-            borderRadius: '999px',
-            fontSize: '0.8125rem',
-            whiteSpace: 'nowrap',
-            border: `1px solid ${open ? 'var(--brand-gold)' : 'var(--border)'}`,
-            color: open ? 'var(--brand-gold-bright)' : 'var(--text-secondary)',
-          }}
-        >
-          {status}
-        </span>
+        <div className="stack" style={{ gap: '0.4rem', alignItems: 'flex-end' }}>
+          <span
+            className="chip"
+            style={{
+              padding: '0.25rem 0.7rem',
+              borderRadius: '999px',
+              fontSize: '0.8125rem',
+              whiteSpace: 'nowrap',
+              border: `1px solid ${open ? 'var(--brand-gold)' : 'var(--border)'}`,
+              color: open ? 'var(--brand-gold-bright)' : 'var(--text-secondary)',
+            }}
+          >
+            {status}
+          </span>
+          {deleted ? (
+            <button
+              type="button"
+              className="btn-sm"
+              disabled={busy}
+              onClick={() => act(() => api.inboxRestore(message.id), 'Back in the mailbox')}
+            >
+              Put it back
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-sm"
+              disabled={busy}
+              title="Take this out of the mailbox - you can put it back from Deleted"
+              onClick={() => {
+                // Recoverable, so this asks once and says where it goes.
+                if (!window.confirm('Delete this email from the mailbox? You can put it back from the Deleted filter.'))
+                  return;
+                act(() => api.inboxDelete(message.id), 'Deleted from the mailbox');
+              }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
       </div>
 
       {(why || message.summary) && (
@@ -353,42 +385,129 @@ function InboxDetail({ id, onChanged, onHandled }) {
         <ChatThread thread={thread} guestName={guestName} activeId={message.id} />
       </div>
 
+      <Notes
+        notes={notes}
+        busy={busy}
+        readOnly={deleted}
+        onAdd={(note) => act(() => api.inboxNote(message.id, note), 'Note added')}
+      />
+
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-        {message.draftReply && open && (
-          <div className="muted" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem' }}>
-            Claude has written a draft from the club&rsquo;s own information. Read it, change anything you like, then
-            send.
-          </div>
-        )}
-        <EmailComposer
-          title={`Reply to ${firstName || message.fromEmail}`}
-          to={message.fromEmail}
-          subject={`Re: ${(message.subject || '').replace(/^re:\s*/i, '')}`}
-          initialBody={message.draftReply || ''}
-          draftKey={`inbox-${message.id}`}
-          context={composerContext(booking, guestName)}
-          replyToId={message.id}
-          sendLabel="Send reply"
-          disabled={busy}
-          send={(body) => api.inboxReply(message.id, body)}
-          onSent={() => onHandled(message.id, `Reply sent to ${guestName || message.fromEmail}.`)}
-          note={
-            open ? (
-              <button type="button" disabled={busy} onClick={dismiss} title="Close this without emailing the guest">
-                No reply needed
-              </button>
-            ) : (
+        {deleted ? (
+          <div className="stack" style={{ gap: '0.5rem' }}>
+            <div className="muted" style={{ fontSize: '0.875rem' }}>
+              This email is out of the mailbox, so it cannot be replied to and is not in the guest&rsquo;s conversation.
+              Put it back to answer it.
+            </div>
+            <div>
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => act(() => api.inboxStatus(message.id, 'open'), 'Back in the inbox')}
+                onClick={() => act(() => api.inboxRestore(message.id), 'Back in the mailbox')}
               >
-                Move back to “To answer”
+                Put it back in the mailbox
               </button>
-            )
-          }
-        />
+            </div>
+          </div>
+        ) : (
+          <>
+            {message.draftReply && open && (
+              <div className="muted" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem' }}>
+                Claude has written a draft from the club&rsquo;s own information. Read it, change anything you like,
+                then send.
+              </div>
+            )}
+            <EmailComposer
+              title={`Reply to ${firstName || message.fromEmail}`}
+              to={message.fromEmail}
+              subject={`Re: ${(message.subject || '').replace(/^re:\s*/i, '')}`}
+              initialBody={message.draftReply || ''}
+              draftKey={`inbox-${message.id}`}
+              context={composerContext(booking, guestName)}
+              replyToId={message.id}
+              sendLabel="Send reply"
+              disabled={busy}
+              send={(body) => api.inboxReply(message.id, body)}
+              onSent={() => onHandled(message.id, `Reply sent to ${guestName || message.fromEmail}.`)}
+              note={
+                open ? (
+                  <button type="button" disabled={busy} onClick={dismiss} title="Close this without emailing the guest">
+                    No reply needed
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => act(() => api.inboxStatus(message.id, 'open'), 'Back in the inbox')}
+                  >
+                    Move back to “To answer”
+                  </button>
+                )
+              }
+            />
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * What the team has written to itself about this email, and a box to add to
+ * it. Every note carries the user who wrote it and when - that is the point
+ * of them, so the stamp is on the same line as the words.
+ */
+function Notes({ notes, busy, readOnly, onAdd }) {
+  const [draft, setDraft] = useState('');
+
+  return (
+    <div>
+      <div className="label" style={{ marginBottom: '0.5rem' }}>
+        Notes for the team
+      </div>
+      {notes.length ? (
+        <ol className="stack" style={{ gap: '0.5rem', listStyle: 'none', margin: 0, padding: 0 }}>
+          {notes.map((entry) => (
+            <li key={entry.id} className="secondary" style={{ fontSize: '0.875rem' }}>
+              <span className="muted" style={{ fontSize: '0.75rem' }}>
+                {entry.createdBy} · {formatDateTime(entry.createdAt)}
+              </span>
+              <div style={{ whiteSpace: 'pre-wrap' }}>{entry.note}</div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div className="muted" style={{ fontSize: '0.8125rem' }}>
+          No notes yet. A note is for the team, never sent to the guest.
+        </div>
+      )}
+      {!readOnly && (
+        <form
+          className="stack"
+          style={{ gap: '0.4rem', marginTop: '0.6rem' }}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const text = draft.trim();
+            if (!text) return;
+            onAdd(text);
+            setDraft('');
+          }}
+        >
+          <textarea
+            aria-label="Add a note for the team"
+            rows={2}
+            maxLength={2000}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Called her back, happy to move to the Tuesday…"
+          />
+          <div>
+            <button type="submit" className="btn-sm" disabled={busy || !draft.trim()}>
+              Add note
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
