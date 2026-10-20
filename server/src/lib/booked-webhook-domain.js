@@ -12,6 +12,7 @@
  * about a guest - should be readable and testable without an API key and
  * without a receiver on the other end.
  */
+import { caddieCount, classifyCaddie } from './analytics-domain.js';
 
 /** The header the key travels in, absent an override. */
 const DEFAULT_AUTH_HEADER = 'x-webhook-key';
@@ -78,11 +79,18 @@ function isSecureUrl(value) {
 /**
  * What is sent about one booked customer.
  *
- * Deliberately narrow: who they are, and the round they are booked on. No
- * money, no lodging, no caddie or special-request free text. Those are the
- * club's commercial terms and the guest's own words, they are not needed to
- * identify a customer or a tee time, and the cheapest way to keep them out of
- * somebody else's database is never to send them.
+ * Deliberately narrow: who they are, the round they are booked on, and what
+ * they asked for on the course. No money, no lodging, and none of the guest's
+ * own free text beyond the caddie answer. Those are the club's commercial
+ * terms and the guest's own words, they are not needed to identify a customer,
+ * a tee time or a caddie, and the cheapest way to keep them out of somebody
+ * else's database is never to send them.
+ *
+ * Caddies are in, because they are the one thing on that list somebody has to
+ * actually turn up for. The enquiry form writes one of a fixed set of answers,
+ * so the field is closer to an enum than to prose, and it is sent three ways:
+ * `requirement` is what was recorded, `status` is this dashboard's own reading
+ * of it, and `estimatedCaddies` is the number its Analytics page would show.
  *
  * `bookedAt` is when this dashboard saw the booking reach 'Booked', which is
  * what a receiver reconciling its own records needs; `sentAt` is when this
@@ -107,7 +115,31 @@ export function buildBookedCustomerPayload(booking, { source, sentAt = new Date(
       teeTime: booking.teeTime ?? null,
       players: booking.players ?? null,
       course: booking.golfCourses || null,
+      caddies: caddieHandover(booking),
     },
+  };
+}
+
+/**
+ * The caddie answer, as a receiver can act on it.
+ *
+ * `status` and `estimatedCaddies` come from the same two functions the
+ * Analytics page uses, so the caddie master and the dashboard never disagree
+ * about one booking.
+ *
+ * The estimate is offered only where caddies were actually asked for: a number
+ * sitting beside "No caddies required" is too easily read as a booking for
+ * that many. Where they were asked for, it is still an estimate — the common
+ * answer is "for all players", which carries no number and falls back to the
+ * party size — so `requirement` stays the authoritative value.
+ */
+function caddieHandover(booking) {
+  const status = classifyCaddie(booking.caddieRequirements);
+
+  return {
+    requirement: booking.caddieRequirements || null,
+    status,
+    estimatedCaddies: status === 'Requested' ? caddieCount(booking) : null,
   };
 }
 

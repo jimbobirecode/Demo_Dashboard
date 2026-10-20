@@ -25,6 +25,7 @@ function booking(overrides = {}) {
     players: 4,
     total: 620,
     golfCourses: 'Championship',
+    caddieRequirements: '2 caddies',
     status: 'Booked',
     updatedAt: '2026-02-01T09:15:00.000Z',
     bookedWebhookSentAt: null,
@@ -103,24 +104,89 @@ test('the payload carries the customer and their round', () => {
     teeTime: '08:40',
     players: 4,
     course: 'Championship',
+    caddies: { requirement: '2 caddies', status: 'Requested', estimatedCaddies: 2 },
   });
 });
 
-test('the payload carries no money, no lodging and none of the guest free text', () => {
+test('the caddie answer is sent as recorded, classified, and counted', () => {
+  const caddies = (caddieRequirements, players = 4) =>
+    buildBookedCustomerPayload(booking({ caddieRequirements, players }), {}).round.caddies;
+
+  // The fixed answers the enquiry form itself writes.
+  assert.deepEqual(caddies('2 caddies'), { requirement: '2 caddies', status: 'Requested', estimatedCaddies: 2 });
+  assert.deepEqual(caddies('4 caddies (one per player)'), {
+    requirement: '4 caddies (one per player)',
+    status: 'Requested',
+    estimatedCaddies: 4,
+  });
+  assert.deepEqual(caddies('Forecaddie'), {
+    requirement: 'Forecaddie',
+    status: 'Requested',
+    estimatedCaddies: 1,
+  });
+  assert.deepEqual(caddies('No caddies required'), {
+    requirement: 'No caddies required',
+    status: 'Not required',
+    estimatedCaddies: null,
+  });
+});
+
+test('a caddie estimate is only offered where caddies were asked for', () => {
+  // A number beside a refusal would be read as a booking for that many.
+  for (const refusal of ['No caddies required', 'not required', 'No caddies']) {
+    const { status, estimatedCaddies } = buildBookedCustomerPayload(booking({ caddieRequirements: refusal }), {}).round
+      .caddies;
+    assert.equal(status, 'Not required', refusal);
+    assert.equal(estimatedCaddies, null, refusal);
+  }
+});
+
+test('an unanswered caddie question is sent as unanswered, not as a refusal', () => {
+  for (const blank of ['', null, undefined, 'n/a']) {
+    const { requirement, status, estimatedCaddies } = buildBookedCustomerPayload(
+      booking({ caddieRequirements: blank }),
+      {},
+    ).round.caddies;
+    assert.equal(requirement, blank || null, `requirement for ${JSON.stringify(blank)}`);
+    assert.equal(status, 'Not specified', `status for ${JSON.stringify(blank)}`);
+    assert.equal(estimatedCaddies, null, `estimate for ${JSON.stringify(blank)}`);
+  }
+});
+
+test('"for all players" is estimated at the party size, the answer that carries no number', () => {
+  const four = buildBookedCustomerPayload(booking({ caddieRequirements: 'Caddies for all players', players: 4 }), {});
+  assert.equal(four.round.caddies.estimatedCaddies, 4);
+  const two = buildBookedCustomerPayload(booking({ caddieRequirements: 'Caddies for all players', players: 2 }), {});
+  assert.equal(two.round.caddies.estimatedCaddies, 2);
+});
+
+test('the handover reads the caddie field exactly as the Analytics page does', async () => {
+  // One booking must not be a request on one screen and a refusal on another.
+  const { classifyCaddie } = await import('../src/lib/analytics-domain.js');
+
+  for (const text of ['2 caddies', 'Caddies for all players', 'No caddies required', 'No. of caddies: 4', '', 'n/a']) {
+    const payload = buildBookedCustomerPayload(booking({ caddieRequirements: text }), {});
+    assert.equal(payload.round.caddies.status, classifyCaddie(text), text);
+  }
+});
+
+test('the payload carries no money, no lodging and no staff or guest free text', () => {
   const payload = buildBookedCustomerPayload(
     booking({
       total: 620,
       amountPaid: 310,
       lodgingCost: 480,
+      lodgingPreferences: 'Sea view if possible',
       specialRequests: 'Ann is recovering from surgery',
-      caddieRequirements: 'Two caddies',
       note: 'internal: operator disputes the rate',
     }),
     { source: 'dornoch' },
   );
 
   const json = JSON.stringify(payload);
-  for (const leak of ['620', '310', '480', 'surgery', 'caddie', 'disputes']) {
+  // The caddie answer is sent (somebody has to turn up for it); everything
+  // else on this list is the club's terms or the guest's own words.
+  for (const leak of ['620', '310', '480', 'sea view', 'surgery', 'disputes']) {
     assert.equal(json.toLowerCase().includes(leak.toLowerCase()), false, `payload leaked ${leak}`);
   }
 });

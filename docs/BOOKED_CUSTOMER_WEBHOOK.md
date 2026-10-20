@@ -54,7 +54,12 @@ receiver wants a bearer token instead, set
     "date": "2026-03-18",
     "teeTime": "08:40",
     "players": 4,
-    "course": "Championship"
+    "course": "Championship",
+    "caddies": {
+      "requirement": "2 caddies",
+      "status": "Requested",
+      "estimatedCaddies": 2
+    }
   }
 }
 ```
@@ -62,13 +67,40 @@ receiver wants a bearer token instead, set
 `bookedAt` is when this dashboard saw the booking reach Booked; `sentAt` is
 when this particular request was made. The two differ on a retry.
 
-**What is deliberately not in it**: the total, what has been paid, the lodging,
-the caddie requirements and the guest's special requests. Those are the club's
-commercial terms and the guest's own words. They are not needed to identify a
-customer or a tee time, and the cheapest way to keep them out of somebody
-else's database is never to send them. If a receiver genuinely needs them,
-widen `buildBookedCustomerPayload` in `server/src/lib/booked-webhook-domain.js`
-deliberately rather than by accident — and say so in the club's privacy notice.
+**What is deliberately not in it**: the total, what has been paid, the lodging
+and its preferences, the guest's special requests, and the staff note. Those
+are the club's commercial terms and the guest's own words. They are not needed
+to identify a customer, a tee time or a caddie, and the cheapest way to keep
+them out of somebody else's database is never to send them. If a receiver
+genuinely needs them, widen `buildBookedCustomerPayload` in
+`server/src/lib/booked-webhook-domain.js` deliberately rather than by accident
+— and say so in the club's privacy notice.
+
+### Caddies
+
+Caddies are the one request on that list somebody has to actually turn up for,
+so they are sent, three ways:
+
+| Field | What it is |
+| --- | --- |
+| `requirement` | What was recorded, verbatim, or `null` if nobody answered. The authoritative value. |
+| `status` | `Requested`, `Not required` or `Not specified` — this dashboard's own reading of the text. |
+| `estimatedCaddies` | How many, where they were asked for; `null` otherwise. |
+
+The enquiry form offers a fixed set of answers ("No caddies required",
+"2 caddies", "4 caddies (one per player)", "Forecaddie" …), so `requirement` is
+closer to an enum than to prose — but imported and older rows carry whatever
+somebody typed, which is why `status` exists. It comes from the same function
+the Analytics page uses, so one booking is never a request on one screen and a
+refusal on another. It also knows the traps: `No. of caddies: 4` is a request,
+not a refusal.
+
+`estimatedCaddies` is an **estimate**, and the most common answer is why: "for
+all players" carries no number, so it falls back to the party size. Trust
+`requirement` and `status`; treat the number as the starting point for a caddie
+master rather than a commitment. It is `null` wherever caddies were not asked
+for — a number sitting beside "No caddies required" is too easily read as a
+booking for that many.
 
 ## Delivery, and why you will occasionally see a duplicate
 
