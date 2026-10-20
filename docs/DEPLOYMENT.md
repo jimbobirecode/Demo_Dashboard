@@ -34,7 +34,7 @@ Full list with comments: [`.env.example`](../.env.example).
 
 **Usually set**: `BOOKING_REF_PREFIX` — prefix of references the dashboard issues (waitlist conversions, imported rows without one); one of the core API's profile prefixes (`TMG` default, `RDG` for the Royal Dornoch profile).
 
-**Feature switches** (each page reports what is missing): `SENDGRID_API_KEY`, `FROM_EMAIL`, `FROM_NAME`, `REPLY_TO_EMAIL`; SendGrid template ids (`SENDGRID_TEMPLATE_PASSWORD_RESET`, `…_USER_INVITE`, `…_PRE_ARRIVAL`, `…_POST_PLAY`, `…_OPERATOR_STATUS`, `…_OPERATOR_PAYMENT`, optional payment templates); `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PAYMENT_SYNC_MINUTES`; `VERO_BASE_URL`, `VERO_PARTNER_KEY`, `VERO_PARTNER_SOURCE`, `VERO_SITE`; `SENTRY_DSN`, `SENTRY_ENVIRONMENT`; branding (`CLUB_*`, `VITE_CLUB_*` — the `VITE_` ones are read at **build** time).
+**Feature switches** (each page reports what is missing): `SENDGRID_API_KEY`, `FROM_EMAIL`, `FROM_NAME`, `REPLY_TO_EMAIL`; SendGrid template ids (`SENDGRID_TEMPLATE_PASSWORD_RESET`, `…_USER_INVITE`, `…_PRE_ARRIVAL`, `…_POST_PLAY`, `…_OPERATOR_STATUS`, `…_OPERATOR_PAYMENT`, optional payment templates); `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PAYMENT_SYNC_MINUTES`; `VERO_BASE_URL`, `VERO_PARTNER_KEY`, `VERO_PARTNER_SOURCE`, `VERO_SITE`; `BOOKED_WEBHOOK_URL`, `BOOKED_WEBHOOK_KEY`, `BOOKED_WEBHOOK_AUTH_HEADER`, `BOOKED_WEBHOOK_SOURCE`, `BOOKED_WEBHOOK_MINUTES`, `BOOKED_WEBHOOK_BATCH`; `SENTRY_DSN`, `SENTRY_ENVIRONMENT`; branding (`CLUB_*`, `VITE_CLUB_*` — the `VITE_` ones are read at **build** time).
 
 **Never set in production**: `TEST_DATABASE_URL`, `SEED_ON_START=force` (rebuilds sample rows), `DATABASE_SSL=disable` (unless the database is on a private network without TLS).
 

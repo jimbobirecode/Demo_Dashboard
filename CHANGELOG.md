@@ -2,6 +2,14 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – booked customers posted to another system (October 2026)
+
+### Added
+
+- **Booked customers are POSTed as JSON** to the endpoint `BOOKED_WEBHOOK_URL` names, one customer per request, as each booking reaches `Booked`. The body carries the customer (name, email, phone) and their round (date, tee time, players, course) and deliberately nothing else: no total, no payment state, no lodging, no caddie requirements and none of the guest's own free text. Off entirely until both `BOOKED_WEBHOOK_URL` and `BOOKED_WEBHOOK_KEY` are set; the key travels in a header (`x-webhook-key`, or `BOOKED_WEBHOOK_AUTH_HEADER`), and a non-https URL is refused rather than putting a guest's details on the wire in clear. See [docs/BOOKED_CUSTOMER_WEBHOOK.md](docs/BOOKED_CUSTOMER_WEBHOOK.md).
+- Delivery is at-least-once rather than best-effort. `bookings.booked_webhook_sent_at` (migration `0011`) is stamped only once the receiver accepts, so a sweep every `BOOKED_WEBHOOK_MINUTES` (default 2, `BOOKED_WEBHOOK_BATCH` at a time) finds every Booked booking that carries no stamp and tries again. That covers a receiver that was down, each of the four paths that reach `Booked` (a user, a Stripe payment, a waitlist conversion, a tee-sheet import) and the core API, which books in its own process where no dashboard code runs. An outage stops that pass of the sweep; a refusal of one booking is logged as an error and the pass carries on. Neither is stamped, so both are retried every pass — a refusal is usually a receiver's own bug, and the booking goes through once that is fixed with nothing to replay by hand. Receivers should key on `bookingRef`: a process killed between the POST and the stamp re-sends that one booking.
+- A booking with no email address and no phone number — an imported tee-sheet row is often just a name and a time — is skipped rather than posted as a near-empty record, and picked up by a later sweep if contact details arrive.
+
 ## Unreleased – deleting mail, and notes with a user stamp (October 2026)
 
 ### Added

@@ -66,6 +66,7 @@ flowchart LR
 4. **Club Vero** (optional; on when `VERO_BASE_URL` and `VERO_PARTNER_KEY` are set): for each post-play email the dashboard posts `external_ref` (booking reference), `play_date`, `guest_name`, `guest_email`, `guest_phone`, `course_name`, `tee_time`, and `players`/`spend_amount` when known (`buildRoundPayload` in `lib/vero-domain.js`) and receives a survey link. Details: [CLUB_VERO_INTEGRATION.md](CLUB_VERO_INTEGRATION.md).
 5. **Exports**: staff download CSV/XLSX of bookings (guest PII and finance columns); operators download their own statement CSV. Files leave the system's control at that point.
 6. **Imports**: staff upload a tee sheet (names, emails, phones); parsed in memory, rows inserted, the file itself not stored.
+7. **Booked customers** (optional; on when `BOOKED_WEBHOOK_URL` and `BOOKED_WEBHOOK_KEY` are set): as each booking reaches `Booked` the dashboard posts `bookingRef`, `club`, `status`, `bookedAt`, the customer's `name`/`email`/`phone` and the round's `date`/`teeTime`/`players`/`course` to the endpoint the club nominates (`buildBookedCustomerPayload` in `lib/booked-webhook-domain.js`). No money, lodging, caddie or special-request data is sent. https only, key in a header, and `bookings.booked_webhook_sent_at` records which bookings have gone. The receiver is the club's own subprocessor, not one of ours. Details: [BOOKED_CUSTOMER_WEBHOOK.md](BOOKED_CUSTOMER_WEBHOOK.md).
 
 ### Core API flows
 

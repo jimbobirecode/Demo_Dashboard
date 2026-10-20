@@ -244,6 +244,7 @@ One row per booking or enquiry. Unique `booking_id` (reference, see [ARCHITECTUR
 | Stripe | `stripe_payment_link_id`, `stripe_payment_link_url`, `payment_link_amount`, `payment_link_sent_at/by`, `stripe_checkout_session_id` (idempotency key), `stripe_paid_at`, `stripe_payment_intent_id`, `stripe_last_payment_amount`, `payment_receipt_sent_at` | No card data |
 | Trade | `tour_operator_id` (FK), `operator_status_email_sent_at`, `operator_payment_email_sent_at` | |
 | Journey emails | `pre_arrival_email_sent_at`, `post_play_email_sent_at`, `pre_play_clock_started_at` | |
+| Handover | `booked_webhook_sent_at` | NULL until the club's booked-customer endpoint has accepted it; a Booked booking with no stamp is swept and retried |
 
 ### `tour_operators`
 

@@ -70,6 +70,7 @@ const BOOKING_COLUMNS = [
   'stripe_last_payment_amount',
   'payment_receipt_sent_at',
   'pre_play_clock_started_at',
+  'booked_webhook_sent_at',
 ];
 
 export const OPERATOR_COLUMNS = [

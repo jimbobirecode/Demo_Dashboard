@@ -14,6 +14,7 @@ import { migrate } from './db/migrate.js';
 import { hashLegacyTempPasswords } from './auth.js';
 import { sendReceipt } from './routes/payments.js';
 import { startPaymentSync } from './lib/payment-sync.js';
+import { startBookedWebhook } from './lib/booked-webhook-outbox.js';
 import { appBaseUrl } from './lib/brand.js';
 import { bookingLinkSecret, describeLinkSecret } from './lib/change-request-domain.js';
 
@@ -136,6 +137,9 @@ async function start() {
     await reportContents();
     // Stripe payments are fetched, not only waited for: see lib/payment-sync.js.
     startPaymentSync({ sendReceipt });
+    // Booked customers are posted on the transition; this catches the ones
+    // that transition somewhere else: see lib/booked-webhook-outbox.js.
+    startBookedWebhook();
   });
 }
 

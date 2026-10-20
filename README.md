@@ -128,6 +128,7 @@ Render web service from `render.yaml`; build `npm install --include=dev && npm r
 | [docs/TESTING.md](docs/TESTING.md) | Tests, coverage floors, CI |
 | [docs/AUDIT_READINESS.md](docs/AUDIT_READINESS.md) | Index for auditors across both repositories; open TO CONFIRM items |
 | [docs/CLUB_VERO_INTEGRATION.md](docs/CLUB_VERO_INTEGRATION.md) | Club Vero survey integration |
+| [docs/BOOKED_CUSTOMER_WEBHOOK.md](docs/BOOKED_CUSTOMER_WEBHOOK.md) | Posting booked customers as JSON to another system |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md), [.env.example](.env.example) | |
 
 ## Licence

@@ -16,6 +16,7 @@ import {
 } from '../lib/operators-domain.js';
 import { CLOCK_STARTING_PAYMENTS, todayInClubZone } from '../lib/email-domain.js';
 import { syncIfStale } from '../lib/payment-sync.js';
+import { handoverBookedCustomer } from '../lib/booked-webhook-outbox.js';
 import { BRAND } from '../lib/brand.js';
 
 const router = Router();
@@ -218,6 +219,12 @@ router.patch('/:bookingId/status', async (req, res, next) => {
       username: req.user.username,
     });
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    // The handover is not awaited: it is somebody else's endpoint, and the
+    // user who just changed a status should not wait on it — nor see a save
+    // that worked reported as a failure because it did not. The booking is
+    // unstamped until the receiver accepts, so the sweep covers everything
+    // this call does not (lib/booked-webhook-outbox.js).
+    void handoverBookedCustomer(booking, { reason: `status by ${req.user.username}` });
     res.json({ booking });
   } catch (err) {
     next(err);
