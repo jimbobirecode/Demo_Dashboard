@@ -11,9 +11,6 @@ vi.mock('../lib/api.js', () => ({
     lifecycleHeld: vi.fn(),
     lifecyclePreview: vi.fn(),
     lifecycleRun: vi.fn(),
-    reminderConfig: vi.fn(),
-    remindersPending: vi.fn(),
-    sendReminders: vi.fn(),
   },
 }));
 
@@ -343,35 +340,4 @@ test('the held banner agrees with itself when more than one booking is waiting',
   await waitFor(() => expect(screen.getByText(/2 bookings stopped here/i)).toBeInTheDocument());
   expect(screen.getByText(/need your decision/i)).toBeInTheDocument();
   expect(screen.getByText(/nothing was emailed to any of them/i)).toBeInTheDocument();
-});
-
-describe('tour operator reminders', () => {
-  test('live on this page as a tab, reached by the old /reminders address', async () => {
-    api.reminderConfig.mockResolvedValue({
-      configured: true,
-      hasApiKey: true,
-      fromEmail: 'b@example.com',
-      campaigns: {},
-    });
-    api.remindersPending.mockResolvedValue({ reminders: [] });
-    render(
-      <MemoryRouter initialEntries={['/booking-status?tab=operators']}>
-        <BookingStatus />
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => expect(screen.getByRole('heading', { name: /tour operator reminders/i })).toBeInTheDocument());
-    // The overview is not drawn underneath it.
-    expect(screen.queryByRole('heading', { name: /nothing goes out unless/i })).not.toBeInTheDocument();
-    // And it says the automatic chasing already covers the balance.
-    expect(screen.getByText(/balance reminders already go to each account automatically/i)).toBeInTheDocument();
-  });
-
-  test('the overview tab is the default', async () => {
-    render(<BookingStatus />, { wrapper: MemoryRouter });
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Overview' })).toHaveAttribute('aria-pressed', 'true'),
-    );
-    expect(api.reminderConfig).not.toHaveBeenCalled();
-  });
 });

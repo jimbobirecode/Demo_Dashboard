@@ -151,11 +151,6 @@ export const api = {
   assignOperator: (bookingIds, operatorId) =>
     request('/operators/assign', { method: 'POST', body: { bookingIds, operatorId } }),
 
-  reminderConfig: () => request('/reminders/config'),
-  remindersPending: (campaign, scope) => request(`/reminders/pending${queryString({ campaign, scope })}`),
-  sendReminders: (campaign, operatorIds, { dryRun = false, scope = 'due' } = {}) =>
-    request('/reminders/send', { method: 'POST', body: { campaign, operatorIds, dryRun, scope } }),
-
   // The booking lifecycle ladder. The preview is a dry run — it walks every
   // booking and sends nothing, which is how a club reads what the ladder
   // would do before letting it do any of it.

@@ -311,15 +311,16 @@ async function act(booking, entry, { config, email, env, result, dryRun, today, 
   // the built-in email otherwise, exactly as the payment emails do. A rung
   // with neither is a rung nobody has written copy for — a new one added to
   // the ladder — and it is reported rather than sent blank.
-  const built = buildLifecycleEmail(rung.key, { booking, money: entry.money, dueOn: entry.dueOn, operator });
+  // Money goes to the trade account, the run-up to the tee to the guest:
+  // see recipientFor. A booking with nobody to write to is skipped on the
+  // ledger, where "why was this one never chased?" can find it. Decided
+  // before the email is written, because the address decides the voice.
+  const toEmail = recipientFor(rung, booking, operator);
+  const built = buildLifecycleEmail(rung.key, { booking, money: entry.money, dueOn: entry.dueOn, operator, toEmail });
   if (!templateId && !built) {
     if (!result.unconfigured.includes(rung.key)) result.unconfigured.push(rung.key);
     return;
   }
-  // Money goes to the trade account, the run-up to the tee to the guest:
-  // see recipientFor. A booking with nobody to write to is skipped on the
-  // ledger, where "why was this one never chased?" can find it.
-  const toEmail = recipientFor(rung, booking, operator);
   if (!toEmail) {
     if (!dryRun) await record(booking, entry, 'skipped', 'no email address to send to');
     result.skipped += 1;
@@ -362,7 +363,8 @@ async function act(booking, entry, { config, email, env, result, dryRun, today, 
         templateId,
         data: {
           ...buildTemplateData(booking, { fromEmail: email.fromEmail }),
-          ...(lifecycleTemplateData(rung.key, { booking, money: entry.money, dueOn: entry.dueOn, operator }) ?? {}),
+          ...(lifecycleTemplateData(rung.key, { booking, money: entry.money, dueOn: entry.dueOn, operator, toEmail }) ??
+            {}),
           lifecycle_rung: rung.key,
           lifecycle_label: rung.label,
           amount_outstanding: entry.money.outstanding,

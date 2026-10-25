@@ -210,7 +210,7 @@ Who reads (R) and writes (W: insert/update/delete) each table, from `grep` of bo
 
 | Table | Created by | Dashboard | Core API | Notes |
 |---|---|---|---|---|
-| `bookings` | `0001` | R/W (`routes/bookings.js`, `imports.js`, `waitlist.js`, `payments.js`, `portal.js`, `emails.js`, `reminders.js`, `operators.js`, `changes.js`, `lib/record-payment.js`, `lib/payment-sync.js`, `analytics.js`, `inbox.js`) | R/W (`db.py`, `booking_form.py`) | Core API creates enquiries and sets `Requested`; dashboard does everything else |
+| `bookings` | `0001` | R/W (`routes/bookings.js`, `imports.js`, `waitlist.js`, `payments.js`, `portal.js`, `emails.js`, `booking-triggers.js`, `operators.js`, `changes.js`, `lib/record-payment.js`, `lib/payment-sync.js`, `analytics.js`, `inbox.js`) | R/W (`db.py`, `booking_form.py`) | Core API creates enquiries and sets `Requested`; dashboard does everything else |
 | `email_messages` | `0004` | R/W (`routes/inbox.js`, `lib/email-log.js`, `routes/portal.js`) | R/W (`email_log.py`, `Conolidated.py`) | Core API writes inbound + its outbound; dashboard writes its outbound, portal enquiries, review state |
 | `email_notes` | `0010` | R/W (`routes/inbox.js`) | — | The team's notes on one email; written by people, never the bot |
 | `booking_change_requests` | `0004` | R/W (`routes/changes.js`, `routes/portal.js`) | W (`email_log.py`) | Core API only inserts (`source = 'email'`) |

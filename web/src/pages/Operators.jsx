@@ -623,11 +623,13 @@ function Statement({ statement, onClose }) {
 
         {operator.contactEmail ? (
           <div className="secondary" style={{ fontSize: '0.8125rem' }}>
-            Reminders go to {operator.contactName ? `${operator.contactName}, ` : ''}
+            Payment emails go to {operator.contactName ? `${operator.contactName}, ` : ''}
             {operator.contactEmail}
           </div>
         ) : (
-          <div className="banner error">No contact email on this account, so it cannot be sent a reminder.</div>
+          <div className="banner error">
+            No contact email on this account, so its payment emails go to the guest instead.
+          </div>
         )}
 
         <div className="table-wrap">

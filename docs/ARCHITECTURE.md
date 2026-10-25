@@ -45,7 +45,7 @@ flowchart LR
     dash -- "payment links, sync" --> stripe
     stripe -- "POST /api/stripe/webhook (signed)" --> dash
     guest -- "pays Payment Link" --> stripe
-    dash -- "staff replies, payment links,<br/>receipts, journey emails, reminders" --> mailsend
+    dash -- "staff replies, payment links,<br/>receipts, journey emails, the booking ladder" --> mailsend
     dash -- "post-play round → survey link" --> vero
     core -. errors .-> sentry
     dash -. errors .-> sentry
@@ -59,7 +59,7 @@ flowchart LR
 | Inbound email | Receives, authenticates (webhook key, SPF/DKIM), triages with Anthropic, routes (auto-reply / Inbox / Guest Request / ignore) | Shows held emails in the **Inbox**; staff reply, dismiss or link them to a booking |
 | Bookings | Creates `Inquiry` bookings with offered tee times; moves them to `Requested` when the guest submits the form or a Book Now email | Lists, filters, edits (status, note, tee time, payment), exports, imports tee sheets, converts waitlist entries; Stripe payment moves `Inquiry`/`Requested` to `Booked` |
 | Guest changes | Files change/cancel emails from the booking's guest as `Pending` requests | Manage-booking page files requests; staff approve/decline on **Guest Requests** (approving a cancellation sets `Cancelled`) |
-| Outbound email | Availability replies, acknowledgements, holding emails | Staff replies, change-request outcomes, payment links and receipts, pre-arrival/post-play campaigns, operator reminders, password reset / invitation / portal sign-in links |
+| Outbound email | Availability replies, acknowledgements, holding emails | Staff replies, change-request outcomes, payment links and receipts, pre-arrival/post-play campaigns, the booking ladder (guest and trade-account emails), password reset / invitation / portal sign-in links |
 | Membership | Answers enquiries to the membership address (demo: `memberships@club.teemail.io`) with the categories and an apply link, or — when the club has switched applications off — a waitlist link; hosts `/membership/apply` and `/membership/waitlist` | The on/off switch, categories and reply copy; committee review (`submitted → under_review → approved/declined → welcomed`) with an email to the applicant at each step; waitlist invitations |
 | Payments | None | Stripe Payment Links, webhook, periodic sync, receipts |
 | Schema | Never alters it; checks `bookings` columns at start-up | **Owns it**: `db/migrations/`, applied before the server listens ([MIGRATIONS.md](MIGRATIONS.md)) |

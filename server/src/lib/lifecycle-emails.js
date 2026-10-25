@@ -1,5 +1,6 @@
 /**
- * What each rung of the lifecycle actually says to the guest.
+ * What each rung of the lifecycle actually says — to the guest, or to the
+ * trade account that pays for them.
  *
  * Sixteen emails, written here rather than as sixteen SendGrid templates. A
  * club that wants its own wording still sets one — `templateFor` prefers it —
@@ -19,6 +20,16 @@
  * It always says what to do next, and gives the one link that does it. An
  * email that says a booking is at risk and offers no way to pay is a
  * complaint, not a reminder.
+ *
+ * TWO VOICES. A visitor pays for their own round, so the chase is written to
+ * the person playing: "your round", "your tee time". A tour operator's booking
+ * is paid for by the account, and every payment- and balance-phase email goes
+ * to the account's contact (see `recipientFor`) — who holds a dozen of these
+ * at once, knows the terms, and does not want to be addressed as if they were
+ * turning up with their clubs. So each of those rungs has a second version in
+ * `TRADE_COPY`, written to the trade partner: the guest named in the third
+ * person, the account's own due date, the terms stated as terms. The
+ * communication rungs go to the guest whoever pays, and have one voice.
  */
 import { BRAND } from './brand.js';
 import { emailShell, escapeHtml } from './email-layout.js';
@@ -289,6 +300,204 @@ const COPY = {
   }),
 };
 
+/**
+ * The round as a trade partner reads it: the guest's name and their own
+ * account at the top, where the eye lands first in a dozen of these.
+ */
+function tradeDetails(booking, operator) {
+  const [reference, ...rest] = roundDetails(booking);
+  return [
+    reference,
+    ['Guest', String(booking.guestName ?? '').trim()],
+    ['Account', String(operator?.name ?? '').trim()],
+    ...rest,
+  ].filter(([, value]) => value !== '' && value != null);
+}
+
+/** "Ann Burke" where the booking names a guest, "your client" where it does not. */
+function guestWord(booking) {
+  const name = String(booking.guestName ?? '').trim();
+  return name || 'your client';
+}
+
+/** The balance's own due date, which for a trade account is its terms. */
+function balanceDue(money, due) {
+  return money?.balanceDueDate ?? due ?? null;
+}
+
+/**
+ * The same rungs, written to the account that pays.
+ *
+ * No guest voice leaks through: "your tee time" becomes "the tee time", the
+ * deposit is "the deposit on the booking below for Ann Burke", and the date
+ * is the one the account's own terms set rather than a count of days.
+ */
+const TRADE_COPY = {
+  deposit_request: ({ booking, money, due, operator }) => ({
+    subject: `Deposit to secure booking ${booking.bookingId} (${guestWord(booking)}) — ${BRAND.fullName}`,
+    lead: `Thank you for the booking below for ${guestWord(booking)}.`,
+    body: [
+      `Under your account terms a ${amountWord(money)} of ${formatMoney(money.dueAmount || money.outstanding)} is payable by ${shortDate(due)} to secure the tee time. Until it is received the time is held on your account but not confirmed.`,
+      'You can pay online using the button below, or by bank transfer quoting the booking reference. Reply if you would rather we invoiced the account.',
+    ],
+    button: payButton(booking),
+    details: tradeDetails(booking, operator),
+    footer: 'If this has already been settled by transfer, reply with the payment reference and we will match it.',
+  }),
+
+  deposit_reminder_1: ({ booking, money, due, operator }) => ({
+    subject: `Reminder: ${amountWord(money)} due ${shortDate(due)} for booking ${booking.bookingId} (${guestWord(booking)})`,
+    lead: `A reminder that the ${amountWord(money)} of ${formatMoney(money.outstanding)} on the booking below for ${guestWord(booking)} is due by ${shortDate(due)}.`,
+    body: [
+      'The tee time is held on your account until then. If the payment has not reached us by the due date the booking goes into our release process under your account terms.',
+    ],
+    button: payButton(booking),
+    details: tradeDetails(booking, operator),
+    footer: 'If this has already been settled by transfer, reply with the payment reference and we will match it.',
+  }),
+
+  deposit_reminder_2: ({ booking, money, due, operator }) => ({
+    subject: `${amountWord(money) === 'deposit' ? 'Deposit' : 'Payment'} due tomorrow: booking ${booking.bookingId} (${guestWord(booking)})`,
+    lead: `The ${amountWord(money)} of ${formatMoney(money.outstanding)} on the booking below for ${guestWord(booking)} is due tomorrow, ${shortDate(due)}.`,
+    body: [
+      'This is the last reminder before the due date. A payment that has not reached us by then puts the booking into our release process, which we would rather avoid for both of us.',
+    ],
+    button: payButton(booking),
+    details: tradeDetails(booking, operator),
+    footer: 'If a payment is already on its way, reply with the reference and we will hold the time while it clears.',
+  }),
+
+  deposit_overdue: ({ booking, money, due, operator }) => ({
+    subject: `${amountWord(money) === 'deposit' ? 'Deposit' : 'Payment'} overdue: booking ${booking.bookingId} (${guestWord(booking)}) is marked for release`,
+    lead: `The ${amountWord(money)} on the booking below for ${guestWord(booking)} was due on ${shortDate(due)} and has not reached us, so the booking is now marked for release.`,
+    body: [
+      `It can still be kept. If ${formatMoney(money.outstanding)} reaches us now the booking stands exactly as it was; otherwise the tee time goes back on sale.`,
+    ],
+    button: payButton(booking, 'Pay now and keep the booking'),
+    details: tradeDetails(booking, operator),
+    footer:
+      'If the group has fallen through, a reply saying so lets us release the time now rather than at the deadline — and keeps your account in good standing.',
+  }),
+
+  deposit_rescue_48h: ({ booking, money, due, operator }) => ({
+    subject: `48 hours: booking ${booking.bookingId} (${guestWord(booking)}) will be released`,
+    lead: `The booking below for ${guestWord(booking)} will be released on ${shortDate(due)} unless the ${amountWord(money)} of ${formatMoney(money.outstanding)} is received.`,
+    body: ['Once released the tee time is offered to other parties and we cannot guarantee to hold it again.'],
+    button: payButton(booking, 'Pay now and keep the booking'),
+    details: tradeDetails(booking, operator),
+    footer: 'Already paid, or need longer? Reply and we will sort it out.',
+  }),
+
+  deposit_rescue_24h: ({ booking, money, due, operator }) => ({
+    subject: `Final notice: booking ${booking.bookingId} (${guestWord(booking)}) is released tomorrow`,
+    lead: `This is the final notice on the booking below for ${guestWord(booking)}: it will be released on ${shortDate(due)} unless the ${amountWord(money)} of ${formatMoney(money.outstanding)} is received.`,
+    body: ['If a payment is already on its way, reply with the reference and we will hold the time while it clears.'],
+    button: payButton(booking, 'Pay now and keep the booking'),
+    details: tradeDetails(booking, operator),
+    footer: 'If the group is not travelling, a reply is enough — there is nothing to fill in.',
+  }),
+
+  deposit_cancelled: ({ booking, money, operator }) => ({
+    subject: `Booking ${booking.bookingId} (${guestWord(booking)}) has been released`,
+    lead: `The ${amountWord(money)} on the booking below for ${guestWord(booking)} was not received by the deadline, so under your account terms the booking has been cancelled and the tee time released.`,
+    body: [
+      'Nothing is owed on it.',
+      'If the group still wants to play, reply to this email and we will look at what is available — the original time may already have gone.',
+    ],
+    details: tradeDetails(booking, operator),
+    footer: 'We would be glad to take the next one.',
+  }),
+
+  deposit_receipt: ({ booking, money, operator }) => ({
+    subject: `Payment received — booking ${booking.bookingId} (${guestWord(booking)})`,
+    lead: `Thank you — we have received ${formatMoney(money.paid)} against the booking below for ${guestWord(booking)}, and the tee time is secure on your account.`,
+    body: paidInFull(money)
+      ? [
+          'The booking is paid in full and confirmed. The guest will receive the confirmation and arrival details directly from us nearer the time.',
+        ]
+      : [
+          `The balance of ${formatMoney(money.outstanding)} is payable${money.balanceDueDate ? ` by ${shortDate(money.balanceDueDate)}` : ''} under your account terms, and we will send a notice ahead of it.`,
+        ],
+    details: [...tradeDetails(booking, operator), ...moneyDetails(money)],
+    footer: 'Please keep this email for your records.',
+  }),
+
+  balance_notice: ({ booking, money, due, operator }) => ({
+    subject: `Balance due ${shortDate(balanceDue(money, due))}: booking ${booking.bookingId} (${guestWord(booking)})`,
+    lead: `The deposit on the booking below for ${guestWord(booking)} is in and the round is held on your account.`,
+    body: [
+      `Under your account terms the balance of ${formatMoney(money.outstanding)} is payable by ${shortDate(balanceDue(money, due))}. We will send a 48-hour and a 24-hour reminder before the date.`,
+      'A payment link is below for convenience; a bank transfer quoting the booking reference is equally welcome.',
+    ],
+    button: payButton(booking, 'Pay the balance'),
+    details: [...tradeDetails(booking, operator), ...moneyDetails(money)],
+    footer:
+      'If this is already scheduled for payment there is nothing to do. Reply if you would like a statement for the account.',
+  }),
+
+  balance_reminder_48h: ({ booking, money, due, operator }) => ({
+    subject: `48 hours: balance due on booking ${booking.bookingId} (${guestWord(booking)})`,
+    lead: `The balance of ${formatMoney(money.outstanding)} on the booking below for ${guestWord(booking)} is due on ${shortDate(balanceDue(money, due))}.`,
+    body: [
+      'A balance not settled by the due date puts the booking into our release process under your account terms. If a transfer is already in hand, a reply with the reference is all we need.',
+    ],
+    button: payButton(booking, 'Pay the balance'),
+    details: [...tradeDetails(booking, operator), ...moneyDetails(money)],
+    footer: 'If the booking has changed, let us know and we will re-issue the invoice.',
+  }),
+
+  balance_reminder_24h: ({ booking, money, due, operator }) => ({
+    subject: `Final notice: balance due tomorrow on booking ${booking.bookingId} (${guestWord(booking)})`,
+    lead: `The balance of ${formatMoney(money.outstanding)} on the booking below for ${guestWord(booking)} is due tomorrow, ${shortDate(balanceDue(money, due))}.`,
+    body: ['This is the final notice before the due date. Settling it today keeps the round exactly as it stands.'],
+    button: payButton(booking, 'Pay the balance'),
+    details: [...tradeDetails(booking, operator), ...moneyDetails(money)],
+    footer: 'If there is a problem with the invoice, reply today and we will hold it.',
+  }),
+
+  balance_cancelled: ({ booking, money, operator }) => ({
+    subject: `Booking ${booking.bookingId} (${guestWord(booking)}) cancelled — balance not received`,
+    lead: `The balance of ${formatMoney(money.outstanding)} on the booking below for ${guestWord(booking)} was not received by the due date, so under your account terms the booking has been cancelled and the tee times released.`,
+    body: [
+      'The deposit is retained against the booking as the terms provide.',
+      'If this is not what you expected — a transfer sent and not yet matched, for instance — reply today and we will look at it with you before the time is resold.',
+    ],
+    details: [...tradeDetails(booking, operator), ...moneyDetails(money)],
+    footer: 'We would much rather have the booking than the cancellation — do get in touch.',
+  }),
+
+  balance_receipt: ({ booking, money, operator }) => ({
+    subject: `Paid in full — booking ${booking.bookingId} (${guestWord(booking)})`,
+    lead: `Thank you — the booking below for ${guestWord(booking)} is now paid in full (${formatMoney(money.paid)}).`,
+    body: [
+      'Everything is settled on your account for this booking. The guest will receive the final arrival details directly from us nearer the time.',
+    ],
+    details: [...tradeDetails(booking, operator), ['Total paid', formatMoney(money.paid)]],
+    footer: 'Please keep this email for your records.',
+  }),
+};
+
+/** The rungs that have a trade-account voice: every one that asks for, or acknowledges, money. */
+export const TRADE_RUNGS = Object.keys(TRADE_COPY);
+
+/**
+ * Whose inbox this is going to, and so which voice.
+ *
+ * 'operator' only when there is a trade account, the rung has a trade
+ * version, and the address the run chose is the account's own. An account
+ * with no contact email falls back to the guest (see `recipientFor`), and
+ * the guest must not then be written to as the account.
+ */
+export function audienceFor(rungKey, { operator = null, toEmail = null } = {}) {
+  if (!operator || !TRADE_COPY[rungKey]) return 'guest';
+  const contact = String(operator.contactEmail ?? '')
+    .trim()
+    .toLowerCase();
+  if (!contact) return 'guest';
+  if (toEmail && String(toEmail).trim().toLowerCase() !== contact) return 'guest';
+  return 'operator';
+}
+
 function paidInFull(money) {
   return (money?.outstanding ?? 0) <= 0.005;
 }
@@ -311,13 +520,18 @@ export function hasBuiltInEmail(rungKey) {
  * Returns `null` for a rung nobody has written copy for, which is how a new
  * rung added to the ladder fails: visibly, and without sending a blank email.
  */
-export function buildLifecycleEmail(rungKey, { booking, money, dueOn = null, operator = null } = {}) {
-  const write = COPY[rungKey];
+export function buildLifecycleEmail(
+  rungKey,
+  { booking, money, dueOn = null, operator = null, toEmail = null, audience = null } = {},
+) {
+  const voice = audience ?? audienceFor(rungKey, { operator, toEmail });
+  const write = voice === 'operator' ? TRADE_COPY[rungKey] : COPY[rungKey];
   if (!write) return null;
 
-  const copy = write({ booking, money: money ?? {}, due: dueOn });
-  const manageUrl = manageUrlFor(booking) ?? '';
-  const greeting = `Hi ${greetingName(booking, operator)},`;
+  const copy = write({ booking, money: money ?? {}, due: dueOn, operator });
+  // The manage-booking link is the guest's; an account does not get it.
+  const manageUrl = voice === 'operator' ? '' : (manageUrlFor(booking) ?? '');
+  const greeting = voice === 'operator' ? `Dear ${greetingName(booking, operator)},` : `Hi ${greetingName(booking)},`;
 
   const footer =
     copy.footer +
@@ -357,8 +571,16 @@ export function buildLifecycleEmail(rungKey, { booking, money, dueOn = null, ope
 export function lifecycleTemplateData(rungKey, context) {
   const built = buildLifecycleEmail(rungKey, context);
   if (!built) return null;
-  const copy = COPY[rungKey]({ booking: context.booking, money: context.money ?? {}, due: context.dueOn });
+  const voice = context.audience ?? audienceFor(rungKey, context);
+  const write = voice === 'operator' ? TRADE_COPY[rungKey] : COPY[rungKey];
+  const copy = write({
+    booking: context.booking,
+    money: context.money ?? {},
+    due: context.dueOn,
+    operator: context.operator,
+  });
   return {
+    audience: voice,
     subject: built.subject,
     headline: copy.lead,
     body_text: built.text,
