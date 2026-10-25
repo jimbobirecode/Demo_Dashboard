@@ -103,55 +103,63 @@ beforeEach(() => {
   api.lifecycleHeld.mockResolvedValue({ held: [] });
 });
 
-describe('the set-up card', () => {
-  test('says plainly when the ladder is off, and no run is offered', async () => {
+describe('the headline', () => {
+  test('says in one line that nobody is being chased, and offers no run', async () => {
     api.lifecycleConfig.mockResolvedValue(
       config({ switches: { enabled: false, deadlines: false, scheduled: false, autoCancel: false } }),
     );
     render(<Lifecycle />, { wrapper: MemoryRouter });
 
-    await waitFor(() => expect(screen.getByText(/nothing is being chased/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: /nobody is being chased/i })).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /preview today/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /run now/i })).toBeDisabled();
   });
 
-  test('says that nothing runs by itself when the schedule is off', async () => {
+  test('says that nothing goes out unless somebody presses Run now', async () => {
     render(<Lifecycle />, { wrapper: MemoryRouter });
-    await waitFor(() => expect(screen.getByText(/nothing runs by itself/i)).toBeInTheDocument());
-    // But it can still be run by hand, which is the point of that state.
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /nothing goes out unless you press run now/i })).toBeInTheDocument(),
+    );
+    // Which is exactly the state in which running it by hand is the point.
     expect(screen.getByRole('button', { name: /run now/i })).toBeEnabled();
   });
 
-  test('counts how far through the four steps the club has got', async () => {
+  test('distinguishes stopping for a person from cancelling automatically', async () => {
+    api.lifecycleConfig.mockResolvedValue(
+      config({ switches: { enabled: true, deadlines: true, scheduled: true, autoCancel: false } }),
+    );
+    const { unmount } = render(<Lifecycle />, { wrapper: MemoryRouter });
+    await waitFor(() => expect(screen.getByRole('heading', { name: /stop here for you/i })).toBeInTheDocument());
+    unmount();
+
+    api.lifecycleConfig.mockResolvedValue(
+      config({ switches: { enabled: true, deadlines: true, scheduled: true, autoCancel: true } }),
+    );
     render(<Lifecycle />, { wrapper: MemoryRouter });
-    await waitFor(() => expect(screen.getByText('Step 2 of 4')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: /cancelled automatically/i })).toBeInTheDocument());
   });
 
-  test('sends you to Settings to change any of it, rather than naming a variable', async () => {
+  test('says when nothing will ever be cancelled', async () => {
+    api.lifecycleConfig.mockResolvedValue(
+      config({ switches: { enabled: true, deadlines: false, scheduled: true, autoCancel: false } }),
+    );
     render(<Lifecycle />, { wrapper: MemoryRouter });
-    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Settings' }).length).toBeGreaterThan(0));
-    for (const link of screen.getAllByRole('link', { name: 'Settings' })) {
-      expect(link).toHaveAttribute('href', '/settings');
-    }
-    // The switches are the club's own now, so no environment variable is named.
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /nothing is ever cancelled/i })).toBeInTheDocument(),
+    );
+  });
+
+  test('offers one way to change it, and names no environment variable', async () => {
+    render(<Lifecycle />, { wrapper: MemoryRouter });
+    await waitFor(() => expect(screen.getByRole('link', { name: /change this/i })).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: /change this/i })).toHaveAttribute('href', '/settings');
     expect(screen.queryByText(/BOOKING_TRIGGERS_/)).not.toBeInTheDocument();
   });
 
-  test('explains that rungs without a template are skipped rather than lost', async () => {
+  test('explains that an email with no template is skipped rather than lost', async () => {
     render(<Lifecycle />, { wrapper: MemoryRouter });
-    await waitFor(() => expect(screen.getByText(/nothing is lost in the meantime/i)).toBeInTheDocument());
-    expect(screen.getAllByText(/have no email template/i).length).toBeGreaterThan(0);
-  });
-
-  test('explains the visitor switch when it is off, including why it is a judgement call', async () => {
-    api.lifecycleConfig.mockResolvedValue(
-      config({
-        switches: { enabled: true, deadlines: true, scheduled: true, autoCancel: false, visitorDunning: false },
-      }),
-    );
-    render(<Lifecycle />, { wrapper: MemoryRouter });
-    await waitFor(() => expect(screen.getByText(/visitor chasing is switched off/i)).toBeInTheDocument());
-    expect(screen.getByText(/left the visitor chasing columns blank/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/nothing is lost/i)).toBeInTheDocument());
+    expect(screen.getByText(/nothing to send yet/i)).toBeInTheDocument();
   });
 });
 
@@ -167,17 +175,17 @@ describe('what is waiting on a person', () => {
     // The reference opens the booking, so "open one and decide" is actionable.
     expect(screen.getByRole('link', { name: 'RD-2001' })).toHaveAttribute('href', '/bookings?ref=RD-2001');
     // And it is said again at the top, where somebody scanning will see it.
-    expect(screen.getByText(/needs a decision/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs your decision/i)).toBeInTheDocument();
     expect(screen.getByText(/nothing was emailed to/i)).toBeInTheDocument();
   });
 
   test('the table is absent when nothing is waiting, rather than an empty frame', async () => {
     render(<Lifecycle />, { wrapper: MemoryRouter });
-    await waitFor(() => expect(screen.getByText('Set-up')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('link', { name: /change this/i })).toBeInTheDocument());
     expect(screen.queryByRole('heading', { name: 'Waiting on you' })).not.toBeInTheDocument();
     // The tile still reports it, which is where a glance goes.
     expect(screen.getByText('Waiting on you')).toBeInTheDocument();
-    expect(screen.getByText('Nothing needs a decision')).toBeInTheDocument();
+    expect(screen.getByText('Nothing needs your call')).toBeInTheDocument();
   });
 });
 
@@ -273,7 +281,7 @@ describe('running it for real', () => {
     api.lifecycleConfig.mockResolvedValue(config({ emailReady: false }));
     render(<Lifecycle />, { wrapper: MemoryRouter });
 
-    await waitFor(() => expect(screen.getByText('Set-up')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('link', { name: /change this/i })).toBeInTheDocument());
     const run = screen.getByRole('button', { name: /run now/i });
     expect(run).toBeDisabled();
     expect(run).toHaveAttribute('title', 'SendGrid is not configured');
@@ -325,7 +333,7 @@ test('the held banner agrees with itself when more than one booking is waiting',
   api.lifecycleHeld.mockResolvedValue({ held: [HELD, { ...HELD, bookingId: 'RD-2002' }] });
   render(<Lifecycle />, { wrapper: MemoryRouter });
 
-  await waitFor(() => expect(screen.getByText(/2 bookings ran out of road/i)).toBeInTheDocument());
-  expect(screen.getByText(/need a decision/i)).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText(/2 bookings stopped here/i)).toBeInTheDocument());
+  expect(screen.getByText(/need your decision/i)).toBeInTheDocument();
   expect(screen.getByText(/nothing was emailed to any of them/i)).toBeInTheDocument();
 });

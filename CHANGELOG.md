@@ -2,6 +2,16 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – the lifecycle settings, rewritten to be read (October 2026)
+
+### Changed
+
+- **The settings screen asks one question instead of four.** It offered four switches that nested and a grid of numbered boxes, which was honest about how the thing is built and did not match the question anybody arrives with. It now asks *how far should this go?* and offers five answers, each named by what the guest gets: off; show me what you would send but send nothing; send reminders but never cancel; send reminders then stop and ask me (recommended); send reminders then cancel it for me. The four flags are still what the server stores — `modeFor` maps between them, and is tested against every combination — but they are the implementation now rather than the decision. Nothing arrives greyed out waiting for something else to be ticked first.
+- **The timings are sentences with their units in them**: "Ask for the deposit within [7] days of the booking", "Give them until day [10] before the booking stops". A labelled box reading "First reminder: 5" does not say five of what, counted from when.
+- **"What a guest gets"** draws the whole schedule out as two stories — *If they do not pay* and *If they pay* — and follows the numbers as they are edited. It also follows the choice above it: pick "never cancel" and the final warnings and the ending disappear from the picture, because they would not happen. This is the part that does the explaining; it was previously one line of small grey text at the foot of the page.
+- The Booking Lifecycle page says in one line what the club has it set to — "Reminders go out, and unpaid bookings stop here for you" — with one link to change it, in place of a four-step checklist describing the machinery. Its tiles are named for what somebody is looking for ("Unpaid bookings: left for you") rather than for the mechanism ("Rungs ready", "Catch-up limit").
+- The per-field **inherited** tags are gone. They explained a distinction between a club's saved value and the server's default that only the implementation cares about, and put fourteen badges on a page that needed fewer things on it, not more. The precedence itself is unchanged.
+
 ## Unreleased – the lifecycle as the club's own settings (October 2026)
 
 ### Added

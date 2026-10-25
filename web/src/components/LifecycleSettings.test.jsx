@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import LifecycleSettings from './LifecycleSettings.jsx';
+import LifecycleSettings, { modeFor } from './LifecycleSettings.jsx';
 import { api } from '../lib/api.js';
 
 vi.mock('../lib/api.js', () => ({
   api: { lifecycleSettings: vi.fn(), saveLifecycleSettings: vi.fn() },
 }));
 
-const DEFAULTS = {
+const DAYS = {
   depositWindowDays: 7,
   depositReminderDay: 5,
   depositRescueDay: 10,
@@ -19,218 +19,289 @@ const DEFAULTS = {
   postPlayDaysAfterPlay: 1,
 };
 
-const BOUNDS = {
-  depositWindowDays: { min: 1, max: 120, label: 'Deposit window' },
-  depositReminderDay: { min: 1, max: 120, label: 'First deposit reminder' },
-  depositRescueDay: { min: 2, max: 180, label: 'Final deadline' },
+/** The flags for each of the five steps, as the server stores them. */
+const FLAGS = {
+  off: { enabled: false, deadlines: false, scheduled: false, autoCancel: false },
+  preview: { enabled: true, deadlines: false, scheduled: false, autoCancel: false },
+  chase_forever: { enabled: true, deadlines: false, scheduled: true, autoCancel: false },
+  chase_and_ask: { enabled: true, deadlines: true, scheduled: true, autoCancel: false },
+  cancel: { enabled: true, deadlines: true, scheduled: true, autoCancel: true },
 };
 
-function payload(overrides = {}) {
+function payload(mode = 'chase_and_ask', overrides = {}) {
   return {
-    settings: {
-      enabled: true,
-      deadlines: true,
-      scheduled: false,
-      autoCancel: false,
-      visitorDunning: true,
-      catchUpDays: 3,
-      ...DEFAULTS,
-    },
-    saved: ['enabled', 'deadlines'],
-    inherited: { enabled: false, deadlines: false, ...DEFAULTS },
-    defaults: DEFAULTS,
-    bounds: BOUNDS,
+    settings: { ...FLAGS[mode], visitorDunning: true, catchUpDays: 3, ...DAYS },
+    saved: [],
+    inherited: {},
+    defaults: DAYS,
+    bounds: {},
     canEdit: true,
     everyMinutes: 15,
     ...overrides,
   };
 }
 
+const option = (name) => screen.getByRole('radio', { name: new RegExp(name, 'i') });
+
 beforeEach(() => {
   vi.clearAllMocks();
   api.lifecycleSettings.mockResolvedValue(payload());
-  api.saveLifecycleSettings.mockResolvedValue({ saved: ['enabled', 'deadlines', 'depositReminderDay'], settings: {} });
+  api.saveLifecycleSettings.mockResolvedValue({ saved: [], settings: {} });
 });
 
-describe('what the club has chosen', () => {
-  test('marks the fields it is inheriting rather than passing them off as decisions', async () => {
-    render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText('Booking lifecycle')).toBeInTheDocument());
+// ---------------------------------------------------------------------------
+// One choice, named by what the guest gets
+// ---------------------------------------------------------------------------
 
-    // enabled and deadlines are saved; everything else is inherited.
-    const inherited = screen.getAllByText('inherited');
-    expect(inherited.length).toBeGreaterThan(5);
+describe('how far this goes', () => {
+  test('is a single choice, not a set of switches to work out', async () => {
+    render(<LifecycleSettings />);
+    await waitFor(() => expect(screen.getByText('How far should this go?')).toBeInTheDocument());
+
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
+    // Nothing is greyed out waiting for something else to be ticked first.
+    for (const radio of screen.getAllByRole('radio')) expect(radio).toBeEnabled();
   });
 
-  test('a reader who is not an admin is told so and cannot save', async () => {
-    api.lifecycleSettings.mockResolvedValue(payload({ canEdit: false }));
+  test('each step is named by what happens, not by which flag it sets', async () => {
+    render(<LifecycleSettings />);
+    await waitFor(() => expect(screen.getByText('How far should this go?')).toBeInTheDocument());
+
+    expect(option('send me what you would send|show me what you would send')).toBeInTheDocument();
+    expect(option('never cancel')).toBeInTheDocument();
+    expect(option('stop and ask me')).toBeInTheDocument();
+    expect(option('cancel it for me')).toBeInTheDocument();
+  });
+
+  test('the safe one is the recommended one', async () => {
+    render(<LifecycleSettings />);
+    await waitFor(() => expect(screen.getByText('recommended')).toBeInTheDocument());
+
+    const label = screen.getByText('recommended').closest('label');
+    expect(within(label).getByText(/stop and ask me/i)).toBeInTheDocument();
+  });
+
+  test('the saved flags decide which step is shown as current', async () => {
+    api.lifecycleSettings.mockResolvedValue(payload('chase_forever'));
     render(<LifecycleSettings />);
 
-    await waitFor(() => expect(screen.getByText(/only an administrator can change them/i)).toBeInTheDocument());
-    expect(screen.queryByRole('button', { name: /save settings/i })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('First reminder')).toBeDisabled();
+    await waitFor(() => expect(option('never cancel')).toBeChecked());
+    expect(option('stop and ask me')).not.toBeChecked();
+  });
+
+  test('every combination of the underlying flags maps to exactly one step', () => {
+    for (const [mode, flags] of Object.entries(FLAGS)) {
+      assertMode(modeFor({ ...flags }), mode);
+    }
+    function assertMode(actual, expected) {
+      expect(actual).toBe(expected);
+    }
   });
 });
 
-describe('the switches nest', () => {
-  test('a switch below one that is off cannot be set, and says why', async () => {
-    api.lifecycleSettings.mockResolvedValue(
-      payload({ settings: { ...payload().settings, enabled: false, deadlines: false } }),
+// ---------------------------------------------------------------------------
+// The timings, as sentences
+// ---------------------------------------------------------------------------
+
+describe('the timings', () => {
+  test('say what the number means, with its units, in a sentence', async () => {
+    render(<LifecycleSettings />);
+    await waitFor(() => expect(screen.getByText('When')).toBeInTheDocument());
+
+    expect(screen.getByText(/ask for the deposit within/i)).toBeInTheDocument();
+    expect(screen.getByText(/days of the booking/i)).toBeInTheDocument();
+    expect(screen.getByText(/send the first reminder/i)).toBeInTheDocument();
+    expect(screen.getByText(/tour operators owe the balance/i)).toBeInTheDocument();
+  });
+
+  test('each number still has a name a screen reader can say', async () => {
+    render(<LifecycleSettings />);
+    await waitFor(() => expect(screen.getByText('When')).toBeInTheDocument());
+
+    expect(screen.getByLabelText('Days to pay the deposit')).toHaveValue(7);
+    expect(screen.getByLabelText('Days before the first reminder')).toHaveValue(5);
+    expect(screen.getByLabelText('Day the booking stops')).toHaveValue(10);
+  });
+
+  test('an order that cannot work is explained in plain words and blocks saving', async () => {
+    render(<LifecycleSettings />);
+    await waitFor(() => expect(screen.getByText('When')).toBeInTheDocument());
+
+    const reminder = screen.getByLabelText('Days before the first reminder');
+    await userEvent.clear(reminder);
+    await userEvent.type(reminder, '9');
+
+    await waitFor(() =>
+      expect(screen.getByText(/before the deadline it is reminding them about/i)).toBeInTheDocument(),
     );
-    render(<LifecycleSettings />);
-
-    await waitFor(() => expect(screen.getByText('Booking lifecycle')).toBeInTheDocument());
-    expect(screen.getByLabelText(/let deadlines count/i)).toBeDisabled();
-    expect(screen.getAllByText('Needs the setting above').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
   });
 
-  test('turning the ladder on frees the switch beneath it immediately', async () => {
-    api.lifecycleSettings.mockResolvedValue(
-      payload({ settings: { ...payload().settings, enabled: false, deadlines: false } }),
-    );
+  test('leaving no room for the 48- and 24-hour warnings is caught', async () => {
     render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByLabelText(/let deadlines count/i)).toBeDisabled());
+    await waitFor(() => expect(screen.getByText('When')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByLabelText(/work out where each booking stands/i));
+    const stops = screen.getByLabelText('Day the booking stops');
+    await userEvent.clear(stops);
+    await userEvent.type(stops, '8');
 
-    expect(screen.getByLabelText(/let deadlines count/i)).toBeEnabled();
+    await waitFor(() => expect(screen.getByText(/at least two days after the deadline/i)).toBeInTheDocument());
   });
 });
 
-describe('auto-cancel', () => {
-  test('asks a second time, and will not save until it is confirmed', async () => {
+// ---------------------------------------------------------------------------
+// The picture
+// ---------------------------------------------------------------------------
+
+describe('what a guest gets', () => {
+  test('is drawn out as two stories, paid and unpaid', async () => {
     render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText('Booking lifecycle')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('What a guest gets')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByLabelText(/cancel a booking that runs out of road/i));
-
-    expect(screen.getByText(/cancelled and told so by/i)).toBeInTheDocument();
-    const save = screen.getByRole('button', { name: /save settings/i });
-    expect(save).toBeDisabled();
-
-    await userEvent.click(screen.getByLabelText(/i understand/i));
-    expect(save).toBeEnabled();
-  });
-
-  test('turning it off again asks nothing', async () => {
-    api.lifecycleSettings.mockResolvedValue(payload({ settings: { ...payload().settings, autoCancel: true } }));
-    render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText('Booking lifecycle')).toBeInTheDocument());
-
-    await userEvent.click(screen.getByLabelText(/cancel a booking that runs out of road/i));
-
-    expect(screen.queryByLabelText(/i understand/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /save settings/i })).toBeEnabled();
-  });
-});
-
-describe('the deposit cadence', () => {
-  test('is written out as a sequence, not left as three numbers', async () => {
-    render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText(/Day 0: payment link/)).toBeInTheDocument());
-
-    const cadence = screen.getByText(/Day 0: payment link/).textContent;
-    expect(cadence).toContain('Day 5: reminder');
-    expect(cadence).toContain('Day 7: window closed');
-    expect(cadence).toContain('Day 10: cancelled');
+    expect(screen.getByText('If they do not pay')).toBeInTheDocument();
+    expect(screen.getByText('If they pay')).toBeInTheDocument();
+    expect(screen.getByText(/the chasing stops the moment any money arrives/i)).toBeInTheDocument();
   });
 
   test('follows the numbers as they are edited', async () => {
     render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText(/Day 0: payment link/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Day 5')).toBeInTheDocument());
 
-    // 8 still leaves the two days the 48- and 24-hour notices need before the
-    // final deadline on day 10.
-    const window = screen.getByLabelText('Window closes');
-    await userEvent.clear(window);
-    await userEvent.type(window, '8');
-
-    await waitFor(() => expect(screen.getByText(/Day 8: window closed/)).toBeInTheDocument());
-    expect(screen.getByText(/Day 7: 24 hours left/)).toBeInTheDocument();
-  });
-
-  test('widening the window without moving the deadline is caught as it is typed', async () => {
-    // The window would swallow the final deadline, leaving no room for the
-    // 48- and 24-hour notices. Worth catching here rather than at the server.
-    render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText(/Day 0: payment link/)).toBeInTheDocument());
-
-    const window = screen.getByLabelText('Window closes');
-    await userEvent.clear(window);
-    await userEvent.type(window, '14');
-
-    await waitFor(() => expect(screen.getByText(/that order does not work/i)).toBeInTheDocument());
-  });
-
-  test('says so when the order stops making sense, before anything is saved', async () => {
-    render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText(/Day 0: payment link/)).toBeInTheDocument());
-
-    // A reminder after the window it is reminding about.
-    const reminder = screen.getByLabelText('First reminder');
+    const reminder = screen.getByLabelText('Days before the first reminder');
     await userEvent.clear(reminder);
-    await userEvent.type(reminder, '9');
+    await userEvent.type(reminder, '3');
 
-    await waitFor(() => expect(screen.getByText(/that order does not work/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Day 3')).toBeInTheDocument());
+  });
+
+  test('ends where the chosen step ends: waiting for a person', async () => {
+    render(<LifecycleSettings />);
+    await waitFor(() => expect(screen.getByText('Stops here')).toBeInTheDocument());
+
+    expect(screen.getByText(/we wait for you to decide. nothing is emailed/i)).toBeInTheDocument();
+    expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
+  });
+
+  test('ends in a cancellation when that is what was chosen', async () => {
+    api.lifecycleSettings.mockResolvedValue(payload('cancel'));
+    render(<LifecycleSettings />);
+
+    await waitFor(() => expect(screen.getByText('Cancelled')).toBeInTheDocument());
+    expect(screen.getByText(/the booking is cancelled and they are told/i)).toBeInTheDocument();
+  });
+
+  test('shows no warnings or ending at all where the club never cancels', async () => {
+    api.lifecycleSettings.mockResolvedValue(payload('chase_forever'));
+    render(<LifecycleSettings />);
+
+    await waitFor(() => expect(screen.getByText('If they do not pay')).toBeInTheDocument());
+    expect(screen.queryByText('Stops here')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
+    expect(screen.queryByText('Final notice')).not.toBeInTheDocument();
   });
 });
 
+// ---------------------------------------------------------------------------
+// Turning it off, and turning on the dangerous one
+// ---------------------------------------------------------------------------
+
+test('choosing Off hides the timings rather than leaving dead controls on screen', async () => {
+  render(<LifecycleSettings />);
+  await waitFor(() => expect(screen.getByText('When')).toBeInTheDocument());
+
+  await userEvent.click(option('^off'));
+
+  expect(screen.queryByText('When')).not.toBeInTheDocument();
+  expect(screen.queryByText('What a guest gets')).not.toBeInTheDocument();
+});
+
+test('cancelling automatically asks a second time, and will not save until answered', async () => {
+  render(<LifecycleSettings />);
+  await waitFor(() => expect(screen.getByText('How far should this go?')).toBeInTheDocument());
+
+  await userEvent.click(option('cancel it for me'));
+
+  expect(screen.getByText(/the first anyone here knows of a cancellation/i)).toBeInTheDocument();
+  const save = screen.getByRole('button', { name: /^save$/i });
+  expect(save).toBeDisabled();
+
+  await userEvent.click(screen.getByLabelText(/i understand/i));
+  expect(save).toBeEnabled();
+});
+
+test('a club already cancelling automatically is not asked again', async () => {
+  api.lifecycleSettings.mockResolvedValue(payload('cancel'));
+  render(<LifecycleSettings />);
+  await waitFor(() => expect(option('cancel it for me')).toBeChecked());
+
+  expect(screen.queryByLabelText(/i understand/i)).not.toBeInTheDocument();
+});
+
+// ---------------------------------------------------------------------------
+// Saving
+// ---------------------------------------------------------------------------
+
 describe('saving', () => {
+  test('sends the flags the chosen step stands for', async () => {
+    api.lifecycleSettings.mockResolvedValue(payload('preview'));
+    render(<LifecycleSettings />);
+    await waitFor(() => expect(screen.getByText('How far should this go?')).toBeInTheDocument());
+
+    await userEvent.click(option('never cancel'));
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(api.saveLifecycleSettings).toHaveBeenCalledWith({ scheduled: true }));
+  });
+
   test('sends only what changed', async () => {
     render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText('Booking lifecycle')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('When')).toBeInTheDocument());
 
-    const reminder = screen.getByLabelText('First reminder');
+    const reminder = screen.getByLabelText('Days before the first reminder');
     await userEvent.clear(reminder);
     await userEvent.type(reminder, '3');
-    await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => expect(api.saveLifecycleSettings).toHaveBeenCalledWith({ depositReminderDay: 3 }));
-    expect(screen.getByText(/the next run uses these/i)).toBeInTheDocument();
   });
 
-  test('nothing to save means nothing to press', async () => {
+  test('says when there is nothing to save', async () => {
     render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText('No changes')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /save settings/i })).toBeDisabled();
+    await waitFor(() => expect(screen.getByText('Everything here is saved')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
   });
 
-  test('counts the unsaved changes so nothing is left half-edited by accident', async () => {
+  test('discard puts it back', async () => {
     render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText('No changes')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Everything here is saved')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByLabelText(/run by itself/i));
-    expect(screen.getByText('1 change not saved')).toBeInTheDocument();
+    await userEvent.click(option('never cancel'));
+    expect(screen.getByText('Not saved yet')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByLabelText(/chase visitors/i));
-    expect(screen.getByText('2 changes not saved')).toBeInTheDocument();
-  });
-
-  test('discard puts everything back', async () => {
-    render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText('No changes')).toBeInTheDocument());
-
-    await userEvent.click(screen.getByLabelText(/run by itself/i));
     await userEvent.click(screen.getByRole('button', { name: /discard/i }));
-
-    expect(screen.getByText('No changes')).toBeInTheDocument();
-    expect(screen.getByLabelText(/run by itself/i)).not.toBeChecked();
+    expect(screen.getByText('Everything here is saved')).toBeInTheDocument();
+    expect(option('stop and ask me')).toBeChecked();
   });
 
-  test("the server's refusal is shown as it is, not swallowed", async () => {
-    api.saveLifecycleSettings.mockRejectedValue(
-      new Error('The first deposit reminder must come before the deposit window closes'),
-    );
+  test('a refusal from the server is shown as it is', async () => {
+    api.saveLifecycleSettings.mockRejectedValue(new Error('The final details must go out after the confirmation'));
     render(<LifecycleSettings />);
-    await waitFor(() => expect(screen.getByText('No changes')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Everything here is saved')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByLabelText(/run by itself/i));
-    await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await userEvent.click(option('never cancel'));
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() =>
-      expect(
-        screen.getByText('The first deposit reminder must come before the deposit window closes'),
-      ).toBeInTheDocument(),
+      expect(screen.getByText('The final details must go out after the confirmation')).toBeInTheDocument(),
     );
+  });
+
+  test('a reader who cannot edit gets no controls to press', async () => {
+    api.lifecycleSettings.mockResolvedValue(payload('chase_and_ask', { canEdit: false }));
+    render(<LifecycleSettings />);
+
+    await waitFor(() => expect(screen.getByText(/an administrator changes them/i)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
+    for (const radio of screen.getAllByRole('radio')) expect(radio).toBeDisabled();
   });
 });

@@ -21,8 +21,8 @@ export default function Settings() {
       <div>
         <h1>Settings</h1>
         <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-          How this club works, as opposed to what it is doing today. For the bookings the lifecycle has stopped at, and
-          for a dry run, see <Link to="/lifecycle">Booking Lifecycle</Link>.
+          How this club works, rather than what it is doing today. To see which bookings are waiting on you right now,
+          go to <Link to="/lifecycle">Booking Lifecycle</Link>.
         </p>
       </div>
 
