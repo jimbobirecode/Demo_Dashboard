@@ -71,6 +71,7 @@ const BOOKING_COLUMNS = [
   'payment_receipt_sent_at',
   'pre_play_clock_started_at',
   'booked_webhook_sent_at',
+  'lifecycle_started_at',
 ];
 
 export const OPERATOR_COLUMNS = [

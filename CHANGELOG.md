@@ -2,6 +2,21 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – the booking lifecycle ladder (October 2026)
+
+### Added
+
+- **The booking lifecycle from the club's spreadsheet**, as a branching lifecycle rather than a mailing schedule. A booking is taken, a payment link goes out, and what happens next depends on whether the money arrives and when: paid, it climbs a ladder of confirmations to the tee; unpaid, a different one towards cancellation. The payment phase runs from the day the ladder took the booking on — deposit request (day 0), reminders (5, 6), overdue notice as the 7-day window closes (7), rescue warnings (48 and 24 hours before the second deadline), cancellation (10) — and a receipt with the terms for the next stage the moment money arrives. The balance phase (trade only, which is all the sheet writes it for) counts back from the balance deadline: notice ten days out, 48- and 24-hour reminders, then cancellation if still owing or the thank-you that closes the payment phase if paid. The communication phase is the confirmation at 30 days, the final details at 10, and the thank-you 24 hours after the tee time. Every day count is overridable. See [docs/BOOKING_LIFECYCLE.md](docs/BOOKING_LIFECYCLE.md).
+- Branching is by condition per rung, so the sheet's "if payment made revert to the if Paid process" needs no jump and no state machine: the unpaid rungs stop matching the moment the money is in and the paid ones start. A booking that pays on day six finds the day-seven warning recorded as `skipped` and the receipt due, with nothing anywhere that knows it reverted.
+- The balance deadline is the trade account's own `balance_due_days_before_play` wherever it sets one, and the sheet's 60 days only as the fallback — an email saying the balance is due on the 12th must not sit beside a drawer saying the 2nd. A date on the booking wins over both. `paymentState`'s invoice-terms fallback (play plus 30 days) is deliberately not used: right for billing, a month after the round for a deadline.
+- Four guards, which are the parts worth reviewing. A **ledger** (`booking_trigger_sends`, migration `0012`) rather than fifteen more nullable timestamps, whose partial unique index — `WHERE outcome <> 'failed'` — is the no-double-send guarantee, with failures outside it so they retry; the row is written before the send, so a crash leaves a claim that is rewritten as failed, never a second cancellation notice. A **catch-up horizon** (3 days), without which the first run after switching on would email a year of history its own deadlines. **Collapsing** to at most one email per booking per run, the furthest-along rung by date, with the rungs it overtook recorded as `superseded` so an expired warning never arrives a day late — and so a round that has already been played is thanked rather than cancelled over an unpaid deposit. And **three switches, all off by default and nested**: deadlines do nothing until the ladder is on, the schedule nothing until deadlines are, and nothing is cancelled until auto-cancel is, so a club can read a week of dry runs (`POST /api/booking-triggers/preview`) before the ladder sends anything.
+- With auto-cancel off — the default — a booking that runs out of road is listed at `GET /api/booking-triggers/held` and nothing is emailed.
+- The confirmation and post-play rungs are the existing pre-arrival and post-play campaigns, not a second copy of them: the ladder treats a booking the Guest Emails page has already written to as settled, and stamps the same column when it sends, so neither mechanism can email a guest the other already has.
+
+### Changed
+
+- `bookings` gains `lifecycle_started_at`, the anchor every payment-phase rung is measured from, written once and never moved — not `updated_at`, which moves on every edit, and not `created_at`, which can be months before the club committed to the booking. A booking that already had a payment link sent by hand is anchored on `payment_link_sent_at` instead.
+
 ## Unreleased – booked customers posted to another system (October 2026)
 
 ### Added

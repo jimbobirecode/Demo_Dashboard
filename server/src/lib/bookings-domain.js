@@ -143,6 +143,7 @@ export function serialiseBooking(row) {
     lastPaymentAmount: row.stripe_last_payment_amount == null ? null : number(row.stripe_last_payment_amount),
     paymentReceiptSentAt: timestamp(row.payment_receipt_sent_at),
     bookedWebhookSentAt: timestamp(row.booked_webhook_sent_at),
+    lifecycleStartedAt: timestamp(row.lifecycle_started_at),
     prePlayClockStartedAt: timestamp(row.pre_play_clock_started_at),
 
     // Where this booking came from. An install without the column has only

@@ -15,6 +15,7 @@ import { hashLegacyTempPasswords } from './auth.js';
 import { sendReceipt } from './routes/payments.js';
 import { startPaymentSync } from './lib/payment-sync.js';
 import { startBookedWebhook } from './lib/booked-webhook-outbox.js';
+import { startBookingTriggers } from './lib/booking-triggers.js';
 import { appBaseUrl } from './lib/brand.js';
 import { bookingLinkSecret, describeLinkSecret } from './lib/change-request-domain.js';
 
@@ -140,6 +141,10 @@ async function start() {
     // Booked customers are posted on the transition; this catches the ones
     // that transition somewhere else: see lib/booked-webhook-outbox.js.
     startBookedWebhook();
+    // The booking lifecycle ladder. Off unless the club has switched it on,
+    // and even then it only runs by itself once the schedule switch is on
+    // too: see lib/booking-triggers-domain.js.
+    startBookingTriggers();
   });
 }
 

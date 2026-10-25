@@ -245,6 +245,7 @@ One row per booking or enquiry. Unique `booking_id` (reference, see [ARCHITECTUR
 | Trade | `tour_operator_id` (FK), `operator_status_email_sent_at`, `operator_payment_email_sent_at` | |
 | Journey emails | `pre_arrival_email_sent_at`, `post_play_email_sent_at`, `pre_play_clock_started_at` | |
 | Handover | `booked_webhook_sent_at` | NULL until the club's booked-customer endpoint has accepted it; a Booked booking with no stamp is swept and retried |
+| Lifecycle | `lifecycle_started_at` | The anchor every payment-phase rung of the ladder is measured from; written once, never moved — see 0012 |
 
 ### `tour_operators`
 
@@ -287,6 +288,12 @@ Deleting an email from the mailbox is recoverable and keeps the row: a membershi
 ### `email_notes`
 
 What the team wrote to itself about one email, so the next person reading it knows what has happened off-email. One row per note — `club`, `message_id` (FK, `ON DELETE CASCADE`), `note` (free text, **PII**), `created_by` (dashboard username; never the bot), `created_at` — rather than a text column, so the stamp cannot be edited into something else and the newest is a plain `ORDER BY`. Notes are internal: they are never sent to the guest and never shown outside the dashboard. Index `idx_email_notes_message` on `(club, message_id, created_at)`. Migration `0010`.
+
+### `booking_trigger_sends`
+
+One row per booking per rung of the lifecycle ladder, recording what was decided and why: `club`, `booking_id`, `rung` (e.g. `deposit_overdue` — text, because the rungs are configuration and a club will add more), `phase` (`payment`/`balance`/`communication`), `outcome`, `due_on` (the day it fell due, in the club's zone), `detail`, `email_to` (**PII**, only on a send), `created_at`. A ledger rather than a timestamp column per rung: it also records what a column cannot — that a rung was `skipped` because the booking had already paid, `superseded` because the run reached it late, or `held` because a person has to decide.
+
+The no-double-send guarantee is `idx_booking_trigger_sends_once`, a UNIQUE index on `(club, booking_id, rung) WHERE outcome <> 'failed'` — so a failed send sits outside it and is retried, and nothing else can be sent twice. The row is written before the send, so a crash mid-send leaves a claim that is rewritten as `failed`, never a second cancellation notice. Also `idx_booking_trigger_sends_booking` for a booking's history and `idx_booking_trigger_sends_held` for the list a person has to action. Migration `0012`; see [BOOKING_LIFECYCLE.md](BOOKING_LIFECYCLE.md).
 
 ### `club_settings`
 
