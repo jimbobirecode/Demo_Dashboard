@@ -7,6 +7,7 @@ import { query } from '../db.js';
 import { serialiseBooking } from './bookings-domain.js';
 import { BOOKING_SELECT } from './schema.js';
 import { applyPaidSession, bookingRefFromSession, paymentKey } from './payment-link-domain.js';
+import { handoverBookedCustomer } from './booked-webhook-outbox.js';
 
 export async function recordStripePayment(session) {
   const ref = bookingRefFromSession(session);
@@ -74,8 +75,16 @@ export async function recordStripePayment(session) {
   );
 
   if (!result.rowCount) return { result: 'already recorded' };
+
+  const paid = serialiseBooking(result.rows[0]);
+  // A payment is one of the ways a booking becomes 'Booked', so it is one of
+  // the ways a customer becomes one to hand over. Not awaited, for the same
+  // reason as the status route: Stripe is waiting on this webhook's response,
+  // and a slow receiver must not cost us a redelivery.
+  void handoverBookedCustomer(paid, { reason: 'stripe payment' });
+
   return {
     result: `${booking.bookingId} ${change.paymentStatus} (booking ${change.bookingStatus}), ${change.received} received`,
-    booking: serialiseBooking(result.rows[0]),
+    booking: paid,
   };
 }

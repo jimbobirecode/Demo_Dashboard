@@ -736,8 +736,15 @@ export function classifyCaddie(text) {
   return 'Requested';
 }
 
-/** The number in the text, or the party size when it asks for everyone. */
-function caddieCount(booking) {
+/**
+ * The number in the text, or the party size when it asks for everyone.
+ *
+ * Exported for the booked-customer handover, which sends the same estimate on
+ * to the club's own systems: a caddie master reading it should get the number
+ * this dashboard's own Analytics page shows, not a second reading of the same
+ * sentence.
+ */
+export function caddieCount(booking) {
   const text = String(booking.caddieRequirements ?? '');
   const match = text.match(/(\d+)/);
   if (match) return Number(match[1]);

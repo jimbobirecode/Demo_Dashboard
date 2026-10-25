@@ -11,6 +11,7 @@ import helmet from 'helmet';
 
 import authRoutes from './routes/auth.js';
 import bookingRoutes from './routes/bookings.js';
+import bookingTriggerRoutes from './routes/booking-triggers.js';
 import analyticsRoutes from './routes/analytics.js';
 import emailRoutes from './routes/emails.js';
 import operatorRoutes from './routes/operators.js';
@@ -85,6 +86,7 @@ app.get('/api/health', async (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/booking-triggers', bookingTriggerRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/operators', operatorRoutes);
