@@ -90,10 +90,11 @@ export function paidInFull(money) {
  * Each rung names the day it falls due and the condition under which it
  * sends. `anchor` says which date the offset is measured from:
  *
- *   'lifecycle' — the day the ladder took an interest in the booking, which
- *                 for the payment phase is the day the booking was taken.
- *                 Not `created_at`: a booking can sit as an enquiry for
- *                 months, and not `updated_at`, which moves.
+ *   'lifecycle' — the day the ladder took an interest in the booking, the
+ *                 day it was taken. Not `created_at`: a booking can sit as
+ *                 an enquiry for months, and not `updated_at`, which moves.
+ *   'depositDue' — the deposit deadline: the operator's own term where it
+ *                 has one, otherwise the sheet's window from 'lifecycle'.
  *   'balanceDue' — the balance deadline, which is the operator's own term
  *                 where they have one and 60 days before play otherwise.
  *   'play'      — the play date.
@@ -128,8 +129,11 @@ export function buildLadder(config = LADDER_DEFAULTS) {
       key: 'deposit_reminder_1',
       phase: 'payment',
       label: 'Deposit reminder',
-      anchor: 'lifecycle',
-      offset: c.depositReminderDay,
+      anchor: 'depositDue',
+      // "after 5 days of booking" against a 7-day window is two days before
+      // the deadline; written that way round so an account whose deadline is
+      // its own agreed term is reminded two days before *that*.
+      offset: -(c.depositWindowDays - c.depositReminderDay),
       flows: ['operator', 'visitor'],
       when: ({ money, booking }) => !hasPayment(booking, money),
       cancels: false,
@@ -138,10 +142,10 @@ export function buildLadder(config = LADDER_DEFAULTS) {
       key: 'deposit_reminder_2',
       phase: 'payment',
       label: 'Deposit reminder (24 hours before the deadline)',
-      anchor: 'lifecycle',
+      anchor: 'depositDue',
       // "an additional reminder 24 hours before". In this sheet the 48- and
       // 24-hour reminders always sit before a deadline, never after it.
-      offset: c.depositWindowDays - 1,
+      offset: -1,
       flows: ['operator', 'visitor'],
       when: ({ money, booking }) => !hasPayment(booking, money),
       cancels: false,
@@ -150,8 +154,8 @@ export function buildLadder(config = LADDER_DEFAULTS) {
       key: 'deposit_overdue',
       phase: 'payment',
       label: 'Deposit window closed — cancellation warning',
-      anchor: 'lifecycle',
-      offset: c.depositWindowDays,
+      anchor: 'depositDue',
+      offset: 0,
       flows: ['operator', 'visitor'],
       // "email sent highlighting cancellation of booking. Offer chance to
       // rescue cancellation by paying NOW."
@@ -162,8 +166,8 @@ export function buildLadder(config = LADDER_DEFAULTS) {
       key: 'deposit_rescue_48h',
       phase: 'payment',
       label: 'Final notice (48 hours)',
-      anchor: 'lifecycle',
-      offset: c.depositRescueDay - 2,
+      anchor: 'depositDue',
+      offset: c.depositRescueDay - c.depositWindowDays - 2,
       flows: ['operator', 'visitor'],
       when: ({ money, booking }) => !hasPayment(booking, money),
       cancels: false,
@@ -172,8 +176,8 @@ export function buildLadder(config = LADDER_DEFAULTS) {
       key: 'deposit_rescue_24h',
       phase: 'payment',
       label: 'Final notice (24 hours)',
-      anchor: 'lifecycle',
-      offset: c.depositRescueDay - 1,
+      anchor: 'depositDue',
+      offset: c.depositRescueDay - c.depositWindowDays - 1,
       flows: ['operator', 'visitor'],
       when: ({ money, booking }) => !hasPayment(booking, money),
       cancels: false,
@@ -182,8 +186,8 @@ export function buildLadder(config = LADDER_DEFAULTS) {
       key: 'deposit_cancelled',
       phase: 'payment',
       label: 'Cancellation',
-      anchor: 'lifecycle',
-      offset: c.depositRescueDay,
+      anchor: 'depositDue',
+      offset: c.depositRescueDay - c.depositWindowDays,
       flows: ['operator', 'visitor'],
       when: ({ money, booking }) => !hasPayment(booking, money),
       // "If not paid then notification of cancellation issued and booking
@@ -347,18 +351,67 @@ export function balanceDueOn(booking, operator, config = LADDER_DEFAULTS) {
 }
 
 /**
+ * The deposit deadline the payment phase counts to.
+ *
+ * Three answers, in order. A date set on the booking itself. Then the trade
+ * account's own term — an operator whose agreed deposit date is 90 days before
+ * play is chased towards *that*, which is what the operator module has always
+ * shown in the drawer and on the statement. Then the sheet's window counted
+ * from the day the booking was taken, which is the visitor's deadline and the
+ * fallback for an account with no term of its own.
+ */
+export function depositDueOn(booking, operator, config = LADDER_DEFAULTS, lifecycleStartedOn = null) {
+  if (booking.depositDueDate) return booking.depositDueDate;
+  const term = operator?.depositDueDaysBeforePlay;
+  if (term != null && booking.date) return addDays(booking.date, -term);
+  if (!lifecycleStartedOn) return null;
+  return addDays(lifecycleStartedOn, config.depositWindowDays ?? LADDER_DEFAULTS.depositWindowDays);
+}
+
+/**
+ * Whether the ladder may chase this account for money at all.
+ *
+ * Two things the operator module already says. A retired account "keeps its
+ * history but is never chased". And an account that pays by invoice on its
+ * own cycle can have the reminders switched off (`auto_chase`) while still
+ * receiving the confirmations and the arrival details. A visitor is always
+ * chaseable; there is no account to say otherwise.
+ */
+export function chaseable(operator) {
+  if (!operator) return true;
+  if (operator.active === false) return false;
+  return operator.autoChase !== false;
+}
+
+/**
+ * Who an email goes to.
+ *
+ * Money goes to the account. The operator module's own words for the contact
+ * email are "where reminders are sent", and a tour operator's guest neither
+ * holds the purse nor should be told the operator is late. The run-up to the
+ * tee goes to whoever is playing, which is what the booking's email is.
+ */
+export function recipientFor(rung, booking, operator) {
+  if (operator && rung.phase !== 'communication') {
+    return operator.contactEmail || booking.guestEmail || null;
+  }
+  return booking.guestEmail || null;
+}
+
+/**
  * The day a rung falls due for one booking, or null where it cannot be dated.
  *
  * A rung with no anchor date is not due and never becomes overdue: a booking
  * with no play date cannot have a balance deadline, and one the ladder has not
  * started has no payment clock.
  */
-export function rungDueOn(rung, { booking, lifecycleStartedOn, paidOn, balanceDue }) {
+export function rungDueOn(rung, { booking, lifecycleStartedOn, paidOn, balanceDue, depositDue }) {
   const anchor = {
     lifecycle: lifecycleStartedOn,
     paidOn,
     play: booking.date ?? null,
     balanceDue: balanceDue ?? null,
+    depositDue: depositDue ?? null,
   }[rung.anchor];
 
   if (!anchor) return null;
@@ -390,24 +443,32 @@ export function evaluateLadder({
   const flow = flowFor(booking, operator);
   const horizon = addDays(today, -catchUpDays);
   const balanceDue = balanceDueOn(booking, operator, ladderConfig);
+  const depositDue = depositDueOn(booking, operator, ladderConfig, lifecycleStartedOn);
+  const chased = chaseable(operator);
 
-  return ladder
-    .filter((rung) => rung.flows.includes(flow))
-    .map((rung) => {
-      const dueOn = rungDueOn(rung, { booking, lifecycleStartedOn, paidOn, balanceDue });
-      const settled = already.get(rung.key) ?? null;
-      const matches = dueOn ? rung.when({ booking, money, operator, today }) : false;
+  return (
+    ladder
+      .filter((rung) => rung.flows.includes(flow))
+      // An account the club does not chase keeps the run-up to the tee and
+      // loses the money phases: the confirmations are about the round, the
+      // reminders are about the invoice, and only one of those is its own.
+      .filter((rung) => chased || rung.phase === 'communication')
+      .map((rung) => {
+        const dueOn = rungDueOn(rung, { booking, lifecycleStartedOn, paidOn, balanceDue, depositDue });
+        const settled = already.get(rung.key) ?? null;
+        const matches = dueOn ? rung.when({ booking, money, operator, today }) : false;
 
-      let state;
-      if (settled) state = 'settled';
-      else if (!dueOn) state = 'undated';
-      else if (dueOn > today) state = 'waiting';
-      else if (!matches) state = 'skipped';
-      else if (dueOn < horizon) state = 'stale';
-      else state = 'due';
+        let state;
+        if (settled) state = 'settled';
+        else if (!dueOn) state = 'undated';
+        else if (dueOn > today) state = 'waiting';
+        else if (!matches) state = 'skipped';
+        else if (dueOn < horizon) state = 'stale';
+        else state = 'due';
 
-      return { rung, dueOn, state, settled, flow, money };
-    });
+        return { rung, dueOn, state, settled, flow, money };
+      })
+  );
 }
 
 /**

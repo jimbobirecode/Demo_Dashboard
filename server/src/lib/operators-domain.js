@@ -286,6 +286,8 @@ export function serialiseOperator(row) {
 
     onHold: Boolean(row.on_hold),
     active: row.active === undefined || row.active === null ? true : Boolean(row.active),
+    // An install without the column (pre-0014) reads as chased, as before.
+    autoChase: row.auto_chase === undefined || row.auto_chase === null ? true : Boolean(row.auto_chase),
     notes: text(row.notes),
 
     createdAt: timestamp(row.created_at),
@@ -794,6 +796,7 @@ export function toOperatorColumns(input) {
     currency: toCurrencyCode(input.currency, BRAND.currency),
     on_hold: Boolean(input.onHold),
     active: input.active === undefined ? true : Boolean(input.active),
+    auto_chase: input.autoChase === undefined ? true : Boolean(input.autoChase),
     notes: nullableText(input.notes),
   };
 }

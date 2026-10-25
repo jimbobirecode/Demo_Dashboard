@@ -17,6 +17,7 @@ const BLANK = {
   currency: BRAND.currency,
   onHold: false,
   active: true,
+  autoChase: true,
   notes: '',
 };
 
@@ -168,6 +169,23 @@ export default function OperatorForm({ operator, account, onSave, onDelete, onCl
             </Row>
           </Section>
 
+          <Section
+            title="Chasing"
+            note="What the booking lifecycle will send this account, worked out from the terms above. The confirmations and arrival details go to the guest; anything about money goes to the contact email."
+          >
+            <ChasingSummary form={form} />
+            <label className="row" style={{ gap: '0.5rem', alignItems: 'center' }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={form.autoChase} onChange={set('autoChase')} />
+              <span>
+                Send payment reminders automatically
+                <span className="secondary" style={{ display: 'block', fontSize: '0.75rem' }}>
+                  Off, this account still gets the confirmations and arrival details, but is never chased for money and
+                  never cancelled by the lifecycle — for an account that pays by invoice on its own cycle.
+                </span>
+              </span>
+            </label>
+          </Section>
+
           <Section title="Trading state">
             <label className="row" style={{ gap: '0.5rem', alignItems: 'center' }}>
               <input type="checkbox" style={{ width: 'auto' }} checked={form.onHold} onChange={set('onHold')} />
@@ -255,6 +273,61 @@ function Row({ label, hint, children }) {
   );
 }
 
+/**
+ * The account's chasing schedule in one breath, so somebody typing the terms
+ * in can see what they add up to before saving: "deposit chased from 2 days
+ * before the 90-day mark, balance from 10 days before the 60-day mark".
+ */
+function ChasingSummary({ form }) {
+  if (!form.active)
+    return (
+      <p className="secondary" style={{ margin: 0, fontSize: '0.8125rem' }}>
+        A retired account is never chased.
+      </p>
+    );
+  if (!form.autoChase)
+    return (
+      <p className="secondary" style={{ margin: 0, fontSize: '0.8125rem' }}>
+        Payment reminders are switched off for this account.
+      </p>
+    );
+
+  const deposit = Number(form.depositPercent) || 0;
+  const depositDays = form.depositDueDaysBeforePlay === '' ? null : Number(form.depositDueDaysBeforePlay);
+  const balanceDays = form.balanceDueDaysBeforePlay === '' ? null : Number(form.balanceDueDaysBeforePlay);
+  const lines = [];
+
+  if (deposit > 0 && depositDays != null) {
+    lines.push(
+      `${deposit}% deposit chased towards ${depositDays} days before play, with reminders two days and one day before and final notices after.`,
+    );
+  } else if (deposit > 0) {
+    lines.push(
+      `${deposit}% deposit chased on the club's standard window from the booking date (set a deposit due date above to chase towards a date of their own).`,
+    );
+  } else {
+    lines.push("No deposit: the full amount is asked for on the club's standard window from the booking date.");
+  }
+
+  if (balanceDays != null) {
+    lines.push(
+      `Balance chased from ${balanceDays + 10} days before play (ten days ahead of their ${balanceDays}-day deadline), then 48 and 24 hours before it.`,
+    );
+  } else {
+    lines.push("Balance chased on the club's standard lead time, set under Settings.");
+  }
+
+  if (!form.contactEmail) lines.push('No contact email: money reminders will fall back to the guest on each booking.');
+
+  return (
+    <ul className="secondary" style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.8125rem', lineHeight: 1.5 }}>
+      {lines.map((line) => (
+        <li key={line}>{line}</li>
+      ))}
+    </ul>
+  );
+}
+
 function Stat({ label, value }) {
   return (
     <div>
@@ -279,6 +352,7 @@ function toForm(operator) {
     creditLimit: operator.creditLimit ?? '',
     currency: operator.currency ?? BRAND.currency,
     onHold: Boolean(operator.onHold),
+    autoChase: operator.autoChase !== false,
     active: operator.active !== false,
     notes: operator.notes ?? '',
   };

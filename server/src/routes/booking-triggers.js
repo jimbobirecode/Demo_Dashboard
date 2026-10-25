@@ -38,6 +38,7 @@ import {
   templateFor,
 } from '../lib/booking-triggers.js';
 import { hasBuiltInEmail } from '../lib/lifecycle-emails.js';
+import { loadOperators } from './operators.js';
 
 const log = logger.child('booking-triggers');
 
@@ -108,8 +109,24 @@ router.get('/', async (req, res, next) => {
 router.get('/settings', async (req, res, next) => {
   try {
     const club = req.user.customerId;
-    const [stored, config] = await Promise.all([loadLifecycleSettings(club), clubTriggerConfig(club)]);
+    const [stored, config, operators] = await Promise.all([
+      loadLifecycleSettings(club),
+      clubTriggerConfig(club),
+      loadOperators(club),
+    ]);
     const inherited = readTriggerConfig(process.env);
+
+    // How the trade book is actually chased: the settings page says "the
+    // club default applies to N accounts" rather than presenting a number
+    // that, for most accounts, their own terms override.
+    const active = operators.filter((operator) => operator.active !== false);
+    const trade = {
+      accounts: active.length,
+      ownDepositTerm: active.filter((operator) => operator.depositDueDaysBeforePlay != null).length,
+      ownBalanceTerm: active.filter((operator) => operator.balanceDueDaysBeforePlay != null).length,
+      notChased: active.filter((operator) => operator.autoChase === false).length,
+      noContactEmail: active.filter((operator) => operator.autoChase !== false && !operator.contactEmail).length,
+    };
 
     res.json({
       settings: {
@@ -133,6 +150,7 @@ router.get('/settings', async (req, res, next) => {
       },
       defaults: { ...LADDER_DEFAULTS },
       bounds: DAY_SETTINGS,
+      trade,
       canEdit: req.user.role === 'admin',
       everyMinutes: config.minutes,
     });

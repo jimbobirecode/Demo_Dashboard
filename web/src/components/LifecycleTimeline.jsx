@@ -14,7 +14,7 @@ const UNPAID = 'var(--status-rejected)';
 const PAID = 'var(--status-booked)';
 
 /** The unpaid story, as a run of days from the booking. */
-export function chaseSteps(settings, mode) {
+export function chaseSteps(settings) {
   const window = Number(settings.depositWindowDays);
   const reminder = Number(settings.depositReminderDay);
   const rescue = Number(settings.depositRescueDay);
@@ -27,16 +27,16 @@ export function chaseSteps(settings, mode) {
     { day: window, what: 'Deadline passed', detail: 'We warn them and offer a way to save it' },
   ];
 
-  // The final warnings and the cancellation only exist in the modes that
-  // allow a booking to be stopped. Showing them regardless would promise
-  // something the club has not switched on.
-  if (mode !== 'chase_forever') {
+  // The final warnings and the ending only exist where deadlines count.
+  // Showing them regardless would promise something the club has not
+  // switched on.
+  if (settings.deadlines !== false) {
     steps.push(
       { day: rescue - 2, what: 'Final notice', detail: '48 hours left' },
       { day: rescue - 1, what: 'Final notice', detail: '24 hours left' },
     );
     steps.push(
-      mode === 'cancel'
+      settings.autoCancel
         ? { day: rescue, what: 'Cancelled', detail: 'The booking is cancelled and they are told', end: true }
         : { day: rescue, what: 'Stops here', detail: 'We wait for you to decide. Nothing is emailed', end: true },
     );
@@ -64,8 +64,8 @@ export function playSteps(settings) {
   ];
 }
 
-export default function LifecycleTimeline({ settings, mode }) {
-  const chase = chaseSteps(settings, mode);
+export default function LifecycleTimeline({ settings }) {
+  const chase = chaseSteps(settings);
   const play = playSteps(settings);
 
   if (!chase.length) {
@@ -82,7 +82,7 @@ export default function LifecycleTimeline({ settings, mode }) {
           when: step.day === 0 ? 'Straight away' : `Day ${step.day}`,
           ...step,
         }))}
-        off={mode === 'off'}
+        off={!settings.enabled}
       />
 
       <Track
@@ -90,7 +90,7 @@ export default function LifecycleTimeline({ settings, mode }) {
         colour={PAID}
         caption="The chasing stops the moment any money arrives — there is nothing to press."
         items={play}
-        off={mode === 'off'}
+        off={!settings.enabled}
       />
     </div>
   );

@@ -104,14 +104,16 @@ beforeEach(() => {
 });
 
 describe('the headline', () => {
-  test('says in one line that nobody is being chased, and offers no run', async () => {
+  test('says in one line that nobody is being chased, offers a preview but no run', async () => {
     api.lifecycleConfig.mockResolvedValue(
       config({ switches: { enabled: false, deadlines: false, scheduled: false, autoCancel: false } }),
     );
     render(<Lifecycle />, { wrapper: MemoryRouter });
 
     await waitFor(() => expect(screen.getByRole('heading', { name: /nobody is being chased/i })).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /preview today/i })).toBeDisabled();
+    // A dry run sends nothing, so it is how a club reads the ladder before
+    // switching it on.
+    expect(screen.getByRole('button', { name: /preview today/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /run now/i })).toBeDisabled();
   });
 

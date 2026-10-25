@@ -2,6 +2,9 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LADDER_DEFAULTS,
+  chaseable,
+  depositDueOn,
+  recipientFor,
   validateLifecycleSettings,
   balanceDueOn,
   buildLadder,
@@ -13,6 +16,7 @@ import {
   readTriggerConfig,
   sendableLadder,
 } from '../src/lib/booking-triggers-domain.js';
+import { addDays } from '../src/lib/email-domain.js';
 
 const ON = { BOOKING_TRIGGERS_ENABLED: 'true', BOOKING_TRIGGERS_DEADLINES: 'true' };
 
@@ -78,20 +82,18 @@ function walk({ on, book = booking(), op = null, started = '2026-01-01', paidOn 
 // ---------------------------------------------------------------------------
 
 test("the deposit ladder runs on the sheet's own days", () => {
-  const byKey = new Map(buildLadder(LADDER_DEFAULTS).map((r) => [r.key, r]));
+  // Counted from the deposit deadline now, so the check is the day each rung
+  // lands on for a visitor booked on the 1st: the sheet's 0/5/6/7/8/9/10.
+  const chosen = (on) => walk({ on, started: '2026-01-01' }).byRung;
+  const day = (rung, n) => chosen('2026-01-01').get(rung).dueOn === addDays('2026-01-01', n);
 
-  // "Payment link requesting payment within 7 days of booking."
-  assert.equal(byKey.get('deposit_request').offset, 0);
-  // "Re-trigger payment reminder after 5 days of booking."
-  assert.equal(byKey.get('deposit_reminder_1').offset, 5);
-  // "an additional reminder 24 hours before" the 7-day deadline.
-  assert.equal(byKey.get('deposit_reminder_2').offset, 6);
-  // "If no payment received after 7 day window after booking."
-  assert.equal(byKey.get('deposit_overdue').offset, 7);
-  // "another reminder 48 hours then 24 hours" before the second deadline.
-  assert.equal(byKey.get('deposit_rescue_48h').offset, 8);
-  assert.equal(byKey.get('deposit_rescue_24h').offset, 9);
-  assert.equal(byKey.get('deposit_cancelled').offset, 10);
+  assert.ok(day('deposit_request', 0), '"payment link requesting payment within 7 days of booking"');
+  assert.ok(day('deposit_reminder_1', 5), '"re-trigger payment reminder after 5 days of booking"');
+  assert.ok(day('deposit_reminder_2', 6), '"an additional reminder 24 hours before" the 7-day deadline');
+  assert.ok(day('deposit_overdue', 7), '"if no payment received after 7 day window"');
+  assert.ok(day('deposit_rescue_48h', 8), '"another reminder 48 hours" before the second deadline');
+  assert.ok(day('deposit_rescue_24h', 9), '"then 24 hours"');
+  assert.ok(day('deposit_cancelled', 10), 'cancellation at the second deadline');
 });
 
 test('the balance ladder is measured from the balance deadline, not from play', () => {
@@ -396,21 +398,22 @@ test('the visitor dunning can be declined without losing the visitor their recei
 });
 
 test("the sheet's numbers are all overridable", () => {
-  const config = readTriggerConfig({
+  const config = {
     ...ON,
     BOOKING_DEPOSIT_WINDOW_DAYS: '14',
     BOOKING_DEPOSIT_REMINDER_DAY: '10',
     BOOKING_DEPOSIT_RESCUE_DAY: '21',
     BOOKING_CONFIRMATION_DAYS: '45',
-  });
-  const byKey = new Map(sendableLadder(config).map((r) => [r.key, r]));
+  };
+  const byRung = walk({ on: '2026-01-01', started: '2026-01-01', config }).byRung;
+  const on = (rung) => byRung.get(rung).dueOn;
 
-  assert.equal(byKey.get('deposit_reminder_1').offset, 10);
-  assert.equal(byKey.get('deposit_reminder_2').offset, 13, '24 hours before the wider window');
-  assert.equal(byKey.get('deposit_overdue').offset, 14);
-  assert.equal(byKey.get('deposit_rescue_48h').offset, 19);
-  assert.equal(byKey.get('deposit_cancelled').offset, 21);
-  assert.equal(byKey.get('confirmation').offset, -45);
+  assert.equal(on('deposit_reminder_1'), addDays('2026-01-01', 10));
+  assert.equal(on('deposit_reminder_2'), addDays('2026-01-01', 13), '24 hours before the wider window');
+  assert.equal(on('deposit_overdue'), addDays('2026-01-01', 14));
+  assert.equal(on('deposit_rescue_48h'), addDays('2026-01-01', 19));
+  assert.equal(on('deposit_cancelled'), addDays('2026-01-01', 21));
+  assert.equal(on('confirmation'), addDays('2026-06-01', -45));
 });
 
 // ---------------------------------------------------------------------------
@@ -559,11 +562,98 @@ describe('validating what a club tries to save', () => {
 
 test("a club's own days actually move the ladder", () => {
   const config = readTriggerConfig(ON, { depositWindowDays: 21, depositReminderDay: 14, depositRescueDay: 28 });
-  const byKey = new Map(sendableLadder(config).map((rung) => [rung.key, rung]));
+  const evaluated = evaluateLadder({
+    booking: booking(),
+    operator: null,
+    ladder: sendableLadder(config),
+    today: '2026-01-01',
+    lifecycleStartedOn: '2026-01-01',
+    catchUpDays: 3,
+    ladderConfig: config.ladder,
+  });
+  const on = (key) => evaluated.find((e) => e.rung.key === key).dueOn;
 
-  assert.equal(byKey.get('deposit_reminder_1').offset, 14);
-  assert.equal(byKey.get('deposit_reminder_2').offset, 20, '24 hours before the wider window');
-  assert.equal(byKey.get('deposit_overdue').offset, 21);
-  assert.equal(byKey.get('deposit_rescue_48h').offset, 26);
-  assert.equal(byKey.get('deposit_cancelled').offset, 28);
+  assert.equal(on('deposit_reminder_1'), addDays('2026-01-01', 14));
+  assert.equal(on('deposit_reminder_2'), addDays('2026-01-01', 20), '24 hours before the wider window');
+  assert.equal(on('deposit_overdue'), addDays('2026-01-01', 21));
+  assert.equal(on('deposit_rescue_48h'), addDays('2026-01-01', 26));
+  assert.equal(on('deposit_cancelled'), addDays('2026-01-01', 28));
+});
+
+// ---------------------------------------------------------------------------
+// Agreeing with the tour operator module
+// ---------------------------------------------------------------------------
+
+test("a trade account is chased towards its own deposit deadline, not the sheet's window", () => {
+  // Deposit agreed at 90 days before play, booked long before that: the
+  // reminders sit two days and one day before *that* date, as the operator
+  // module shows it in the drawer.
+  const terms = operator({ depositDueDaysBeforePlay: 90 });
+  const byRung = walk({
+    on: '2026-01-01',
+    book: booking({ date: '2026-06-01' }),
+    op: terms,
+    started: '2026-01-01',
+  }).byRung;
+
+  assert.equal(depositDueOn(booking({ date: '2026-06-01' }), terms, LADDER_DEFAULTS, '2026-01-01'), '2026-03-03');
+  assert.equal(byRung.get('deposit_overdue').dueOn, '2026-03-03');
+  assert.equal(byRung.get('deposit_reminder_1').dueOn, '2026-03-01');
+  assert.equal(byRung.get('deposit_reminder_2').dueOn, '2026-03-02');
+  assert.equal(byRung.get('deposit_cancelled').dueOn, '2026-03-06');
+});
+
+test('an account with no deposit term falls back to the window from the booking', () => {
+  assert.equal(
+    depositDueOn(booking(), operator({ depositDueDaysBeforePlay: null }), LADDER_DEFAULTS, '2026-01-01'),
+    '2026-01-08',
+  );
+});
+
+test('a date on the booking wins over the account term', () => {
+  assert.equal(
+    depositDueOn(
+      booking({ depositDueDate: '2026-02-14' }),
+      operator({ depositDueDaysBeforePlay: 90 }),
+      LADDER_DEFAULTS,
+      '2026-01-01',
+    ),
+    '2026-02-14',
+  );
+});
+
+test('money goes to the account, the run-up to the tee goes to the guest', () => {
+  const book = booking({ guestEmail: 'guest@example.com' });
+  const account = operator({ contactEmail: 'accounts@tours.example' });
+  const rung = (key) => buildLadder().find((r) => r.key === key);
+
+  assert.equal(recipientFor(rung('deposit_overdue'), book, account), 'accounts@tours.example');
+  assert.equal(recipientFor(rung('balance_notice'), book, account), 'accounts@tours.example');
+  assert.equal(recipientFor(rung('confirmation'), book, account), 'guest@example.com');
+  assert.equal(recipientFor(rung('post_play'), book, account), 'guest@example.com');
+  // A visitor is their own account.
+  assert.equal(recipientFor(rung('deposit_overdue'), book, null), 'guest@example.com');
+  // An account with no contact email falls back to the booking rather than
+  // chasing nobody.
+  assert.equal(recipientFor(rung('deposit_overdue'), book, operator({ contactEmail: '' })), 'guest@example.com');
+});
+
+test('an account switched off for chasing keeps the confirmations and loses the reminders', () => {
+  const quiet = operator({ autoChase: false });
+  const byRung = walk({
+    on: '2026-01-08',
+    book: booking({ amountPaid: 250, paymentStatus: 'Deposit paid' }),
+    op: quiet,
+  }).byRung;
+
+  assert.equal(byRung.has('deposit_overdue'), false, 'not even evaluated');
+  assert.equal(byRung.has('balance_notice'), false);
+  assert.ok(byRung.has('confirmation'), 'the round-up to the tee is about the round, not the invoice');
+  assert.ok(byRung.has('post_play'));
+});
+
+test('a retired account is never chased, as the operator module promises', () => {
+  assert.equal(chaseable(operator({ active: false })), false);
+  assert.equal(chaseable(operator({ active: true, autoChase: true })), true);
+  assert.equal(chaseable(null), true, 'a visitor has no account to say otherwise');
 });

@@ -54,6 +54,39 @@ and 60 days out, exactly as the sheet writes them.
 Every day count above is a default and every one is overridable; see
 `.env.example`.
 
+## Agreeing with the tour operator module
+
+A visitor pays the club directly; a tour operator pays on an account whose
+terms the operator module already holds — deposit percentage, when the deposit
+and the balance fall due, whether the account is active. The ladder reads
+those rather than keeping a second copy, and three things follow.
+
+**A trade booking is chased towards the account's own deposit date.** The
+deposit rungs count from the deposit deadline, not from the booking: for a
+visitor that is the sheet's window from the day the booking was made, and for
+an account with `deposit_due_days_before_play` it is that date. The reminders
+land two days and one day before *it*, the final notices after it. An
+operator agreed at "90 days before play" is reminded on day −92 and −91,
+warned on −90, and stopped on −87 — the same dates the operator drawer shows.
+
+**Money goes to the account, the round goes to the guest.** The operator
+module's own words for the contact email are "where reminders are sent", so
+the payment and balance phases go there; the confirmation, arrival details
+and thank-you go to whoever is playing. An account with no contact email
+falls back to the guest, and the Settings page says so in red.
+
+**An account can be taken out of chasing.** `tour_operators.auto_chase`
+(migration `0014`, default on, under *Chasing* in the operator form) is for an
+account that pays by invoice on its own cycle: off, its bookings still get the
+run-up-to-the-tee emails and lose the money phases, and a lapse on them is
+never cancelled by the ladder. A retired account is never chased, as the
+module always promised.
+
+The Settings page reports the trade book as the ladder sees it — how many
+accounts set their own dates, how many are not chased, how many have no
+contact email — and sends the reader to Tour Operators for the per-account
+terms rather than offering a second copy of them.
+
 ## The balance deadline is the operator's, not the sheet's
 
 Where a trade account sets `balance_due_days_before_play`, that is the deadline
@@ -117,25 +150,16 @@ not cancelled, even if the deposit never arrived. The later rung wins.
 They live in **Settings → Chasing unpaid bookings**, per club, and an
 administrator changes them. Nothing here is a deployment setting any more.
 
-A club is not asked to set four nested flags. It is asked one question — how
-far should this go? — and picks one of five answers, each named by what the
-guest gets:
+A club is not asked to set four nested flags. It sees one switch — **Chase
+unpaid bookings** — and, under it, one choice about a booking that never pays:
+**Stop and ask me** (recommended) or **Cancel it and tell them**. The switch
+moves `enabled`, `deadlines` and `scheduled` together; the choice is
+`autoCancel`. A dry run needs none of them, so *Preview today* on the Booking
+Lifecycle page works whether chasing is on or off, and that is how a club
+reads the ladder before switching it on.
 
-| Choice | What happens | Flags |
-| --- | --- | --- |
-| Off | Nobody is chased, nothing recorded | all off |
-| Show me what you would send, but send nothing | Dry runs only | `enabled` |
-| Send reminders, but never cancel | Chases and then leaves it alone; no warnings, no ending | `enabled`, `scheduled` |
-| **Send reminders, then stop and ask me** (recommended) | Adds the final warnings; an unpaid booking stops and waits for a person | `enabled`, `deadlines`, `scheduled` |
-| Send reminders, then cancel it for me | The same, and cancels | all four |
-
-The flags are still what the server stores and `readTriggerConfig` still nests
-them, so a stored combination that does not correspond to one of the five is
-read as the nearest one below it. `modeFor` in `LifecycleSettings.jsx` is that
-mapping, and it is tested against every combination.
-
-The last choice asks a second time, because it is the only one whose first
-effect a guest reads.
+Choosing to cancel asks a second time, because it is the one setting whose
+first effect a guest reads.
 
 ## Where a club changes it
 
