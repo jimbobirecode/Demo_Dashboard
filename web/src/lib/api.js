@@ -156,6 +156,15 @@ export const api = {
   sendReminders: (campaign, operatorIds, { dryRun = false, scope = 'due' } = {}) =>
     request('/reminders/send', { method: 'POST', body: { campaign, operatorIds, dryRun, scope } }),
 
+  // The booking lifecycle ladder. The preview is a dry run — it walks every
+  // booking and sends nothing, which is how a club reads what the ladder
+  // would do before letting it do any of it.
+  lifecycleConfig: () => request('/booking-triggers'),
+  lifecyclePreview: () => request('/booking-triggers/preview', { method: 'POST', body: {} }),
+  lifecycleRun: () => request('/booking-triggers/run', { method: 'POST', body: {} }),
+  lifecycleHeld: () => request('/booking-triggers/held'),
+  bookingLifecycle: (bookingId) => request(`/booking-triggers/booking/${encodeURIComponent(bookingId)}`),
+
   emailConfig: () => request('/emails/config'),
   emailPending: (campaign, scope) => request(`/emails/pending${queryString({ campaign, scope })}`),
   sendCampaign: (campaign, bookingIds, { dryRun = false } = {}) =>

@@ -10,6 +10,7 @@ import Bookings from './pages/Bookings.jsx';
 import Emails from './pages/Emails.jsx';
 import Operators from './pages/Operators.jsx';
 import Reminders from './pages/Reminders.jsx';
+import Lifecycle from './pages/Lifecycle.jsx';
 import Users from './pages/Users.jsx';
 import Waitlist from './pages/Waitlist.jsx';
 import Import from './pages/Import.jsx';
@@ -18,6 +19,7 @@ import Inbox from './pages/Inbox.jsx';
 import Portal from './pages/Portal.jsx';
 import Membership from './pages/Membership.jsx';
 import { useInboxCount } from './lib/useInboxCount.js';
+import { useHeldCount } from './lib/useHeldCount.js';
 
 // The charting library is only needed on the analytics route — keep it out of
 // the initial bundle so the bookings table loads fast.
@@ -36,6 +38,9 @@ export default function App() {
 function StaffApp() {
   const { user, mustChangePassword, loading, login, logout, completePasswordChange } = useSession();
   const [inboxCount, setInboxCount] = useInboxCount(Boolean(user) && !mustChangePassword);
+  // The lifecycle ladder's held decisions. Badged for the same reason the
+  // Inbox is: with auto-cancel off, nothing happens until somebody looks.
+  const [heldCount] = useHeldCount(Boolean(user) && !mustChangePassword);
 
   if (loading) {
     return <div className="empty">Loading dashboard…</div>;
@@ -110,6 +115,25 @@ function StaffApp() {
           <NavLink to="/reminders" className={navClass}>
             Operator Reminders
           </NavLink>
+          <NavLink to="/lifecycle" className={navClass}>
+            Booking Lifecycle
+            {heldCount > 0 && (
+              <span
+                aria-label={`${heldCount} waiting on a decision`}
+                style={{
+                  marginLeft: '0.5rem',
+                  background: 'var(--status-rejected)',
+                  color: 'var(--surface-0)',
+                  borderRadius: '999px',
+                  padding: '0 0.45rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                }}
+              >
+                {heldCount}
+              </span>
+            )}
+          </NavLink>
           <NavLink to="/import" className={navClass}>
             Upload Tee Sheet
           </NavLink>
@@ -162,6 +186,7 @@ function StaffApp() {
             <Route path="/membership" element={<Membership user={user} />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/reminders" element={<Reminders />} />
+            <Route path="/lifecycle" element={<Lifecycle />} />
             <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />
             {/* A signed-in reader following an old reset link goes to the
                 bookings table rather than to a form they no longer need. */}
