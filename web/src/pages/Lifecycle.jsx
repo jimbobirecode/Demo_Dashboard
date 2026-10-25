@@ -128,12 +128,12 @@ export default function Lifecycle() {
           accent={held.length ? OVERDUE : 'var(--status-booked)'}
         />
         <KpiTile
-          label="Emails set up"
-          value={`${ladder.length - unconfigured.length} of ${ladder.length}`}
+          label="Emails"
+          value={formatNumber(ladder.length)}
           sub={
             unconfigured.length
-              ? `${unconfigured.length} still have nothing to send, so they are skipped`
-              : 'Every email in the sequence is ready'
+              ? `${unconfigured.length} have nothing to send, so they are skipped`
+              : 'All written and ready to send'
           }
           accent={unconfigured.length ? 'var(--brand-gold)' : 'var(--status-booked)'}
         />
@@ -252,8 +252,8 @@ function StateBanner({ switches, heldCount, unconfigured }) {
       {switches.enabled && unconfigured.length > 0 && (
         <div className="banner">
           {formatNumber(unconfigured.length)} of these emails {unconfigured.length === 1 ? 'has' : 'have'} nothing to
-          send yet, so {unconfigured.length === 1 ? 'it is' : 'they are'} skipped. Nothing is lost — they start working
-          as soon as a template is set.
+          send, so {unconfigured.length === 1 ? 'it is' : 'they are'} skipped. Nothing is lost, but this should not
+          happen — it is worth reporting.
         </div>
       )}
 

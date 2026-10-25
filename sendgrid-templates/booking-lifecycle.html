@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<!--
+  SendGrid dynamic template: booking lifecycle (optional)
+  ======================================================
+  YOU DO NOT NEED THIS TEMPLATE. The dashboard writes all sixteen lifecycle
+  emails itself (server/src/lib/lifecycle-emails.js) and sends them in the
+  club's branding. This file is only for a club that wants its own wording or
+  layout instead.
+
+  One template serves every rung. Create a Dynamic Template in SendGrid, add a
+  version with the Code editor, paste this file in, set the version's Subject
+  to {{subject}}, and put the template id in SENDGRID_TEMPLATE_LIFECYCLE.
+
+  To give one rung its own template instead, use SENDGRID_TEMPLATE_<RUNG>, e.g.
+  SENDGRID_TEMPLATE_DEPOSIT_OVERDUE. Per-rung wins over this one, and this one
+  wins over the built-in email.
+
+  Merge fields the dashboard sends:
+    subject          the subject line the dashboard would have used
+    headline         the opening sentence for this rung
+    body_text        the whole built-in email as plain text, if you want it
+    button_url       where the one call to action goes ('' if there is none)
+    button_label     what that button should say
+    lifecycle_rung   e.g. deposit_overdue — useful for {{#equals}} branching
+    lifecycle_label  the rung in words, e.g. "Deposit window closed"
+    deadline_date    the day this rung fell due (YYYY-MM-DD)
+    amount_paid, amount_outstanding, balance_due_date
+    first_name, guest_name, booking_id, play_date, tee_time, players, course
+    club_name, logo_url, brand_color, club_address, club_phone, manage_url
+
+  Two things to keep if you rewrite this:
+    - every chasing email needs {{button_url}}, or it tells somebody their
+      booking is at risk and gives them no way to fix it;
+    - every guest email needs {{manage_url}}, which is how they change or
+      cancel without ringing.
+-->
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{subject}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f8f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#1f2d27;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{{headline}}</div>
+
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" bgcolor="#f3f8f4">
+    <tr>
+      <td align="center" style="padding:20px 10px;">
+        <table width="600" border="0" cellspacing="0" cellpadding="0" bgcolor="#ffffff" style="max-width:600px;width:100%;">
+
+          <tr>
+            <td align="center" bgcolor="#ffffff" style="padding:14px 15px;border-bottom:4px solid {{#if brand_color}}{{brand_color}}{{else}}#1a5e58{{/if}};">
+              {{#if logo_url}}
+              <img src="{{logo_url}}" alt="{{club_name}}" width="240" style="display:block;width:240px;max-width:240px;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none;">
+              {{else}}
+              <div style="font-size:22px;font-weight:700;color:#1a5e58;">{{club_name}}</div>
+              {{/if}}
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:32px 30px;font-size:15px;line-height:1.6;color:#1f2d27;">
+              <p style="margin:0 0 12px;">Hi {{first_name}},</p>
+              <p style="margin:0 0 20px;">{{headline}}</p>
+
+              {{#if button_url}}
+              <div style="text-align:center;padding:4px 0 24px;">
+                <a href="{{button_url}}" style="display:inline-block;background:#1a5e58;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">{{button_label}}</a>
+              </div>
+              {{/if}}
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #dfe9e2;font-size:14px;">
+                <tr><td style="padding:6px 0;color:#5c6b64;">Booking reference</td><td style="padding:6px 0;text-align:right;font-weight:600;">{{booking_id}}</td></tr>
+                <tr><td style="padding:6px 0;color:#5c6b64;">Date</td><td style="padding:6px 0;text-align:right;font-weight:600;">{{play_date}}</td></tr>
+                {{#if tee_time}}<tr><td style="padding:6px 0;color:#5c6b64;">Tee time</td><td style="padding:6px 0;text-align:right;font-weight:600;">{{tee_time}}</td></tr>{{/if}}
+                {{#if course}}<tr><td style="padding:6px 0;color:#5c6b64;">Course</td><td style="padding:6px 0;text-align:right;font-weight:600;">{{course}}</td></tr>{{/if}}
+                {{#if players}}<tr><td style="padding:6px 0;color:#5c6b64;">Players</td><td style="padding:6px 0;text-align:right;font-weight:600;">{{players}}</td></tr>{{/if}}
+                {{#if amount_outstanding}}<tr><td style="padding:6px 0;color:#5c6b64;">Still to pay</td><td style="padding:6px 0;text-align:right;font-weight:600;">{{amount_outstanding}}</td></tr>{{/if}}
+              </table>
+
+              {{#if manage_url}}
+              <div style="padding-top:16px;font-size:13px;line-height:1.6;color:#5c6b64;">
+                Need to change or cancel? <a href="{{manage_url}}" style="color:#1a5e58;font-weight:600;">Manage your booking</a>.
+              </div>
+              {{/if}}
+            </td>
+          </tr>
+
+          <tr>
+            <td bgcolor="#f3f8f4" style="padding:26px 30px;text-align:center;font-size:13px;color:#5c6b64;">
+              <div style="font-size:15px;font-weight:700;color:#1f2d27;padding-bottom:8px;">{{club_name}}</div>
+              {{#if club_address}}<div style="padding-bottom:8px;">{{club_address}}{{#if club_phone}} · {{club_phone}}{{/if}}</div>{{/if}}
+              <div style="font-size:12px;">Powered by TeeMail · Automated Visitor Booking</div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

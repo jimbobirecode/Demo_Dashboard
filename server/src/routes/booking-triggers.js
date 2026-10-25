@@ -37,6 +37,7 @@ import {
   saveLifecycleSettings,
   templateFor,
 } from '../lib/booking-triggers.js';
+import { hasBuiltInEmail } from '../lib/lifecycle-emails.js';
 
 const log = logger.child('booking-triggers');
 
@@ -53,8 +54,17 @@ function describeLadder(config, env) {
     offset: rung.offset,
     flows: rung.flows,
     cancels: rung.cancels,
-    /** Never the template id itself: this shape is handed to the browser. */
-    configured: Boolean(templateFor(rung, env)),
+    /**
+     * Whether this rung has anything to send. Never the template id itself:
+     * this shape is handed to the browser.
+     *
+     * A club's own SendGrid template wins, and the built-in email is the
+     * fallback — so a rung is only unconfigured if nobody has written copy
+     * for it, which means a rung newer than lifecycle-emails.js.
+     */
+    configured: Boolean(templateFor(rung, env)) || hasBuiltInEmail(rung.key),
+    /** True where the club has supplied its own wording. */
+    ownTemplate: Boolean(templateFor(rung, env)),
   }));
 }
 

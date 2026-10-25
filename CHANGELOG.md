@@ -2,6 +2,20 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – the lifecycle emails (October 2026)
+
+### Added
+
+- **All sixteen lifecycle emails are written**, in `lib/lifecycle-emails.js`, and sent in the club's own branding through the same path the payment link and receipt already use: a club's SendGrid template where one is configured, the built-in email otherwise. The ladder previously did nothing until somebody had built sixteen templates; a club that switches it on today now starts sending today, with nothing to configure.
+- Three rules the copy keeps. It never threatens what the club has not switched on — the warnings and the cancellation only exist in the modes that can stop a booking. Every chasing email carries the payment link, because one that says a booking is at risk and offers no way to pay is a complaint rather than a reminder. And it calls the money what it is: a trade account owing a percentage up front is asked for a *deposit*, a visitor owing all of it is asked for a *payment* — being asked for "a deposit of €1,000" on a €1,000 round is how somebody pays twice.
+- Every lifecycle email is written onto the booking's own conversation as well as the ledger, so the drawer shows what the guest was actually told, in with everything else they have been sent.
+- `sendgrid-templates/booking-lifecycle.html`, optional, for a club that wants its own layout. It lists every merge field, including `headline`, `button_url` and `button_label`, which carry our copy into a club's design for anybody who wants the words but not the layout.
+
+### Changed
+
+- `emailShell` moved from `payment-link-domain.js` to `email-layout.js` and is exported. The lifecycle emails need the same shell, and two copies of a button's inline CSS is how a club ends up with two subtly different buttons.
+- A rung is now "ready" when it has anything to send, which is all of them. The Booking Lifecycle page says so, marks any rung using the club's own wording, and treats a rung with nothing to send as something to report rather than something to configure — it can only mean a rung was added to the ladder without copy.
+
 ## Unreleased – the lifecycle settings, rewritten to be read (October 2026)
 
 ### Changed

@@ -162,12 +162,11 @@ the deadline it reminds about, or a final deadline with no room for the 48- and
    from **Booking Lifecycle → Preview today**: it walks every eligible
    booking, sends nothing and writes nothing.
 
-2. Configure the templates. The Booking Lifecycle page lists every rung and
-   whether it has one. A rung with no template is skipped and reported, never
-   recorded, so it starts working the run after you set one. Each rung looks
-   for `SENDGRID_TEMPLATE_<RUNG>` (e.g. `SENDGRID_TEMPLATE_DEPOSIT_OVERDUE`),
-   then falls back to `SENDGRID_TEMPLATE_LIFECYCLE`. Templates stay a
-   deployment setting: they are SendGrid credentials, not club policy.
+2. Read the emails. All sixteen are written and ready — nothing to configure
+   — and the wording is in `server/src/lib/lifecycle-emails.js`. A club that
+   wants its own can set `SENDGRID_TEMPLATE_<RUNG>` (e.g.
+   `SENDGRID_TEMPLATE_DEPOSIT_OVERDUE`) or one `SENDGRID_TEMPLATE_LIFECYCLE`
+   for all of them; see **The emails** below.
 
 3. Move to **Send reminders, then stop and ask me**.
 
@@ -201,6 +200,40 @@ rather than full payment, so a part-paid booking still gets its arrival
 information. The sheet's header says only "If Paid"; the cost of reading it the
 other way is a guest arriving without knowing where to go.
 
+## The emails
+
+All sixteen are written in `server/src/lib/lifecycle-emails.js` and sent in the
+club's own branding, exactly as the payment link and receipt emails are. There
+is nothing to set up: a club that switches the ladder on today starts sending
+them today.
+
+Three rules the copy keeps, and they are worth keeping if anybody rewrites it:
+
+**It never threatens what the club has not switched on.** The warnings and the
+cancellation only exist in the modes that can stop a booking, so an email never
+promises a consequence that cannot happen.
+
+**Every chasing email carries the payment link.** One that says a booking is at
+risk and offers no way to pay is a complaint, not a reminder. There is a test
+for this.
+
+**It calls the money what it is.** A trade account owing 25% up front is asked
+for a *deposit*; a visitor owing all of it is asked for a *payment*. Being
+asked for "a deposit of €1,000" on a €1,000 round is how somebody pays twice,
+or rings to ask.
+
+Every email goes onto the booking's own conversation as well as into the
+ledger, so the drawer shows what the guest was actually told, in with
+everything else they have been sent.
+
+### Using your own wording
+
+Per-rung template beats `SENDGRID_TEMPLATE_LIFECYCLE`, which beats the
+built-in email. `sendgrid-templates/booking-lifecycle.html` is a starting
+point, and lists every merge field — including `headline`, `button_url` and
+`button_label`, which carry our copy into your layout if you want the words but
+not the design.
+
 ## Where it lives
 
 | File | What it holds |
@@ -209,6 +242,9 @@ other way is a guest arriving without knowing where to go.
 | `server/src/lib/booking-triggers.js` | The runner — reads, sends, writes the ledger, cancels. Decides nothing. |
 | `server/src/routes/booking-triggers.js` | Config, dry run, run now, the held list, one booking's history. |
 | `db/migrations/0012_booking_lifecycle_triggers.sql` | The ledger, the unique index, `bookings.lifecycle_started_at`. |
+| `server/src/lib/lifecycle-emails.js` | What each rung actually says. Pure — the copy is readable in a test. |
+| `server/test/lifecycle-emails.test.js` | Every email is complete, nothing half-interpolated, every warning offers a way out. |
+| `sendgrid-templates/booking-lifecycle.html` | Optional: one template for a club that wants its own layout. |
 | `server/test/booking-triggers-domain.test.js` | Every rung, both flows, the revert, collapsing, the horizon, the switches, and what a club may save. |
 | `db/migrations/0013_lifecycle_settings.sql` | `club_settings.lifecycle_settings`, the club's own copy of all of it. |
 | `web/src/components/LifecycleSettings.jsx` | The settings form, and `modeFor`: the five choices over the four flags. |

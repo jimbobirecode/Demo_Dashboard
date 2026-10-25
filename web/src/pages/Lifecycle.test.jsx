@@ -156,10 +156,12 @@ describe('the headline', () => {
     expect(screen.queryByText(/BOOKING_TRIGGERS_/)).not.toBeInTheDocument();
   });
 
-  test('explains that an email with no template is skipped rather than lost', async () => {
+  test('an email with nothing to send is flagged as something to report', async () => {
+    // Every rung now has copy written for it, so this state means a rung was
+    // added to the ladder and nobody wrote its email — a bug, not a setting.
     render(<Lifecycle />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByText(/nothing is lost/i)).toBeInTheDocument());
-    expect(screen.getByText(/nothing to send yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/worth reporting/i)).toBeInTheDocument();
   });
 });
 
@@ -310,7 +312,7 @@ describe('the ladder', () => {
 
     await waitFor(() => expect(screen.getByText('cancels')).toBeInTheDocument());
     expect(screen.getByText('trade only')).toBeInTheDocument();
-    expect(screen.getByText(/no email template yet, so it is skipped/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing written for this one, so it is skipped/i)).toBeInTheDocument();
   });
 
   test('says the branch needs no step pressed', async () => {
