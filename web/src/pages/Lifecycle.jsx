@@ -124,32 +124,30 @@ export default function Lifecycle() {
         <KpiTile
           label="Waiting on you"
           value={formatNumber(held.length)}
-          sub={held.length ? 'Bookings the ladder stopped at' : 'Nothing needs a decision'}
+          sub={held.length ? 'Unpaid bookings that need your call' : 'Nothing needs your call'}
           accent={held.length ? OVERDUE : 'var(--status-booked)'}
         />
         <KpiTile
-          label="Rungs ready"
+          label="Emails set up"
           value={`${ladder.length - unconfigured.length} of ${ladder.length}`}
-          sub={unconfigured.length ? `${unconfigured.length} have no email template` : 'Every rung has a template'}
+          sub={
+            unconfigured.length
+              ? `${unconfigured.length} still have nothing to send, so they are skipped`
+              : 'Every email in the sequence is ready'
+          }
           accent={unconfigured.length ? 'var(--brand-gold)' : 'var(--status-booked)'}
         />
         <KpiTile
-          label="Runs"
-          value={switches.scheduled ? `Every ${config.everyMinutes} min` : 'When you ask'}
-          sub={switches.scheduled ? 'Unattended' : 'Nothing happens on its own'}
+          label="Sends"
+          value={switches.scheduled ? 'On its own' : 'Only when you ask'}
+          sub={switches.scheduled ? `Checked every ${config.everyMinutes} minutes` : 'Nothing goes out unprompted'}
           accent="var(--north-sea)"
         />
         <KpiTile
-          label="Cancels bookings"
-          value={switches.autoCancel ? 'Yes' : 'No'}
-          sub={switches.autoCancel ? 'A lapse is cancelled automatically' : 'A lapse waits for a person'}
+          label="Unpaid bookings"
+          value={switches.autoCancel ? 'Cancelled for you' : 'Left for you'}
+          sub={switches.autoCancel ? 'The guest is emailed to say so' : 'Nothing is cancelled without you'}
           accent={switches.autoCancel ? OVERDUE : 'var(--status-booked)'}
-        />
-        <KpiTile
-          label="Catch-up limit"
-          value={config?.catchUpDays == null ? '—' : `${config.catchUpDays} days`}
-          sub="Older deadlines are written off, never emailed late"
-          accent="var(--links-green)"
         />
       </div>
 
@@ -192,104 +190,72 @@ export default function Lifecycle() {
 }
 
 /**
- * Where the club has got to, in words, with the next step named.
+ * What this club has it set to, said once, in the same words the settings
+ * page uses.
  *
- * The four switches nest, so the useful thing to say is not which booleans
- * are set but what that combination means and what is still not happening.
+ * It used to list four switches and how far down them the club had got, which
+ * described the machinery rather than the situation. What somebody opening
+ * this page needs is one sentence — is anyone being chased, and does anything
+ * happen without me — and a way to change it.
  */
 function StateBanner({ switches, heldCount, unconfigured }) {
-  const steps = [
-    {
-      on: switches.enabled,
-      title: 'Evaluating bookings',
-      key: 'enabled',
-      off: 'Nothing is evaluated, sent or recorded. The ladder below is inert.',
-      on_: 'The ladder works out where each booking stands.',
-    },
-    {
-      on: switches.deadlines,
-      title: 'Deadlines count',
-      key: 'deadlines',
-      off: 'No rung that cancels a booking is in the ladder at all.',
-      on_: 'Overdue and cancellation rungs can fall due.',
-    },
-    {
-      on: switches.scheduled,
-      title: 'Runs unattended',
-      key: 'scheduled',
-      off: 'The ladder only runs when somebody presses Run now.',
-      on_: 'The ladder runs on a timer.',
-    },
-    {
-      on: switches.autoCancel,
-      title: 'Cancels on a lapse',
-      key: 'autoCancel',
-      off: 'A booking that runs out of road waits for a person. Nothing is emailed.',
-      on_: 'A booking that runs out of road is cancelled and told so.',
-    },
-  ];
-
-  const reached = steps.filter((step) => step.on).length;
+  const mode = !switches.enabled
+    ? {
+        headline: 'Nobody is being chased',
+        detail: 'No guest is hearing from this, and nothing is being recorded.',
+        tone: '',
+      }
+    : !switches.scheduled
+      ? {
+          headline: 'Nothing goes out unless you press Run now',
+          detail: 'Useful while you are still reading what it would send. Nothing happens on its own.',
+          tone: '',
+        }
+      : switches.autoCancel
+        ? {
+            headline: 'Reminders go out, and unpaid bookings are cancelled automatically',
+            detail: 'A guest whose deposit never arrives is emailed to say the booking is cancelled.',
+            tone: 'error',
+          }
+        : {
+            headline: switches.deadlines
+              ? 'Reminders go out, and unpaid bookings stop here for you'
+              : 'Reminders go out, and nothing is ever cancelled',
+            detail: switches.deadlines
+              ? 'A booking that still has not paid waits below for your decision. Nothing is cancelled without you.'
+              : 'An unpaid booking is chased and then left alone. No warnings, no cancellations.',
+            tone: '',
+          };
 
   return (
     <section className="card stack" style={{ gap: '0.75rem' }}>
       <div className="between">
         <div>
-          <h2 style={{ margin: 0 }}>Set-up</h2>
+          <h2 style={{ margin: 0 }}>{mode.headline}</h2>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            Four steps, each one safe to stop at. Read a dry run before taking the next, and change any of them in{' '}
-            <Link to="/settings">Settings</Link>.
+            {mode.detail}
           </p>
         </div>
-        <span className="tag">
-          Step {reached} of {steps.length}
-        </span>
+        <Link to="/settings" className="nav-link" style={{ whiteSpace: 'nowrap' }}>
+          Change this
+        </Link>
       </div>
-
-      {!switches.enabled && (
-        <div className="banner">
-          The lifecycle ladder is <strong>off</strong>. Nothing is being chased and no guest is hearing from it.
-        </div>
-      )}
-
-      {switches.enabled && !switches.scheduled && (
-        <div className="banner">
-          The ladder is on but <strong>nothing runs by itself</strong> — press <em>Run now</em>, or turn on{' '}
-          <em>Run by itself</em> in <Link to="/settings">Settings</Link> once a dry run looks right.
-        </div>
-      )}
 
       {switches.enabled && !switches.autoCancel && heldCount > 0 && (
         <div className="banner error">
-          {formatNumber(heldCount)} booking{heldCount === 1 ? '' : 's'} ran out of road and{' '}
-          <strong>{heldCount === 1 ? 'needs' : 'need'} a decision</strong>. Nothing was emailed to{' '}
+          {formatNumber(heldCount)} booking{heldCount === 1 ? '' : 's'} stopped here and{' '}
+          <strong>{heldCount === 1 ? 'needs' : 'need'} your decision</strong>. Nothing was emailed to{' '}
           {heldCount === 1 ? 'them' : 'any of them'}.
         </div>
       )}
 
       {switches.enabled && unconfigured.length > 0 && (
         <div className="banner">
-          {formatNumber(unconfigured.length)} rung{unconfigured.length === 1 ? '' : 's'} have no email template, so they
-          are skipped. They start working the next run after a template is set — nothing is lost in the meantime.
+          {formatNumber(unconfigured.length)} of these emails {unconfigured.length === 1 ? 'has' : 'have'} nothing to
+          send yet, so {unconfigured.length === 1 ? 'it is' : 'they are'} skipped. Nothing is lost — they start working
+          as soon as a template is set.
         </div>
       )}
-
-      <ol className="stack" style={{ gap: '0.5rem', margin: 0, paddingLeft: '1.1rem' }}>
-        {steps.map((step) => (
-          <li key={step.key}>
-            <span style={{ fontWeight: 600 }}>
-              <span aria-hidden="true" style={{ color: step.on ? 'var(--status-booked)' : 'var(--text-muted)' }}>
-                {step.on ? '●' : '○'}
-              </span>{' '}
-              {step.title}
-            </span>
-            <span className="sr-only">{step.on ? ' (on)' : ' (off)'}</span>
-            <div className="muted" style={{ fontSize: '0.8125rem' }}>
-              {step.on ? step.on_ : step.off}
-            </div>
-          </li>
-        ))}
-      </ol>
 
       {switches.enabled && !switches.visitorDunning && (
         <p className="muted" style={{ margin: 0, fontSize: '0.8125rem' }}>

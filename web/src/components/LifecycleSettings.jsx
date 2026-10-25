@@ -1,34 +1,77 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api.js';
+import LifecycleTimeline from './LifecycleTimeline.jsx';
 
 /**
- * The booking lifecycle, as the club's own settings.
+ * Chasing unpaid bookings, as a club sets it up.
  *
- * Four things this form has to get right, none of them about inputs:
+ * An earlier version of this screen offered four switches that nested, and a
+ * grid of numbered boxes. Both were honest about how the thing is built and
+ * neither matched the question somebody actually arrives with, which is "how
+ * far do I want this to go, and when does the guest hear from us?". So:
  *
- * The switches nest, so a club reading the form must see that turning one on
- * does nothing until the one above it is. They are drawn as a sequence and
- * the ones that cannot yet take effect say so, rather than sitting there
- * looking live.
+ *   - one choice, in five steps, each named by what the guest gets rather
+ *     than by which flag it sets;
+ *   - the timings written as sentences with the units in them, because
+ *     "First reminder: 5" means nothing without "days after booking";
+ *   - and the whole schedule drawn out beside it, updating as it is edited,
+ *     since that is the only part that really explains it.
  *
- * Auto-cancel emails somebody that their booking is gone. It is the only
- * field here that asks twice.
- *
- * The day counts are a cadence, not eight numbers. The sequence is written
- * out underneath as it is edited, so a club sees "day 5, day 6, day 7, day 10"
- * rather than four inputs that each look fine alone.
- *
- * And a club that has set nothing is inheriting, not choosing. Those fields
- * say so, because an inherited default presented as a decision is how a club
- * ends up believing it picked a cadence it has never looked at.
+ * The five steps map onto the same four booleans the server has always taken.
+ * The flags are the implementation; this is the decision.
  */
+const MODES = [
+  {
+    id: 'off',
+    title: 'Off',
+    blurb: 'Nobody is chased and nothing is recorded.',
+    flags: { enabled: false, deadlines: false, scheduled: false, autoCancel: false },
+  },
+  {
+    id: 'preview',
+    title: 'Show me what you would send, but send nothing',
+    blurb: 'Good for a week or two. You can see every email it wants to send without a guest receiving one.',
+    flags: { enabled: true, deadlines: false, scheduled: false, autoCancel: false },
+  },
+  {
+    id: 'chase_forever',
+    title: 'Send reminders, but never cancel',
+    blurb: 'Reminders and confirmations go out on their own. An unpaid booking is chased and then simply left alone.',
+    flags: { enabled: true, deadlines: false, scheduled: true, autoCancel: false },
+  },
+  {
+    id: 'chase_and_ask',
+    title: 'Send reminders, then stop and ask me',
+    blurb:
+      'Adds the final warnings. A booking that still has not paid stops and waits for you on the Booking Lifecycle page — nothing is cancelled and nothing more is emailed.',
+    recommended: true,
+    flags: { enabled: true, deadlines: true, scheduled: true, autoCancel: false },
+  },
+  {
+    id: 'cancel',
+    title: 'Send reminders, then cancel it for me',
+    blurb: 'The same, except the booking is cancelled and the guest is told, without anybody here seeing it first.',
+    danger: true,
+    flags: { enabled: true, deadlines: true, scheduled: true, autoCancel: true },
+  },
+];
+
+/** Which of the five a set of flags amounts to. */
+export function modeFor(settings) {
+  if (!settings.enabled) return 'off';
+  if (settings.autoCancel) return 'cancel';
+  if (!settings.scheduled) return 'preview';
+  return settings.deadlines ? 'chase_and_ask' : 'chase_forever';
+}
+
 /**
  * The stylesheet gives every input `width: 100%`, which is right for the text
- * fields it was written for and wrong for a checkbox: it stretches across the
- * whole row and pushes its own label onto the next line. Overridden here
+ * fields it was written for and wrong for a checkbox or a radio: it stretches
+ * across the row and pushes its own label onto the next line. Overridden here
  * rather than in the stylesheet, which other screens are laid out against.
  */
-const CHECKBOX = { width: 'auto', flex: '0 0 auto', margin: 0 };
+const PICKER = { width: 'auto', flex: '0 0 auto', margin: 0 };
+const NUMBER = { width: '4.5rem', textAlign: 'center' };
 
 export default function LifecycleSettings({ onSaved }) {
   const [state, setState] = useState(null);
@@ -53,17 +96,27 @@ export default function LifecycleSettings({ onSaved }) {
     };
   }, []);
 
-  const saved = useMemo(() => new Set(state?.saved ?? []), [state]);
+  const mode = useMemo(() => modeFor(draft), [draft]);
+  const savedMode = useMemo(() => (state ? modeFor(state.settings) : 'off'), [state]);
 
   if (error && !state) return <div className="banner error">{error}</div>;
-  if (!state) return <div className="empty">Loading settings…</div>;
+  if (!state) return <div className="empty">Loading…</div>;
 
   const canEdit = state.canEdit;
   const changed = Object.keys(draft).filter((key) => draft[key] !== state.settings[key]);
+  const wrongOrder = badOrder(draft);
+  const turningOnCancel = mode === 'cancel' && savedMode !== 'cancel';
+  const blocked = (turningOnCancel && !confirmCancel) || Boolean(wrongOrder);
 
   function set(key, value) {
     setNotice(null);
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function chooseMode(id) {
+    setNotice(null);
+    if (id !== 'cancel') setConfirmCancel(false);
+    setDraft((current) => ({ ...current, ...MODES.find((entry) => entry.id === id).flags }));
   }
 
   async function save() {
@@ -74,7 +127,7 @@ export default function LifecycleSettings({ onSaved }) {
       const payload = await api.saveLifecycleSettings(patch);
       setState((current) => ({ ...current, saved: payload.saved, settings: { ...current.settings, ...patch } }));
       setConfirmCancel(false);
-      setNotice({ kind: 'success', text: 'Saved. The next run uses these.' });
+      setNotice({ kind: 'success', text: 'Saved.' });
       onSaved?.();
     } catch (err) {
       setNotice({ kind: 'error', text: err.message });
@@ -83,243 +136,197 @@ export default function LifecycleSettings({ onSaved }) {
     }
   }
 
-  function reset() {
-    setDraft(state.settings);
-    setConfirmCancel(false);
-    setNotice(null);
-  }
-
-  // Turning auto-cancel on is the one change that asks twice.
-  const turningOnAutoCancel = draft.autoCancel && !state.settings.autoCancel;
-  const blocked = turningOnAutoCancel && !confirmCancel;
-
   return (
-    <section className="card stack">
+    <section className="card stack" style={{ gap: '1.5rem' }}>
       <div>
-        <h2 style={{ margin: 0 }}>Booking lifecycle</h2>
-        <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-          How this club chases a deposit, chases a balance, and talks to a guest in the run-up to the tee. Changes apply
-          from the next run — nothing is sent retrospectively.
+        <h2 style={{ margin: 0 }}>Chasing unpaid bookings</h2>
+        <p className="muted" style={{ margin: '0.35rem 0 0', maxWidth: '46rem' }}>
+          When a booking comes in we email the guest a payment link. If the money does not arrive we send reminders,
+          then a warning. Once they have paid we confirm the booking, send their arrival details before they play, and
+          thank them afterwards.
         </p>
       </div>
 
-      {!canEdit && <div className="banner">You can read these, but only an administrator can change them.</div>}
+      {!canEdit && <div className="banner">You can read these. An administrator changes them.</div>}
 
-      <div className="stack" style={{ gap: '0.75rem' }}>
-        <span className="label">What it is allowed to do</span>
+      {/* ---------------------------------------------------------------- */}
+      <div className="stack" style={{ gap: '0.6rem' }}>
+        <h3 style={{ margin: 0, fontSize: '1rem' }}>How far should this go?</h3>
 
-        <Switch
-          id="enabled"
-          label="Work out where each booking stands"
-          hint="Off, nothing is evaluated, sent or recorded."
-          draft={draft}
-          saved={saved}
-          onChange={set}
-          disabled={!canEdit}
-        />
-        <Switch
-          id="deadlines"
-          label="Let deadlines count"
-          hint="Off, no rung that would cancel a booking is in the ladder at all."
-          draft={draft}
-          saved={saved}
-          onChange={set}
-          disabled={!canEdit || !draft.enabled}
-          inert={!draft.enabled && 'Needs the setting above'}
-        />
-        <Switch
-          id="scheduled"
-          label="Run by itself"
-          hint="Off, the ladder only runs when somebody presses Run now."
-          draft={draft}
-          saved={saved}
-          onChange={set}
-          disabled={!canEdit || !draft.deadlines}
-          inert={!draft.deadlines && 'Needs deadlines'}
-        />
-        <Switch
-          id="autoCancel"
-          label="Cancel a booking that runs out of road"
-          hint="Off, it waits for a person and nothing is emailed. This is the safe setting."
-          draft={draft}
-          saved={saved}
-          onChange={set}
-          disabled={!canEdit || !draft.deadlines}
-          inert={!draft.deadlines && 'Needs deadlines'}
-          danger
-        />
+        <div className="stack" style={{ gap: '0.4rem' }}>
+          {MODES.map((entry) => (
+            <label
+              key={entry.id}
+              className="row"
+              style={{
+                gap: '0.6rem',
+                alignItems: 'flex-start',
+                padding: '0.7rem 0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                border: `1px solid ${mode === entry.id ? 'var(--brand-gold)' : 'var(--border)'}`,
+                background: mode === entry.id ? 'rgba(201, 162, 39, 0.08)' : undefined,
+                cursor: canEdit ? 'pointer' : 'default',
+              }}
+            >
+              <input
+                type="radio"
+                name="lifecycle-mode"
+                checked={mode === entry.id}
+                onChange={() => chooseMode(entry.id)}
+                disabled={!canEdit}
+                style={{ ...PICKER, marginTop: '0.25rem' }}
+              />
+              <span className="stack" style={{ gap: '0.15rem' }}>
+                <span style={{ fontWeight: 600 }}>
+                  {entry.title}
+                  {entry.recommended && (
+                    <span className="tag" style={{ marginLeft: '0.5rem' }}>
+                      recommended
+                    </span>
+                  )}
+                </span>
+                <span className="muted" style={{ fontSize: '0.8125rem' }}>
+                  {entry.blurb}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
 
-        {turningOnAutoCancel && (
+        {turningOnCancel && (
           <div className="banner error stack" style={{ gap: '0.5rem' }}>
             <div>
-              With this on, a booking that reaches the end of the ladder is{' '}
-              <strong>cancelled and told so by email</strong>, without anybody seeing it first. Nothing is deleted — the
-              booking becomes Cancelled with a note saying why — but the guest has been written to by then.
+              Once this is on, the first anyone here knows of a cancellation is usually the guest replying to it. The
+              booking itself is kept — marked Cancelled, with a note of what was owed and when it was chased — but the
+              email has gone by then, and the tee time is free for somebody else.
             </div>
-            <label className="row" style={{ gap: '0.4rem', alignItems: 'center' }}>
+            <label className="row" style={{ gap: '0.45rem', alignItems: 'center' }}>
               <input
                 type="checkbox"
                 checked={confirmCancel}
                 onChange={(event) => setConfirmCancel(event.target.checked)}
-                style={CHECKBOX}
+                style={PICKER}
               />
-              I understand, and the dry run looks right
+              I understand
             </label>
           </div>
         )}
 
-        <Switch
-          id="visitorDunning"
-          label="Chase visitors for a deposit, not only trade bookings"
-          hint="The spreadsheet left the visitor chasing columns blank, so this half is our reading of it. Off, visitors still get their receipt and arrival details."
-          draft={draft}
-          saved={saved}
-          onChange={set}
-          disabled={!canEdit || !draft.enabled}
-          inert={!draft.enabled && 'Needs the ladder on'}
-        />
+        {mode !== 'off' && (
+          <label className="row" style={{ gap: '0.5rem', alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(draft.visitorDunning)}
+              onChange={(event) => set('visitorDunning', event.target.checked)}
+              disabled={!canEdit}
+              style={PICKER}
+            />
+            <span>
+              Chase visitors too, not just tour operators
+              <span className="muted" style={{ fontSize: '0.8125rem' }}>
+                {' — '}
+                off, a visitor still gets their receipt and arrival details, they are just never chased for money.
+              </span>
+            </span>
+          </label>
+        )}
       </div>
 
-      <div className="divider" />
+      {mode !== 'off' && (
+        <>
+          <div className="divider" />
 
-      <div className="stack" style={{ gap: '0.75rem' }}>
-        <div>
-          <span className="label">Chasing a deposit</span>
-          <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8125rem' }}>
-            Counted from the day the booking was taken.
+          {/* ------------------------------------------------------------ */}
+          <div className="stack" style={{ gap: '0.9rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem' }}>When</h3>
+
+            <Sentence disabled={!canEdit}>
+              Ask for the deposit within{' '}
+              <Num id="depositWindowDays" draft={draft} state={state} onChange={set} disabled={!canEdit} /> days of the
+              booking.
+            </Sentence>
+
+            <Sentence disabled={!canEdit}>
+              Send the first reminder{' '}
+              <Num id="depositReminderDay" draft={draft} state={state} onChange={set} disabled={!canEdit} /> days in,
+              and another the day before the deadline.
+            </Sentence>
+
+            <Sentence disabled={!canEdit}>
+              Give them until day{' '}
+              <Num id="depositRescueDay" draft={draft} state={state} onChange={set} disabled={!canEdit} /> before the
+              booking stops, warning them 48 and 24 hours beforehand.
+            </Sentence>
+
+            {wrongOrder && <div className="banner error">{wrongOrder}</div>}
+
+            <Sentence disabled={!canEdit}>
+              Tour operators owe the balance{' '}
+              <Num id="balanceDueDaysBeforePlay" draft={draft} state={state} onChange={set} disabled={!canEdit} /> days
+              before they play, with a first notice{' '}
+              <Num id="balanceNoticeLeadDays" draft={draft} state={state} onChange={set} disabled={!canEdit} /> days
+              before that.
+            </Sentence>
+
+            <p className="muted" style={{ margin: '-0.4rem 0 0', fontSize: '0.8125rem' }}>
+              An account with its own agreed terms uses those instead.
+            </p>
+
+            <Sentence disabled={!canEdit}>
+              Confirm the booking{' '}
+              <Num id="confirmationDaysBeforePlay" draft={draft} state={state} onChange={set} disabled={!canEdit} />{' '}
+              days before play, and send their arrival details{' '}
+              <Num id="finalDetailsDaysBeforePlay" draft={draft} state={state} onChange={set} disabled={!canEdit} />{' '}
+              days before.
+            </Sentence>
+
+            <Sentence disabled={!canEdit}>
+              Say thank you{' '}
+              <Num id="postPlayDaysAfterPlay" draft={draft} state={state} onChange={set} disabled={!canEdit} />{' '}
+              {Number(draft.postPlayDaysAfterPlay) === 1 ? 'day' : 'days'} after they play.
+            </Sentence>
+          </div>
+
+          <div className="divider" />
+
+          {/* ------------------------------------------------------------ */}
+          <div className="stack" style={{ gap: '0.75rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem' }}>What a guest gets</h3>
+            <LifecycleTimeline settings={draft} mode={mode} />
+          </div>
+
+          <div className="divider" />
+
+          <h3 style={{ margin: 0, fontSize: '1rem' }}>If this has not run for a while</h3>
+
+          <Sentence disabled={!canEdit}>
+            Ignore anything that fell due more than{' '}
+            <Num id="catchUpDays" draft={draft} state={state} onChange={set} disabled={!canEdit} /> days ago.
+          </Sentence>
+          <p className="muted" style={{ margin: '-0.6rem 0 0', fontSize: '0.8125rem', maxWidth: '46rem' }}>
+            So switching this on today cannot email a year of old bookings about deadlines that passed months ago. Leave
+            it low unless you are deliberately catching up.
           </p>
-        </div>
-
-        <div className="row" style={{ gap: '1rem', flexWrap: 'wrap' }}>
-          <Days
-            id="depositReminderDay"
-            label="First reminder"
-            draft={draft}
-            state={state}
-            saved={saved}
-            onChange={set}
-            disabled={!canEdit}
-          />
-          <Days
-            id="depositWindowDays"
-            label="Window closes"
-            draft={draft}
-            state={state}
-            saved={saved}
-            onChange={set}
-            disabled={!canEdit}
-          />
-          <Days
-            id="depositRescueDay"
-            label="Final deadline"
-            draft={draft}
-            state={state}
-            saved={saved}
-            onChange={set}
-            disabled={!canEdit}
-          />
-        </div>
-
-        <Cadence draft={draft} />
-      </div>
-
-      <div className="divider" />
-
-      <div className="stack" style={{ gap: '0.75rem' }}>
-        <div>
-          <span className="label">Chasing a balance</span>
-          <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8125rem' }}>
-            Trade bookings only. Where a trade account has a balance deadline of its own, that is used instead of this
-            one.
-          </p>
-        </div>
-        <div className="row" style={{ gap: '1rem', flexWrap: 'wrap' }}>
-          <Days
-            id="balanceDueDaysBeforePlay"
-            label="Balance due, days before play"
-            draft={draft}
-            state={state}
-            saved={saved}
-            onChange={set}
-            disabled={!canEdit}
-          />
-          <Days
-            id="balanceNoticeLeadDays"
-            label="First notice, days before that"
-            draft={draft}
-            state={state}
-            saved={saved}
-            onChange={set}
-            disabled={!canEdit}
-          />
-        </div>
-      </div>
-
-      <div className="divider" />
-
-      <div className="stack" style={{ gap: '0.75rem' }}>
-        <span className="label">The run-up to the tee</span>
-        <div className="row" style={{ gap: '1rem', flexWrap: 'wrap' }}>
-          <Days
-            id="confirmationDaysBeforePlay"
-            label="Confirmation, days before play"
-            draft={draft}
-            state={state}
-            saved={saved}
-            onChange={set}
-            disabled={!canEdit}
-          />
-          <Days
-            id="finalDetailsDaysBeforePlay"
-            label="Final details, days before play"
-            draft={draft}
-            state={state}
-            saved={saved}
-            onChange={set}
-            disabled={!canEdit}
-          />
-          <Days
-            id="postPlayDaysAfterPlay"
-            label="Thank you, days after play"
-            draft={draft}
-            state={state}
-            saved={saved}
-            onChange={set}
-            disabled={!canEdit}
-          />
-        </div>
-      </div>
-
-      <div className="divider" />
-
-      <div className="stack" style={{ gap: '0.5rem' }}>
-        <span className="label">Catching up</span>
-        <div className="row" style={{ gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <Days
-            id="catchUpDays"
-            label="Act on deadlines up to this many days old"
-            draft={draft}
-            state={state}
-            saved={saved}
-            onChange={set}
-            disabled={!canEdit}
-          />
-          <p className="muted" style={{ margin: 0, fontSize: '0.8125rem', maxWidth: '34rem' }}>
-            Anything older is written down and never sent, so switching the ladder on cannot email a year of history its
-            own deadlines. Raise it only to catch up deliberately.
-          </p>
-        </div>
-      </div>
+        </>
+      )}
 
       {notice && <div className={`banner ${notice.kind}`}>{notice.text}</div>}
 
       {canEdit && (
         <div className="toolbar">
           <span className="muted" style={{ fontSize: '0.8125rem' }}>
-            {changed.length ? `${changed.length} change${changed.length === 1 ? '' : 's'} not saved` : 'No changes'}
+            {changed.length ? 'Not saved yet' : 'Everything here is saved'}
           </span>
           <span className="grow" />
-          <button type="button" onClick={reset} disabled={busy || !changed.length}>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(state.settings);
+              setConfirmCancel(false);
+              setNotice(null);
+            }}
+            disabled={busy || !changed.length}
+          >
             Discard
           </button>
           <button
@@ -327,9 +334,9 @@ export default function LifecycleSettings({ onSaved }) {
             className="btn-primary"
             onClick={save}
             disabled={busy || !changed.length || blocked}
-            title={blocked ? 'Confirm the auto-cancel warning first' : undefined}
+            title={blocked ? wrongOrder || 'Confirm the warning above first' : undefined}
           >
-            {busy ? 'Saving…' : 'Save settings'}
+            {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
       )}
@@ -337,97 +344,62 @@ export default function LifecycleSettings({ onSaved }) {
   );
 }
 
-/** One switch, with what it means and whether it can take effect yet. */
-function Switch({ id, label, hint, draft, saved, onChange, disabled, inert, danger }) {
-  return (
-    <label className="stack" style={{ gap: '0.15rem', opacity: inert ? 0.55 : 1 }}>
-      <span className="row" style={{ gap: '0.5rem', alignItems: 'center' }}>
-        <input
-          type="checkbox"
-          checked={Boolean(draft[id])}
-          onChange={(event) => onChange(id, event.target.checked)}
-          disabled={disabled}
-          style={CHECKBOX}
-        />
-        <span style={{ fontWeight: 600, color: danger && draft[id] ? 'var(--status-rejected)' : undefined }}>
-          {label}
-        </span>
-        {!saved.has(id) && <Inherited />}
-        {inert && <span className="tag">{inert}</span>}
-      </span>
-      <span className="muted" style={{ fontSize: '0.8125rem', paddingLeft: '1.6rem' }}>
-        {hint}
-      </span>
-    </label>
-  );
+/** A setting written as a sentence, so the units are never in doubt. */
+function Sentence({ children, disabled }) {
+  return <p style={{ margin: 0, lineHeight: 2.1, maxWidth: '46rem', opacity: disabled ? 0.7 : 1 }}>{children}</p>;
 }
 
-/** One day count, bounded by what the server will accept. */
-function Days({ id, label, draft, state, saved, onChange, disabled }) {
+/** A number sitting inside that sentence. */
+function Num({ id, draft, state, onChange, disabled }) {
   const bounds = state.bounds?.[id] ?? { min: 0, max: 365 };
   return (
-    <label className="stack" style={{ gap: '0.2rem' }}>
-      <span className="row" style={{ gap: '0.4rem', alignItems: 'center' }}>
-        <span className="label" style={{ margin: 0 }}>
-          {label}
-        </span>
-        {!saved.has(id) && <Inherited />}
-      </span>
-      <input
-        type="number"
-        inputMode="numeric"
-        min={bounds.min}
-        max={bounds.max}
-        value={draft[id] ?? ''}
-        disabled={disabled}
-        aria-label={label}
-        style={{ width: '7rem' }}
-        onChange={(event) => {
-          const next = Number.parseInt(event.target.value, 10);
-          onChange(id, Number.isFinite(next) ? next : '');
-        }}
-      />
-    </label>
+    <input
+      type="number"
+      inputMode="numeric"
+      min={bounds.min}
+      max={bounds.max}
+      value={draft[id] ?? ''}
+      disabled={disabled}
+      aria-label={LABELS[id] ?? id}
+      style={NUMBER}
+      onChange={(event) => {
+        const next = Number.parseInt(event.target.value, 10);
+        onChange(id, Number.isFinite(next) ? next : '');
+      }}
+    />
   );
 }
 
 /**
- * Said rather than implied: this club has not chosen this, it is inheriting
- * it. An inherited default presented as a decision is how a club ends up
- * believing it picked a cadence it has never looked at.
+ * Each number still needs a name a screen reader can say, since the sentence
+ * around it is not attached to the input.
  */
-function Inherited() {
-  return (
-    <span className="tag" title="Not set by this club — inherited from the server's defaults">
-      inherited
-    </span>
-  );
-}
+const LABELS = {
+  depositWindowDays: 'Days to pay the deposit',
+  depositReminderDay: 'Days before the first reminder',
+  depositRescueDay: 'Day the booking stops',
+  balanceDueDaysBeforePlay: 'Days before play the balance is due',
+  balanceNoticeLeadDays: 'Days before that for the first notice',
+  confirmationDaysBeforePlay: 'Days before play to confirm',
+  finalDetailsDaysBeforePlay: 'Days before play to send arrival details',
+  postPlayDaysAfterPlay: 'Days after play to say thank you',
+  catchUpDays: 'Ignore anything older than this many days',
+};
 
-/** The deposit cadence as a sentence, so eight inputs read as one sequence. */
-function Cadence({ draft }) {
-  const reminder = Number(draft.depositReminderDay);
-  const window = Number(draft.depositWindowDays);
-  const rescue = Number(draft.depositRescueDay);
-  if (![reminder, window, rescue].every(Number.isFinite)) return null;
+/**
+ * The orderings that read fine field by field and are nonsense as a sequence,
+ * said in the same words the server would use if it got this far.
+ */
+function badOrder(settings) {
+  const window = Number(settings.depositWindowDays);
+  const reminder = Number(settings.depositReminderDay);
+  const rescue = Number(settings.depositRescueDay);
+  if (![window, reminder, rescue].every(Number.isFinite)) return null;
 
-  const steps = [
-    'Day 0: payment link',
-    `Day ${reminder}: reminder`,
-    `Day ${window - 1}: 24 hours left`,
-    `Day ${window}: window closed, offer the rescue`,
-    `Day ${rescue - 2}: 48 hours left`,
-    `Day ${rescue - 1}: 24 hours left`,
-    `Day ${rescue}: cancelled`,
-  ];
-
-  const broken = reminder >= window || rescue - window < 2;
-
-  return (
-    <p className={broken ? 'banner error' : 'muted'} style={{ margin: 0, fontSize: '0.8125rem' }}>
-      {broken
-        ? 'That order does not work: the reminder must come before the window closes, and the final deadline at least two days after it.'
-        : steps.join(' · ')}
-    </p>
-  );
+  if (reminder >= window) return 'The reminder needs to go out before the deadline it is reminding them about.';
+  if (rescue <= window) return 'The booking cannot stop before the deadline it is waiting on.';
+  if (rescue - window < 2) {
+    return 'Leave at least two days after the deadline, so the 48- and 24-hour warnings have room.';
+  }
+  return null;
 }

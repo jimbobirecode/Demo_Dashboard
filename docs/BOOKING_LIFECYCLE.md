@@ -114,45 +114,52 @@ not cancelled, even if the deposit never arrived. The later rung wins.
 
 **4. Four switches, all off by default, and they nest.**
 
-They live in **Settings → Booking lifecycle**, per club, and an administrator
-changes them. Nothing here is a deployment setting any more.
+They live in **Settings → Chasing unpaid bookings**, per club, and an
+administrator changes them. Nothing here is a deployment setting any more.
 
-| Switch | Off (the default) | On |
+A club is not asked to set four nested flags. It is asked one question — how
+far should this go? — and picks one of five answers, each named by what the
+guest gets:
+
+| Choice | What happens | Flags |
 | --- | --- | --- |
-| Work out where each booking stands | Nothing runs, nothing is recorded | The ladder evaluates |
-| Let deadlines count | No rung that cancels is in the ladder at all | Deadlines count |
-| Run by itself | Runs only when somebody presses **Run now** | Runs on the server's interval |
-| Cancel a booking that runs out of road | A lapse is **held** for a person; nothing emailed | The ladder cancels |
+| Off | Nobody is chased, nothing recorded | all off |
+| Show me what you would send, but send nothing | Dry runs only | `enabled` |
+| Send reminders, but never cancel | Chases and then leaves it alone; no warnings, no ending | `enabled`, `scheduled` |
+| **Send reminders, then stop and ask me** (recommended) | Adds the final warnings; an unpaid booking stops and waits for a person | `enabled`, `deadlines`, `scheduled` |
+| Send reminders, then cancel it for me | The same, and cancels | all four |
 
-Nesting means deadlines do nothing until the ladder is on, the schedule does
-nothing until deadlines are, and nothing is cancelled until auto-cancel is. A
-club can therefore watch what the ladder *would* do for a week before it does
-any of it.
+The flags are still what the server stores and `readTriggerConfig` still nests
+them, so a stored combination that does not correspond to one of the five is
+read as the nearest one below it. `modeFor` in `LifecycleSettings.jsx` is that
+mapping, and it is tested against every combination.
 
-Turning auto-cancel on asks a second time, because it is the one switch whose
-first effect a guest reads.
+The last choice asks a second time, because it is the only one whose first
+effect a guest reads.
 
 ## Where a club changes it
 
-**Settings → Booking lifecycle.** Every switch, every day count and the
-catch-up limit, per club. Reading is open to anyone signed in; saving is an
-administrator's.
+**Settings → Chasing unpaid bookings.** Reading is open to anyone signed in;
+saving is an administrator's.
 
-A field the club has never set is marked **inherited** — it is taking the
-server's default rather than a decision anybody here made. That label matters:
-an inherited default presented as a choice is how a club ends up believing it
-picked a cadence it has never looked at.
+The timings are written as sentences with the units in them — "Ask for the
+deposit within [7] days of the booking" — rather than as a grid of labelled
+boxes, because "First reminder: 5" means nothing without "days after what".
 
-The deposit cadence is written out underneath the three numbers as it is
-edited ("Day 0: payment link · Day 5: reminder · Day 7: window closed …"), and
-an order that cannot work is refused before it can be saved — a reminder after
+Beside them, **What a guest gets** draws the whole schedule out as two
+stories, *If they do not pay* and *If they pay*, and follows the numbers as
+they are edited. It is the part that does the explaining, and it changes with
+the choice above: pick "never cancel" and the final warnings and the ending
+disappear from it, because they would not happen.
+
+An order that cannot work is refused before it can be saved — a reminder after
 the deadline it reminds about, or a final deadline with no room for the 48- and
-24-hour notices.
+24-hour warnings — and said in the same words on the page and at the server.
 
 ## Switching it on safely
 
-1. Turn on **Work out where each booking stands** and nothing else. Read a dry
-   run from **Booking Lifecycle → Preview today**: it walks every eligible
+1. Choose **Show me what you would send, but send nothing**. Read a dry run
+   from **Booking Lifecycle → Preview today**: it walks every eligible
    booking, sends nothing and writes nothing.
 
 2. Configure the templates. The Booking Lifecycle page lists every rung and
@@ -162,12 +169,12 @@ the deadline it reminds about, or a final deadline with no room for the 48- and
    then falls back to `SENDGRID_TEMPLATE_LIFECYCLE`. Templates stay a
    deployment setting: they are SendGrid credentials, not club policy.
 
-3. Turn on **Let deadlines count**, then **Run by itself**.
+3. Move to **Send reminders, then stop and ask me**.
 
-4. Leave **Cancel a booking that runs out of road** off until the held list has
-   been read for a while. Booking Lifecycle → *Waiting on you* is that list —
-   **if nobody reads it, the ladder has quietly stopped doing the last thing
-   the sheet asks of it.**
+4. Stay there until *Waiting on you* on the Booking Lifecycle page has been
+   read for a while — **if nobody reads it, the ladder has quietly stopped
+   doing the last thing the sheet asks of it.** Only then consider the last
+   choice.
 
 ## Two decisions taken against the sheet
 
@@ -204,7 +211,8 @@ other way is a guest arriving without knowing where to go.
 | `db/migrations/0012_booking_lifecycle_triggers.sql` | The ledger, the unique index, `bookings.lifecycle_started_at`. |
 | `server/test/booking-triggers-domain.test.js` | Every rung, both flows, the revert, collapsing, the horizon, the switches, and what a club may save. |
 | `db/migrations/0013_lifecycle_settings.sql` | `club_settings.lifecycle_settings`, the club's own copy of all of it. |
-| `web/src/components/LifecycleSettings.jsx` | The settings form. |
+| `web/src/components/LifecycleSettings.jsx` | The settings form, and `modeFor`: the five choices over the four flags. |
+| `web/src/components/LifecycleTimeline.jsx` | "What a guest gets" — the schedule drawn from the draft settings. |
 | `web/src/pages/Lifecycle.jsx` | The operational page: what is waiting, what would happen today, the ladder. |
 
 ## Settings, environment, defaults
