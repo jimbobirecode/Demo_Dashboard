@@ -202,28 +202,28 @@ function StateBanner({ switches, heldCount, unconfigured }) {
     {
       on: switches.enabled,
       title: 'Evaluating bookings',
-      env: 'BOOKING_TRIGGERS_ENABLED',
+      key: 'enabled',
       off: 'Nothing is evaluated, sent or recorded. The ladder below is inert.',
       on_: 'The ladder works out where each booking stands.',
     },
     {
       on: switches.deadlines,
       title: 'Deadlines count',
-      env: 'BOOKING_TRIGGERS_DEADLINES',
+      key: 'deadlines',
       off: 'No rung that cancels a booking is in the ladder at all.',
       on_: 'Overdue and cancellation rungs can fall due.',
     },
     {
       on: switches.scheduled,
       title: 'Runs unattended',
-      env: 'BOOKING_TRIGGERS_SCHEDULE',
+      key: 'scheduled',
       off: 'The ladder only runs when somebody presses Run now.',
       on_: 'The ladder runs on a timer.',
     },
     {
       on: switches.autoCancel,
       title: 'Cancels on a lapse',
-      env: 'BOOKING_TRIGGERS_AUTO_CANCEL',
+      key: 'autoCancel',
       off: 'A booking that runs out of road waits for a person. Nothing is emailed.',
       on_: 'A booking that runs out of road is cancelled and told so.',
     },
@@ -237,7 +237,8 @@ function StateBanner({ switches, heldCount, unconfigured }) {
         <div>
           <h2 style={{ margin: 0 }}>Set-up</h2>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            Four steps, each one safe to stop at. Read a dry run before taking the next.
+            Four steps, each one safe to stop at. Read a dry run before taking the next, and change any of them in{' '}
+            <Link to="/settings">Settings</Link>.
           </p>
         </div>
         <span className="tag">
@@ -253,8 +254,8 @@ function StateBanner({ switches, heldCount, unconfigured }) {
 
       {switches.enabled && !switches.scheduled && (
         <div className="banner">
-          The ladder is on but <strong>nothing runs by itself</strong> — press <em>Run now</em>, or set{' '}
-          <span className="mono">BOOKING_TRIGGERS_SCHEDULE=true</span> once a dry run looks right.
+          The ladder is on but <strong>nothing runs by itself</strong> — press <em>Run now</em>, or turn on{' '}
+          <em>Run by itself</em> in <Link to="/settings">Settings</Link> once a dry run looks right.
         </div>
       )}
 
@@ -275,7 +276,7 @@ function StateBanner({ switches, heldCount, unconfigured }) {
 
       <ol className="stack" style={{ gap: '0.5rem', margin: 0, paddingLeft: '1.1rem' }}>
         {steps.map((step) => (
-          <li key={step.env}>
+          <li key={step.key}>
             <span style={{ fontWeight: 600 }}>
               <span aria-hidden="true" style={{ color: step.on ? 'var(--status-booked)' : 'var(--text-muted)' }}>
                 {step.on ? '●' : '○'}
@@ -284,7 +285,7 @@ function StateBanner({ switches, heldCount, unconfigured }) {
             </span>
             <span className="sr-only">{step.on ? ' (on)' : ' (off)'}</span>
             <div className="muted" style={{ fontSize: '0.8125rem' }}>
-              {step.on ? step.on_ : step.off} {!step.on && <span className="mono">{step.env}=true</span>}
+              {step.on ? step.on_ : step.off}
             </div>
           </li>
         ))}

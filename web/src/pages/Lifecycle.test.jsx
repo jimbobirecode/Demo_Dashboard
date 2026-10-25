@@ -127,10 +127,14 @@ describe('the set-up card', () => {
     await waitFor(() => expect(screen.getByText('Step 2 of 4')).toBeInTheDocument());
   });
 
-  test('names the variable for each step not taken yet', async () => {
+  test('sends you to Settings to change any of it, rather than naming a variable', async () => {
     render(<Lifecycle />, { wrapper: MemoryRouter });
-    await waitFor(() => expect(screen.getAllByText('BOOKING_TRIGGERS_SCHEDULE=true').length).toBeGreaterThan(0));
-    expect(screen.getByText('BOOKING_TRIGGERS_AUTO_CANCEL=true')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Settings' }).length).toBeGreaterThan(0));
+    for (const link of screen.getAllByRole('link', { name: 'Settings' })) {
+      expect(link).toHaveAttribute('href', '/settings');
+    }
+    // The switches are the club's own now, so no environment variable is named.
+    expect(screen.queryByText(/BOOKING_TRIGGERS_/)).not.toBeInTheDocument();
   });
 
   test('explains that rungs without a template are skipped rather than lost', async () => {
@@ -323,5 +327,5 @@ test('the held banner agrees with itself when more than one booking is waiting',
 
   await waitFor(() => expect(screen.getByText(/2 bookings ran out of road/i)).toBeInTheDocument());
   expect(screen.getByText(/need a decision/i)).toBeInTheDocument();
-  expect(screen.getByText(/any of them/i)).toBeInTheDocument();
+  expect(screen.getByText(/nothing was emailed to any of them/i)).toBeInTheDocument();
 });

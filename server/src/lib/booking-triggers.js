@@ -44,8 +44,14 @@ const log = logger.child('booking-triggers');
  */
 export const ELIGIBLE_STATUSES = ['Requested', 'Booked'];
 
-/** One run at a time in this process, however often it is asked for. */
-let running = null;
+/**
+ * One run at a time per club, however often it is asked for.
+ *
+ * Per club, not per process: the scheduled tick runs every interested club at
+ * once, and a single shared guard would hand the second club the first one's
+ * promise and quietly do nothing for it.
+ */
+const running = new Map();
 
 /** The last run, for the route and for the log at boot. */
 let lastRun = null;
@@ -83,21 +89,34 @@ export async function runBookingTriggers({
   env = process.env,
   now = new Date(),
   dryRun = false,
+  club = null,
 } = {}) {
-  const config = readTriggerConfig(env);
-  if (!config.enabled) return { skipped: 'not enabled' };
+  // Whether the ladder is on is now each club's own answer, so the run cannot
+  // decide it once up front. It asks per club, below, and a run that finds no
+  // club with it switched on has done one cheap query and stops.
+  const key = club ?? '*';
+  if (running.has(key)) return running.get(key);
 
-  if (running) return running;
-  running = execute({ reason, env, now, dryRun, config }).finally(() => {
-    running = null;
-  });
-  return running;
+  const run = execute({ reason, env, now, dryRun, club }).finally(() => running.delete(key));
+  running.set(key, run);
+  return run;
 }
 
-async function execute({ reason, env, now, dryRun, config }) {
+async function execute({ reason, env, now, dryRun, club }) {
   const today = ladderToday(now);
   const email = readEmailConfig(env);
-  const ladder = sendableLadder(config);
+
+  // One club's settings, read once and reused for every booking of theirs.
+  const configByClub = new Map();
+  const ladderByClub = new Map();
+  const configFor = async (forClub) => {
+    if (!configByClub.has(forClub)) {
+      const config = readTriggerConfig(env, await loadLifecycleSettings(forClub));
+      configByClub.set(forClub, config);
+      ladderByClub.set(forClub, sendableLadder(config));
+    }
+    return { config: configByClub.get(forClub), ladder: ladderByClub.get(forClub) };
+  };
 
   const result = {
     reason,
@@ -117,19 +136,26 @@ async function execute({ reason, env, now, dryRun, config }) {
   };
 
   try {
+    const batch = readTriggerConfig(env).batch;
     const { rows } = await query(
       `SELECT ${BOOKING_SELECT} FROM public.bookings
-        WHERE status = ANY($1)
-        ORDER BY date NULLS LAST, booking_id
-        LIMIT $2`,
-      [ELIGIBLE_STATUSES, config.batch],
+        WHERE status = ANY($1) AND ($2::text IS NULL OR club = $2)
+        ORDER BY club, date NULLS LAST, booking_id
+        LIMIT $3`,
+      [ELIGIBLE_STATUSES, club, batch],
     );
 
     const operatorsByClub = new Map();
     for (const row of rows) {
       const booking = serialiseBooking(row);
-      result.considered += 1;
       try {
+        const { config, ladder } = await configFor(booking.club);
+        // Another club's bookings are simply not this club's business, and a
+        // club that has not switched the ladder on is not counted as
+        // considered either — it was never in the run.
+        if (!config.enabled) continue;
+        result.considered += 1;
+
         const operators = await loadOperators(booking.club, operatorsByClub);
         const { operator } = identify(booking, buildOperatorIndex(operators));
 
@@ -413,6 +439,53 @@ async function record(booking, entry, outcome, detail) {
   }
 }
 
+/**
+ * One club's saved lifecycle settings, or `{}` where it has saved none.
+ *
+ * `{}` is the important case and not an error: it means the club has never
+ * touched these, so it inherits whatever the environment says, which is
+ * exactly how it behaved before the settings existed.
+ *
+ * A missing column or table (an install that has not run 0013, or 0008) also
+ * reads as `{}` rather than throwing — the ladder is then configured from the
+ * environment as it always was, and the settings page says it cannot save.
+ */
+export async function loadLifecycleSettings(club) {
+  try {
+    const { rows } = await query(`SELECT lifecycle_settings FROM public.club_settings WHERE club = $1`, [club]);
+    const stored = rows[0]?.lifecycle_settings;
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+  } catch (err) {
+    if (err.code === '42703' || err.code === '42P01') return {};
+    throw err;
+  }
+}
+
+/**
+ * Save part of a club's settings, leaving the rest as they were.
+ *
+ * A patch rather than a replacement: the form sends what changed, and two
+ * people editing different fields should not overwrite each other. `||` on
+ * jsonb merges at the top level, which is all the depth this document has.
+ */
+export async function saveLifecycleSettings(club, patch, username) {
+  await query(
+    `INSERT INTO public.club_settings (club, lifecycle_settings, updated_at, updated_by)
+     VALUES ($1, $2::jsonb, NOW(), $3)
+     ON CONFLICT (club) DO UPDATE SET
+       lifecycle_settings = public.club_settings.lifecycle_settings || $2::jsonb,
+       updated_at = NOW(),
+       updated_by = $3`,
+    [club, JSON.stringify(patch), username],
+  );
+  return loadLifecycleSettings(club);
+}
+
+/** This club's ladder as it is actually configured, settings over environment. */
+export async function clubTriggerConfig(club, env = process.env) {
+  return readTriggerConfig(env, await loadLifecycleSettings(club));
+}
+
 async function loadOperators(club, cache) {
   if (cache.has(club)) return cache.get(club);
   const { rows } = await query(`SELECT ${OPERATOR_SELECT} FROM public.tour_operators WHERE club = $1`, [club]);
@@ -477,29 +550,69 @@ export async function bookingLifecycle(club, bookingId) {
   }));
 }
 
-/** Start the background schedule. Returns a function that stops it. */
+/**
+ * Start the background schedule. Returns a function that stops it.
+ *
+ * The timer starts whatever the settings say, and each tick asks the clubs
+ * whether they want anything done. That is the opposite of how this worked
+ * when the switches lived in the environment, and the reason is the whole
+ * point of moving them: a club that turns the ladder on in Settings on a
+ * Tuesday cannot be made to wait for the next deploy before anything happens.
+ *
+ * A tick with no club interested is one indexed query. `BOOKING_TRIGGERS=off`
+ * stops even that, for a deployment that never wants this feature — it is the
+ * one lever left to whoever runs the server, and it overrules every club.
+ */
 export function startBookingTriggers({ env = process.env } = {}) {
-  const config = readTriggerConfig(env);
-
-  if (!config.enabled) return () => {};
-  if (!config.unattended) {
-    log.info(
-      'the lifecycle ladder is on but not scheduled — nothing runs by itself. ' +
-        'Set BOOKING_TRIGGERS_SCHEDULE=true once you have read a dry run.',
-    );
+  if (/^(false|0|no|off)$/i.test(String(env.BOOKING_TRIGGERS ?? '').trim())) {
+    log.info('the lifecycle ladder is switched off for this deployment (BOOKING_TRIGGERS=off)');
     return () => {};
   }
 
-  const first = setTimeout(() => runBookingTriggers({ reason: 'startup' }), 30_000);
-  const every = setInterval(() => runBookingTriggers({ reason: 'schedule' }), config.minutes * 60_000);
+  const { minutes } = readTriggerConfig(env);
+  const tick = (reason) =>
+    runScheduledClubs({ reason, env }).catch((err) => log.warn(`scheduled run failed: ${err.message}`));
+
+  const first = setTimeout(() => tick('startup'), 30_000);
+  const every = setInterval(() => tick('schedule'), minutes * 60_000);
   first.unref?.();
   every.unref?.();
-  log.info(
-    `running the lifecycle ladder every ${config.minutes} min ` +
-      `(auto-cancel ${config.autoCancel ? 'on' : 'off'}, catch-up ${config.catchUpDays} days)`,
-  );
+  log.info(`checking every ${minutes} min for clubs that have the lifecycle ladder scheduled`);
   return () => {
     clearTimeout(first);
     clearInterval(every);
   };
+}
+
+/**
+ * Run the ladder for each club that has asked for it to run by itself.
+ *
+ * Club by club rather than in one pass, because a run is per club now: each
+ * has its own switches, its own days, and its own answer to whether anything
+ * should happen at all.
+ */
+async function runScheduledClubs({ reason, env }) {
+  const clubs = await clubsWantingSchedule(env);
+  if (!clubs.length) return [];
+  return Promise.all(clubs.map((club) => runBookingTriggers({ reason: `${reason}:${club}`, env, club })));
+}
+
+/** The clubs whose settings say the ladder should run unattended. */
+async function clubsWantingSchedule(env) {
+  let rows = [];
+  try {
+    ({ rows } = await query(`SELECT club, lifecycle_settings FROM public.club_settings`));
+  } catch (err) {
+    // No club_settings table or column yet: fall back to the environment, so
+    // an install configured that way keeps running as it did.
+    if (err.code !== '42703' && err.code !== '42P01') throw err;
+    return readTriggerConfig(env).unattended ? [null] : [];
+  }
+
+  const wanted = rows.filter((row) => readTriggerConfig(env, row.lifecycle_settings).unattended).map((row) => row.club);
+
+  // A deployment still configured entirely from the environment has no rows
+  // here, and must keep working: one pass over every club, as before.
+  if (!wanted.length && !rows.length && readTriggerConfig(env).unattended) return [null];
+  return wanted;
 }

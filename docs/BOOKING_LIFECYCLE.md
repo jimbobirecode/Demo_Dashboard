@@ -112,43 +112,62 @@ superseded, which is also what stops an expired warning arriving a day late.
 A consequence worth knowing: a round that has already been played is thanked,
 not cancelled, even if the deposit never arrived. The later rung wins.
 
-**4. Three switches, all off by default, and they nest.**
+**4. Four switches, all off by default, and they nest.**
+
+They live in **Settings → Booking lifecycle**, per club, and an administrator
+changes them. Nothing here is a deployment setting any more.
 
 | Switch | Off (the default) | On |
 | --- | --- | --- |
-| `BOOKING_TRIGGERS_ENABLED` | Nothing runs, nothing is recorded | The ladder evaluates |
-| `BOOKING_TRIGGERS_DEADLINES` | No rung that cancels is in the ladder at all | Deadlines count |
-| `BOOKING_TRIGGERS_SCHEDULE` | Runs only when a person asks | Runs every `BOOKING_TRIGGERS_MINUTES` |
-| `BOOKING_TRIGGERS_AUTO_CANCEL` | A lapse is **held** for a person; nothing emailed | The ladder cancels |
+| Work out where each booking stands | Nothing runs, nothing is recorded | The ladder evaluates |
+| Let deadlines count | No rung that cancels is in the ladder at all | Deadlines count |
+| Run by itself | Runs only when somebody presses **Run now** | Runs on the server's interval |
+| Cancel a booking that runs out of road | A lapse is **held** for a person; nothing emailed | The ladder cancels |
 
 Nesting means deadlines do nothing until the ladder is on, the schedule does
 nothing until deadlines are, and nothing is cancelled until auto-cancel is. A
 club can therefore watch what the ladder *would* do for a week before it does
 any of it.
 
+Turning auto-cancel on asks a second time, because it is the one switch whose
+first effect a guest reads.
+
+## Where a club changes it
+
+**Settings → Booking lifecycle.** Every switch, every day count and the
+catch-up limit, per club. Reading is open to anyone signed in; saving is an
+administrator's.
+
+A field the club has never set is marked **inherited** — it is taking the
+server's default rather than a decision anybody here made. That label matters:
+an inherited default presented as a choice is how a club ends up believing it
+picked a cadence it has never looked at.
+
+The deposit cadence is written out underneath the three numbers as it is
+edited ("Day 0: payment link · Day 5: reminder · Day 7: window closed …"), and
+an order that cannot work is refused before it can be saved — a reminder after
+the deadline it reminds about, or a final deadline with no room for the 48- and
+24-hour notices.
+
 ## Switching it on safely
 
-1. Set `BOOKING_TRIGGERS_ENABLED=true` and nothing else. Read a dry run:
+1. Turn on **Work out where each booking stands** and nothing else. Read a dry
+   run from **Booking Lifecycle → Preview today**: it walks every eligible
+   booking, sends nothing and writes nothing.
 
-   ```
-   POST /api/booking-triggers/preview
-   ```
+2. Configure the templates. The Booking Lifecycle page lists every rung and
+   whether it has one. A rung with no template is skipped and reported, never
+   recorded, so it starts working the run after you set one. Each rung looks
+   for `SENDGRID_TEMPLATE_<RUNG>` (e.g. `SENDGRID_TEMPLATE_DEPOSIT_OVERDUE`),
+   then falls back to `SENDGRID_TEMPLATE_LIFECYCLE`. Templates stay a
+   deployment setting: they are SendGrid credentials, not club policy.
 
-   It walks every eligible booking, sends nothing and writes nothing.
+3. Turn on **Let deadlines count**, then **Run by itself**.
 
-2. Configure the templates. `GET /api/booking-triggers` lists every rung with
-   `configured: true|false`. A rung with no template is skipped and reported,
-   never recorded, so it starts working the run after you set one. Each rung
-   looks for `SENDGRID_TEMPLATE_<RUNG>` (e.g.
-   `SENDGRID_TEMPLATE_DEPOSIT_OVERDUE`), then falls back to
-   `SENDGRID_TEMPLATE_LIFECYCLE`.
-
-3. Turn on `BOOKING_TRIGGERS_DEADLINES`, then `BOOKING_TRIGGERS_SCHEDULE`.
-
-4. Leave `BOOKING_TRIGGERS_AUTO_CANCEL` off until the held list has been read
-   for a while. `GET /api/booking-triggers/held` is that list — **if nobody
-   reads it, the ladder has quietly stopped doing the last thing the sheet asks
-   of it.**
+4. Leave **Cancel a booking that runs out of road** off until the held list has
+   been read for a while. Booking Lifecycle → *Waiting on you* is that list —
+   **if nobody reads it, the ladder has quietly stopped doing the last thing
+   the sheet asks of it.**
 
 ## Two decisions taken against the sheet
 
@@ -183,7 +202,28 @@ other way is a guest arriving without knowing where to go.
 | `server/src/lib/booking-triggers.js` | The runner — reads, sends, writes the ledger, cancels. Decides nothing. |
 | `server/src/routes/booking-triggers.js` | Config, dry run, run now, the held list, one booking's history. |
 | `db/migrations/0012_booking_lifecycle_triggers.sql` | The ledger, the unique index, `bookings.lifecycle_started_at`. |
-| `server/test/booking-triggers-domain.test.js` | Every rung, both flows, the revert, collapsing, the horizon, the switches. |
+| `server/test/booking-triggers-domain.test.js` | Every rung, both flows, the revert, collapsing, the horizon, the switches, and what a club may save. |
+| `db/migrations/0013_lifecycle_settings.sql` | `club_settings.lifecycle_settings`, the club's own copy of all of it. |
+| `web/src/components/LifecycleSettings.jsx` | The settings form. |
+| `web/src/pages/Lifecycle.jsx` | The operational page: what is waiting, what would happen today, the ladder. |
+
+## Settings, environment, defaults
+
+In that order. A club's saved setting wins; where it has saved nothing the
+environment is used; where neither says anything the spreadsheet's own number
+stands. That order is what keeps an install that was configured entirely from
+the environment working exactly as it did — it inherits, and only starts
+diverging when somebody edits it in the dashboard.
+
+Two things stay the deployment's, because they are about the server rather
+than the club: `BOOKING_TRIGGERS_BATCH` (how many bookings one pass reads) and
+`BOOKING_TRIGGERS_MINUTES` (how often the process wakes). `BOOKING_TRIGGERS=off`
+switches the whole feature off for a deployment and overrules every club.
+
+The scheduler now starts regardless and asks the clubs on each tick whether
+anything should happen — one indexed query when nobody is interested. That is
+the point of moving the switches: a club that turns the ladder on on a Tuesday
+cannot be made to wait for the next deploy.
 
 ## The anchor
 

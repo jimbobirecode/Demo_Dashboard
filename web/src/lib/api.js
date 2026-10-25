@@ -163,6 +163,10 @@ export const api = {
   lifecyclePreview: () => request('/booking-triggers/preview', { method: 'POST', body: {} }),
   lifecycleRun: () => request('/booking-triggers/run', { method: 'POST', body: {} }),
   lifecycleHeld: () => request('/booking-triggers/held'),
+  // The club's own settings: what it has chosen, what it would inherit, and
+  // the bounds each field is held to.
+  lifecycleSettings: () => request('/booking-triggers/settings'),
+  saveLifecycleSettings: (settings) => request('/booking-triggers/settings', { method: 'PUT', body: { settings } }),
   bookingLifecycle: (bookingId) => request(`/booking-triggers/booking/${encodeURIComponent(bookingId)}`),
 
   emailConfig: () => request('/emails/config'),

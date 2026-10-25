@@ -450,29 +450,63 @@ export function planForBooking(evaluated) {
 }
 
 /**
- * The ladder as the environment has it, with the three switches.
+ * The day counts a club can set, with the bounds each one is allowed.
  *
- * All three are off by default, and they nest: deadlines do nothing until the
- * ladder is on, the schedule does nothing until deadlines are, and nothing is
- * cancelled until auto-cancel is. A club can therefore watch what the ladder
- * would do for a week before it does any of it, which is the only safe way to
- * turn on something that emails cancellations.
+ * The bounds are not arithmetic fussiness. A deposit window of 0 days asks
+ * for money before the guest has read the email; one of 400 means the ladder
+ * never chases anybody. Both are mistakes a form should refuse rather than
+ * carry out, and a club that genuinely wants either is asking for something
+ * this ladder is the wrong shape for.
  */
-export function readTriggerConfig(env = process.env) {
-  const enabled = isOn(env.BOOKING_TRIGGERS_ENABLED);
-  const deadlines = enabled && isOn(env.BOOKING_TRIGGERS_DEADLINES);
-  const unattended = deadlines && isOn(env.BOOKING_TRIGGERS_SCHEDULE);
-  const autoCancel = deadlines && isOn(env.BOOKING_TRIGGERS_AUTO_CANCEL);
+export const DAY_SETTINGS = {
+  depositWindowDays: { min: 1, max: 120, label: 'Deposit window' },
+  depositReminderDay: { min: 1, max: 120, label: 'First deposit reminder' },
+  depositRescueDay: { min: 2, max: 180, label: 'Final deadline' },
+  balanceDueDaysBeforePlay: { min: 1, max: 365, label: 'Balance due before play' },
+  balanceNoticeLeadDays: { min: 1, max: 180, label: 'Balance notice lead time' },
+  confirmationDaysBeforePlay: { min: 1, max: 365, label: 'Confirmation before play' },
+  finalDetailsDaysBeforePlay: { min: 0, max: 365, label: 'Final details before play' },
+  postPlayDaysAfterPlay: { min: 0, max: 60, label: 'Thank you after play' },
+};
+
+/** The switches a club can set, each one a plain boolean. */
+export const SWITCH_SETTINGS = ['enabled', 'deadlines', 'scheduled', 'autoCancel', 'visitorDunning'];
+
+/**
+ * The ladder as this club has it: its own saved settings over the
+ * environment's, over the spreadsheet's defaults.
+ *
+ * That order is what keeps an existing install working. Before the settings
+ * were a club's own they were the deployment's, so a club that has never
+ * saved anything inherits exactly the environment it was already running on,
+ * and only starts diverging when somebody edits it in the dashboard.
+ *
+ * The switches still nest, whichever layer they came from: deadlines do
+ * nothing until the ladder is on, the schedule nothing until deadlines are,
+ * and nothing is cancelled until auto-cancel is. A club can therefore watch
+ * what the ladder would do for a week before it does any of it, which is the
+ * only safe way to turn on something that emails cancellations.
+ */
+export function readTriggerConfig(env = process.env, stored = null) {
+  const saved = stored && typeof stored === 'object' ? stored : {};
+  const pick = (key, fromEnv) => (saved[key] === undefined ? fromEnv : Boolean(saved[key]));
+
+  const enabled = pick('enabled', isOn(env.BOOKING_TRIGGERS_ENABLED));
+  const deadlines = enabled && pick('deadlines', isOn(env.BOOKING_TRIGGERS_DEADLINES));
+  const unattended = deadlines && pick('scheduled', isOn(env.BOOKING_TRIGGERS_SCHEDULE));
+  const autoCancel = deadlines && pick('autoCancel', isOn(env.BOOKING_TRIGGERS_AUTO_CANCEL));
+
+  const day = (key, fromEnv) => (saved[key] === undefined ? positiveInt(fromEnv, LADDER_DEFAULTS[key]) : saved[key]);
 
   const ladderConfig = {
-    depositWindowDays: positiveInt(env.BOOKING_DEPOSIT_WINDOW_DAYS, LADDER_DEFAULTS.depositWindowDays),
-    depositReminderDay: positiveInt(env.BOOKING_DEPOSIT_REMINDER_DAY, LADDER_DEFAULTS.depositReminderDay),
-    depositRescueDay: positiveInt(env.BOOKING_DEPOSIT_RESCUE_DAY, LADDER_DEFAULTS.depositRescueDay),
-    balanceDueDaysBeforePlay: positiveInt(env.BOOKING_BALANCE_DUE_DAYS, LADDER_DEFAULTS.balanceDueDaysBeforePlay),
-    balanceNoticeLeadDays: positiveInt(env.BOOKING_BALANCE_NOTICE_LEAD_DAYS, LADDER_DEFAULTS.balanceNoticeLeadDays),
-    confirmationDaysBeforePlay: positiveInt(env.BOOKING_CONFIRMATION_DAYS, LADDER_DEFAULTS.confirmationDaysBeforePlay),
-    finalDetailsDaysBeforePlay: positiveInt(env.BOOKING_FINAL_DETAILS_DAYS, LADDER_DEFAULTS.finalDetailsDaysBeforePlay),
-    postPlayDaysAfterPlay: positiveInt(env.BOOKING_POST_PLAY_DAYS, LADDER_DEFAULTS.postPlayDaysAfterPlay),
+    depositWindowDays: day('depositWindowDays', env.BOOKING_DEPOSIT_WINDOW_DAYS),
+    depositReminderDay: day('depositReminderDay', env.BOOKING_DEPOSIT_REMINDER_DAY),
+    depositRescueDay: day('depositRescueDay', env.BOOKING_DEPOSIT_RESCUE_DAY),
+    balanceDueDaysBeforePlay: day('balanceDueDaysBeforePlay', env.BOOKING_BALANCE_DUE_DAYS),
+    balanceNoticeLeadDays: day('balanceNoticeLeadDays', env.BOOKING_BALANCE_NOTICE_LEAD_DAYS),
+    confirmationDaysBeforePlay: day('confirmationDaysBeforePlay', env.BOOKING_CONFIRMATION_DAYS),
+    finalDetailsDaysBeforePlay: day('finalDetailsDaysBeforePlay', env.BOOKING_FINAL_DETAILS_DAYS),
+    postPlayDaysAfterPlay: day('postPlayDaysAfterPlay', env.BOOKING_POST_PLAY_DAYS),
   };
 
   return {
@@ -481,12 +515,106 @@ export function readTriggerConfig(env = process.env) {
     unattended,
     autoCancel,
     /** Whether the visitor flow runs the dunning the sheet left unwritten. */
-    visitorDunning: !isOff(env.BOOKING_TRIGGERS_VISITOR_DUNNING),
-    catchUpDays: positiveInt(env.BOOKING_TRIGGERS_CATCH_UP_DAYS, DEFAULT_CATCH_UP_DAYS),
+    visitorDunning: pick('visitorDunning', !isOff(env.BOOKING_TRIGGERS_VISITOR_DUNNING)),
+    catchUpDays:
+      saved.catchUpDays === undefined
+        ? positiveInt(env.BOOKING_TRIGGERS_CATCH_UP_DAYS, DEFAULT_CATCH_UP_DAYS)
+        : saved.catchUpDays,
+    // Not a club's to set: how hard one run leans on the database, and how
+    // often the process wakes, belong to whoever runs the server.
     batch: positiveInt(env.BOOKING_TRIGGERS_BATCH, 200),
     minutes: Math.max(Number.parseFloat(env.BOOKING_TRIGGERS_MINUTES ?? '15') || 15, 1),
     ladder: ladderConfig,
+    /** Which keys this club has actually saved, for the settings form. */
+    saved: Object.keys(saved),
   };
+}
+
+/**
+ * Check what a club is trying to save, and return only what it may.
+ *
+ * Shaped like `validateMembershipSettings` next door: `{ ok, errors, value }`,
+ * with `value` holding the keys that passed. An absent key means "inherit",
+ * so a patch of one field leaves the rest alone.
+ *
+ * The orderings are the part worth having. Each one is a cadence that reads
+ * fine field by field and is nonsense as a sequence — a reminder after the
+ * deadline it is reminding about, a final notice before the window it
+ * rescues. A form cannot catch those one input at a time.
+ */
+export function validateLifecycleSettings(input, { current = {} } = {}) {
+  const errors = [];
+  const value = {};
+
+  if (input === undefined || input === null) return { ok: true, errors, value };
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, errors: ['Settings must be an object'], value };
+  }
+
+  for (const key of SWITCH_SETTINGS) {
+    const raw = input[key];
+    if (raw === undefined || raw === null) continue;
+    if (typeof raw !== 'boolean') {
+      errors.push(`${labelForSwitch(key)} must be true or false`);
+      continue;
+    }
+    value[key] = raw;
+  }
+
+  for (const [key, bounds] of Object.entries({
+    ...DAY_SETTINGS,
+    catchUpDays: { min: 0, max: 365, label: 'Catch-up limit' },
+  })) {
+    const raw = input[key];
+    if (raw === undefined || raw === null) continue;
+    if (typeof raw !== 'number' || !Number.isInteger(raw)) {
+      errors.push(`${bounds.label} must be a whole number of days`);
+      continue;
+    }
+    if (raw < bounds.min || raw > bounds.max) {
+      errors.push(`${bounds.label} must be between ${bounds.min} and ${bounds.max} days`);
+      continue;
+    }
+    value[key] = raw;
+  }
+
+  // The orderings are checked against the settings as they would be after
+  // this save, not against the patch alone: a club changing one field must
+  // not be told its other, untouched fields are wrong — nor allowed to break
+  // the sequence by moving one end of it.
+  const after = { ...LADDER_DEFAULTS, catchUpDays: DEFAULT_CATCH_UP_DAYS, ...current, ...value };
+
+  if (after.depositReminderDay >= after.depositWindowDays) {
+    errors.push('The first deposit reminder must come before the deposit window closes');
+  }
+  if (after.depositRescueDay <= after.depositWindowDays) {
+    errors.push('The final deadline must come after the deposit window closes');
+  }
+  if (after.depositRescueDay - after.depositWindowDays < 2) {
+    errors.push(
+      'Leave at least two days between the window closing and the final deadline, for the 48- and 24-hour notices',
+    );
+  }
+  if (after.balanceNoticeLeadDays >= after.balanceDueDaysBeforePlay) {
+    errors.push('The balance notice must fall after the booking was made, not before the play date it is counted from');
+  }
+  if (after.finalDetailsDaysBeforePlay >= after.confirmationDaysBeforePlay) {
+    errors.push('The final details must go out after the confirmation, nearer the play date');
+  }
+
+  return { ok: errors.length === 0, errors, value };
+}
+
+function labelForSwitch(key) {
+  return (
+    {
+      enabled: 'Evaluating bookings',
+      deadlines: 'Deadlines count',
+      scheduled: 'Runs unattended',
+      autoCancel: 'Cancels on a lapse',
+      visitorDunning: 'Chase visitors',
+    }[key] ?? key
+  );
 }
 
 /**
