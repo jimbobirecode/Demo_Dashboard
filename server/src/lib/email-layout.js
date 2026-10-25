@@ -121,3 +121,41 @@ ${contactEmail ? `<div style="padding-bottom:12px;">Questions? Email us at <a hr
 </table></td></tr></table>
 </body></html>`;
 }
+
+/**
+ * The body of a transactional email: a few paragraphs, an optional button, an
+ * optional table of details, and a quieter footer line, wrapped in the club's
+ * branding.
+ *
+ * Lived in `payment-link-domain.js` until the lifecycle emails needed the same
+ * shell. Two copies of a button's inline CSS is how a club ends up with two
+ * subtly different buttons, so it is one function here instead.
+ *
+ * `paragraphs` and `footer` are HTML: a caller that interpolates anything a
+ * guest or an operator typed escapes it first. `details` and the button are
+ * escaped here, being plain values.
+ */
+export function emailShell({ clubName, paragraphs, button = null, details = [], footer = '' }) {
+  const c = EMAIL_COLORS;
+  const rows = details
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 0;color:${c.muted};">${escapeHtml(label)}</td>` +
+        `<td style="padding:6px 0;text-align:right;font-weight:600;color:${c.text};">${escapeHtml(value)}</td></tr>`,
+    )
+    .join('');
+
+  const content =
+    paragraphs.map((p, i) => `<p style="margin:0 0 ${i === paragraphs.length - 1 ? 20 : 12}px;">${p}</p>`).join('\n') +
+    (button
+      ? `<div style="text-align:center;padding:4px 0 24px;"><a href="${escapeHtml(button.href)}" style="display:inline-block;background:${c.primary};color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">${escapeHtml(button.label)}</a></div>`
+      : '') +
+    (rows
+      ? `<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${c.rule};font-size:14px;">${rows}</table>`
+      : '') +
+    (footer ? `<div style="padding-top:16px;font-size:13px;line-height:1.6;color:${c.muted};">${footer}</div>` : '');
+
+  // clubName is carried by the shared header and footer.
+  void clubName;
+  return brandedEmail(content);
+}

@@ -23,7 +23,9 @@ import { serialiseBooking } from './bookings-domain.js';
 import { BOOKING_SELECT, OPERATOR_SELECT } from './schema.js';
 import { buildOperatorIndex, identify, serialiseOperator } from './operators-domain.js';
 import { buildTemplateData, getCampaign, readEmailConfig } from './email-domain.js';
-import { sendTemplateEmail } from './sendgrid.js';
+import { sendHtmlEmail, sendTemplateEmail } from './sendgrid.js';
+import { buildLifecycleEmail, lifecycleTemplateData } from './lifecycle-emails.js';
+import { logEmail } from './email-log.js';
 import {
   evaluateLadder,
   ladderToday,
@@ -180,7 +182,7 @@ async function execute({ reason, env, now, dryRun, club }) {
         await writeOff(booking, plan, { result, dryRun });
 
         if (plan.send) {
-          await act(booking, plan.send, { config, email, env, result, dryRun, today });
+          await act(booking, plan.send, { config, email, env, result, dryRun, today, operator });
         }
       } catch (err) {
         result.failed += 1;
@@ -295,14 +297,16 @@ async function writeOff(booking, plan, { result, dryRun }) {
  * the row as failed, which falls outside the index and leaves the rung
  * eligible for the next run.
  */
-async function act(booking, entry, { config, email, env, result, dryRun, today }) {
+async function act(booking, entry, { config, email, env, result, dryRun, today, operator = null }) {
   const { rung } = entry;
   const templateId = templateFor(rung, env);
 
-  // A rung with no template is not recorded at all: it must stay eligible for
-  // the run after the club configures one, and a 'failed' row every quarter of
-  // an hour would bury the ledger.
-  if (!templateId) {
+  // A rung sends the club's own SendGrid template where one is configured and
+  // the built-in email otherwise, exactly as the payment emails do. A rung
+  // with neither is a rung nobody has written copy for — a new one added to
+  // the ladder — and it is reported rather than sent blank.
+  const built = buildLifecycleEmail(rung.key, { booking, money: entry.money, dueOn: entry.dueOn, operator });
+  if (!templateId && !built) {
     if (!result.unconfigured.includes(rung.key)) result.unconfigured.push(rung.key);
     return;
   }
@@ -335,22 +339,29 @@ async function act(booking, entry, { config, email, env, result, dryRun, today }
     return;
   }
 
-  const outcome = await sendTemplateEmail({
+  const sender = {
     apiKey: email.apiKey,
     fromEmail: email.fromEmail,
     fromName: email.fromName,
     toEmail: booking.guestEmail,
-    templateId,
-    data: {
-      ...buildTemplateData(booking, { fromEmail: email.fromEmail }),
-      lifecycle_rung: rung.key,
-      lifecycle_label: rung.label,
-      amount_outstanding: entry.money.outstanding,
-      amount_paid: entry.money.paid,
-      balance_due_date: entry.money.balanceDueDate ?? null,
-      deadline_date: entry.dueOn,
-    },
-  });
+  };
+
+  const outcome = templateId
+    ? await sendTemplateEmail({
+        ...sender,
+        templateId,
+        data: {
+          ...buildTemplateData(booking, { fromEmail: email.fromEmail }),
+          ...(lifecycleTemplateData(rung.key, { booking, money: entry.money, dueOn: entry.dueOn, operator }) ?? {}),
+          lifecycle_rung: rung.key,
+          lifecycle_label: rung.label,
+          amount_outstanding: entry.money.outstanding,
+          amount_paid: entry.money.paid,
+          balance_due_date: entry.money.balanceDueDate ?? null,
+          deadline_date: entry.dueOn,
+        },
+      })
+    : await sendHtmlEmail({ ...sender, ...built });
 
   if (!outcome.ok) {
     // Rewrite the claim as a failure so the rung comes round again.
@@ -366,6 +377,23 @@ async function act(booking, entry, { config, email, env, result, dryRun, today }
 
   result.sent += 1;
   result.actions.push({ bookingId: booking.bookingId, rung: rung.key, outcome: 'sent', dueOn: entry.dueOn });
+
+  // On the booking's own conversation as well as in the ledger, so somebody
+  // opening the drawer sees what the guest was actually told, in with
+  // everything else they have been sent. A template's words live in SendGrid,
+  // so the built-in version is recorded instead - close enough to answer
+  // "what did we say to them?".
+  await logEmail({
+    club: booking.club,
+    direction: 'outbound',
+    booking_id: booking.bookingId,
+    from_email: email.fromEmail,
+    to_email: booking.guestEmail,
+    subject: built?.subject ?? rung.label,
+    body_text: built?.text ?? '',
+    sent_by: 'lifecycle',
+    kind: `lifecycle:${rung.key}`,
+  }).catch((err) => log.warn(`${booking.bookingId}: ${rung.key} sent but not logged — ${err.message}`));
 
   // Keep the legacy campaign stamp in step, so the Guest Emails page shows
   // this guest as already written to and cannot send the same email again.

@@ -93,9 +93,14 @@ export default function LadderDiagram({ ladder = [], highlight = null }) {
                         visitors only
                       </span>
                     )}
+                    {rung.ownTemplate && (
+                      <span className="muted" style={{ marginLeft: '0.4rem', fontSize: '0.75rem' }}>
+                        · your own wording
+                      </span>
+                    )}
                     {!rung.configured && (
                       <span className="muted" style={{ marginLeft: '0.4rem', fontSize: '0.75rem' }}>
-                        · no email template yet, so it is skipped
+                        · nothing written for this one, so it is skipped
                       </span>
                     )}
                   </span>
