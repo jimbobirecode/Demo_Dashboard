@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import Reminders from './Reminders.jsx';
 import { api } from '../lib/api.js';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../lib/format.js';
 import { OVERDUE } from '../lib/palette.js';
@@ -24,7 +25,7 @@ import LadderDiagram, { rungTiming } from '../components/LadderDiagram.jsx';
  * turned on by whoever is looking at the screen. So the set-up card explains
  * the state and names the variable, and whoever deploys sets it.
  */
-export default function Lifecycle() {
+export default function BookingStatus() {
   const [config, setConfig] = useState(null);
   const [held, setHeld] = useState([]);
   const [preview, setPreview] = useState(null);
@@ -32,6 +33,8 @@ export default function Lifecycle() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'operators' ? 'operators' : 'overview';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,85 +109,120 @@ export default function Lifecycle() {
     <div className="stack">
       <div className="between">
         <div>
-          <h1>Booking Lifecycle</h1>
+          <h1>Booking Status</h1>
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            Deposits chased, balances chased, and the run-up to the tee — one email per booking per run.
+            {tab === 'operators'
+              ? 'Nudge a tour operator by hand — one email per account.'
+              : 'Who is being chased, what needs you, and what goes out today.'}
           </p>
         </div>
-        <button type="button" onClick={load} disabled={loading || busy}>
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        {/* The reminders tab has a refresh of its own; two on one screen is
+            one too many. */}
+        {tab === 'overview' && (
+          <button type="button" onClick={load} disabled={loading || busy}>
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        )}
       </div>
 
       {error && <div className="banner error">{error}</div>}
 
-      <StateBanner switches={switches} heldCount={held.length} unconfigured={unconfigured} />
-
-      <div className="kpi-row">
-        <KpiTile
-          label="Waiting on you"
-          value={formatNumber(held.length)}
-          sub={held.length ? 'Unpaid bookings that need your call' : 'Nothing needs your call'}
-          accent={held.length ? OVERDUE : 'var(--status-booked)'}
-        />
-        <KpiTile
-          label="Emails"
-          value={formatNumber(ladder.length)}
-          sub={
-            unconfigured.length
-              ? `${unconfigured.length} have nothing to send, so they are skipped`
-              : 'All written and ready to send'
-          }
-          accent={unconfigured.length ? 'var(--brand-gold)' : 'var(--status-booked)'}
-        />
-        <KpiTile
-          label="Sends"
-          value={switches.scheduled ? 'On its own' : 'Only when you ask'}
-          sub={switches.scheduled ? `Checked every ${config.everyMinutes} minutes` : 'Nothing goes out unprompted'}
-          accent="var(--north-sea)"
-        />
-        <KpiTile
-          label="Unpaid bookings"
-          value={switches.autoCancel ? 'Cancelled for you' : 'Left for you'}
-          sub={switches.autoCancel ? 'The guest is emailed to say so' : 'Nothing is cancelled without you'}
-          accent={switches.autoCancel ? OVERDUE : 'var(--status-booked)'}
-        />
-      </div>
-
-      <div className="toolbar">
-        <span className="grow" />
-        <button type="button" onClick={runPreview} disabled={busy}>
-          {busy ? 'Working…' : 'Preview today'}
+      <div className="segmented" role="group" aria-label="View">
+        <button type="button" aria-pressed={tab === 'overview'} onClick={() => setParams({}, { replace: true })}>
+          Overview
         </button>
         <button
           type="button"
-          className="btn-primary"
-          onClick={runForReal}
-          disabled={busy || !switches.enabled || !config?.emailReady}
-          title={config?.emailReady ? undefined : 'SendGrid is not configured'}
+          aria-pressed={tab === 'operators'}
+          onClick={() => setParams({ tab: 'operators' }, { replace: true })}
         >
-          Run now
+          Tour operator reminders
         </button>
       </div>
 
-      {notice && <div className={`banner ${notice.kind}`}>{notice.text}</div>}
+      {tab === 'operators' && (
+        <>
+          {switches.enabled && (
+            <div className="banner">
+              Chasing is on, so balance reminders already go to each account automatically. Use this for a one-off
+              nudge, or for bookings still waiting to be confirmed.
+            </div>
+          )}
+          <Reminders embedded />
+        </>
+      )}
 
-      <HeldTable held={held} />
+      {tab === 'overview' && (
+        <>
+          <StateBanner switches={switches} heldCount={held.length} unconfigured={unconfigured} />
 
-      {preview && <PreviewTable preview={preview} ladder={ladder} />}
+          <div className="kpi-row">
+            <KpiTile
+              label="Waiting on you"
+              value={formatNumber(held.length)}
+              sub={held.length ? 'Unpaid bookings that need your call' : 'Nothing needs your call'}
+              accent={held.length ? OVERDUE : 'var(--status-booked)'}
+            />
+            <KpiTile
+              label="Emails"
+              value={formatNumber(ladder.length)}
+              sub={
+                unconfigured.length
+                  ? `${unconfigured.length} have nothing to send, so they are skipped`
+                  : 'All written and ready to send'
+              }
+              accent={unconfigured.length ? 'var(--brand-gold)' : 'var(--status-booked)'}
+            />
+            <KpiTile
+              label="Sends"
+              value={switches.scheduled ? 'On its own' : 'Only when you ask'}
+              sub={switches.scheduled ? `Checked every ${config.everyMinutes} minutes` : 'Nothing goes out unprompted'}
+              accent="var(--north-sea)"
+            />
+            <KpiTile
+              label="Unpaid bookings"
+              value={switches.autoCancel ? 'Cancelled for you' : 'Left for you'}
+              sub={switches.autoCancel ? 'The guest is emailed to say so' : 'Nothing is cancelled without you'}
+              accent={switches.autoCancel ? OVERDUE : 'var(--status-booked)'}
+            />
+          </div>
 
-      <section className="card stack">
-        <div>
-          <h2 style={{ margin: 0 }}>The ladder</h2>
-          <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-            A booking climbs one of two ladders depending on whether the money has arrived. Paying moves it across on
-            its own — there is no step to press.
-          </p>
-        </div>
-        <LadderDiagram ladder={ladder} />
-      </section>
+          <div className="toolbar">
+            <span className="grow" />
+            <button type="button" onClick={runPreview} disabled={busy}>
+              {busy ? 'Working…' : 'Preview today'}
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={runForReal}
+              disabled={busy || !switches.enabled || !config?.emailReady}
+              title={config?.emailReady ? undefined : 'SendGrid is not configured'}
+            >
+              Run now
+            </button>
+          </div>
 
-      <LastRun run={config?.lastRun} />
+          {notice && <div className={`banner ${notice.kind}`}>{notice.text}</div>}
+
+          <HeldTable held={held} />
+
+          {preview && <PreviewTable preview={preview} ladder={ladder} />}
+
+          <section className="card stack">
+            <div>
+              <h2 style={{ margin: 0 }}>The ladder</h2>
+              <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+                A booking climbs one of two ladders depending on whether the money has arrived. Paying moves it across
+                on its own — there is no step to press.
+              </p>
+            </div>
+            <LadderDiagram ladder={ladder} />
+          </section>
+
+          <LastRun run={config?.lastRun} />
+        </>
+      )}
     </div>
   );
 }

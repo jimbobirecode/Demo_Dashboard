@@ -9,8 +9,7 @@ import ManageBooking from './pages/ManageBooking.jsx';
 import Bookings from './pages/Bookings.jsx';
 import Emails from './pages/Emails.jsx';
 import Operators from './pages/Operators.jsx';
-import Reminders from './pages/Reminders.jsx';
-import Lifecycle from './pages/Lifecycle.jsx';
+import BookingStatus from './pages/BookingStatus.jsx';
 import Settings from './pages/Settings.jsx';
 import Users from './pages/Users.jsx';
 import Waitlist from './pages/Waitlist.jsx';
@@ -113,11 +112,8 @@ function StaffApp() {
           <NavLink to="/emails" className={navClass}>
             Guest Emails
           </NavLink>
-          <NavLink to="/reminders" className={navClass}>
-            Operator Reminders
-          </NavLink>
-          <NavLink to="/lifecycle" className={navClass}>
-            Booking Lifecycle
+          <NavLink to="/booking-status" className={navClass}>
+            Booking Status
             {heldCount > 0 && (
               <span
                 aria-label={`${heldCount} waiting on a decision`}
@@ -189,8 +185,11 @@ function StaffApp() {
             <Route path="/operators" element={<Operators user={user} />} />
             <Route path="/membership" element={<Membership user={user} />} />
             <Route path="/emails" element={<Emails />} />
-            <Route path="/reminders" element={<Reminders />} />
-            <Route path="/lifecycle" element={<Lifecycle />} />
+            <Route path="/booking-status" element={<BookingStatus />} />
+            {/* Where these used to live. Operator Reminders is now a tab of
+                Booking Status, and the page itself was renamed. */}
+            <Route path="/reminders" element={<Navigate to="/booking-status?tab=operators" replace />} />
+            <Route path="/lifecycle" element={<Navigate to="/booking-status" replace />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />
             {/* A signed-in reader following an old reset link goes to the

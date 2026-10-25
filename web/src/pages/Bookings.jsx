@@ -17,7 +17,7 @@ export default function Bookings({ user }) {
   const [preset, setPreset] = useState(DEFAULT_PRESET);
   const [custom, setCustom] = useState({ from: '', to: '' });
   const [statuses, setStatuses] = useState(DEFAULT_STATUS_FILTER);
-  // `?ref=` opens a booking straight from a link — the lifecycle page's list
+  // `?ref=` opens a booking straight from a link — the Booking Status page's list
   // of decisions waiting on somebody is the reason it exists.
   const [params, setParams] = useSearchParams();
   const linkedRef = params.get('ref');

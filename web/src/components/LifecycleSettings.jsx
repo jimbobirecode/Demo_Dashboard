@@ -113,7 +113,7 @@ export default function LifecycleSettings({ onSaved }) {
 
       {!on && (
         <p className="muted" style={{ margin: '-0.75rem 0 0 1.6rem', fontSize: '0.8125rem' }}>
-          Nothing is sent. You can still see what would be — <Link to="/lifecycle">Preview today</Link>.
+          Nothing is sent. You can still see what would be — <Link to="/booking-status">Preview today</Link>.
         </p>
       )}
 
