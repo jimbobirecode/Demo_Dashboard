@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
-import Lifecycle from './Lifecycle.jsx';
+import BookingStatus from './BookingStatus.jsx';
 import { api } from '../lib/api.js';
 
 vi.mock('../lib/api.js', () => ({
@@ -11,6 +11,9 @@ vi.mock('../lib/api.js', () => ({
     lifecycleHeld: vi.fn(),
     lifecyclePreview: vi.fn(),
     lifecycleRun: vi.fn(),
+    reminderConfig: vi.fn(),
+    remindersPending: vi.fn(),
+    sendReminders: vi.fn(),
   },
 }));
 
@@ -108,7 +111,7 @@ describe('the headline', () => {
     api.lifecycleConfig.mockResolvedValue(
       config({ switches: { enabled: false, deadlines: false, scheduled: false, autoCancel: false } }),
     );
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
 
     await waitFor(() => expect(screen.getByRole('heading', { name: /nobody is being chased/i })).toBeInTheDocument());
     // A dry run sends nothing, so it is how a club reads the ladder before
@@ -118,7 +121,7 @@ describe('the headline', () => {
   });
 
   test('says that nothing goes out unless somebody presses Run now', async () => {
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /nothing goes out unless you press run now/i })).toBeInTheDocument(),
     );
@@ -130,14 +133,14 @@ describe('the headline', () => {
     api.lifecycleConfig.mockResolvedValue(
       config({ switches: { enabled: true, deadlines: true, scheduled: true, autoCancel: false } }),
     );
-    const { unmount } = render(<Lifecycle />, { wrapper: MemoryRouter });
+    const { unmount } = render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByRole('heading', { name: /stop here for you/i })).toBeInTheDocument());
     unmount();
 
     api.lifecycleConfig.mockResolvedValue(
       config({ switches: { enabled: true, deadlines: true, scheduled: true, autoCancel: true } }),
     );
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByRole('heading', { name: /cancelled automatically/i })).toBeInTheDocument());
   });
 
@@ -145,14 +148,14 @@ describe('the headline', () => {
     api.lifecycleConfig.mockResolvedValue(
       config({ switches: { enabled: true, deadlines: false, scheduled: true, autoCancel: false } }),
     );
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /nothing is ever cancelled/i })).toBeInTheDocument(),
     );
   });
 
   test('offers one way to change it, and names no environment variable', async () => {
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByRole('link', { name: /change this/i })).toBeInTheDocument());
     expect(screen.getByRole('link', { name: /change this/i })).toHaveAttribute('href', '/settings');
     expect(screen.queryByText(/BOOKING_TRIGGERS_/)).not.toBeInTheDocument();
@@ -161,7 +164,7 @@ describe('the headline', () => {
   test('an email with nothing to send is flagged as something to report', async () => {
     // Every rung now has copy written for it, so this state means a rung was
     // added to the ladder and nobody wrote its email — a bug, not a setting.
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByText(/nothing is lost/i)).toBeInTheDocument());
     expect(screen.getByText(/worth reporting/i)).toBeInTheDocument();
   });
@@ -170,7 +173,7 @@ describe('the headline', () => {
 describe('what is waiting on a person', () => {
   test('a held booking is surfaced with the reason in plain words', async () => {
     api.lifecycleHeld.mockResolvedValue({ held: [HELD] });
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Waiting on you' })).toBeInTheDocument());
     expect(screen.getByText('RD-2001')).toBeInTheDocument();
@@ -184,7 +187,7 @@ describe('what is waiting on a person', () => {
   });
 
   test('the table is absent when nothing is waiting, rather than an empty frame', async () => {
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByRole('link', { name: /change this/i })).toBeInTheDocument());
     expect(screen.queryByRole('heading', { name: 'Waiting on you' })).not.toBeInTheDocument();
     // The tile still reports it, which is where a glance goes.
@@ -208,7 +211,7 @@ describe('the dry run', () => {
         actions: [{ bookingId: 'RD-2001', rung: 'deposit_overdue', outcome: 'would send', dueOn: '2026-01-08' }],
       },
     });
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByRole('button', { name: /preview today/i })).toBeEnabled());
 
     await userEvent.click(screen.getByRole('button', { name: /preview today/i }));
@@ -234,7 +237,7 @@ describe('the dry run', () => {
         actions: [{ bookingId: 'RD-2001', rung: 'deposit_cancelled', outcome: 'held', dueOn: '2026-01-11' }],
       },
     });
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByRole('button', { name: /preview today/i })).toBeEnabled());
 
     await userEvent.click(screen.getByRole('button', { name: /preview today/i }));
@@ -256,7 +259,7 @@ describe('the dry run', () => {
         actions: [],
       },
     });
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByRole('button', { name: /preview today/i })).toBeEnabled());
 
     await userEvent.click(screen.getByRole('button', { name: /preview today/i }));
@@ -271,7 +274,7 @@ describe('running it for real', () => {
     api.lifecycleRun.mockResolvedValue({
       run: { considered: 12, sent: 3, held: 1, failed: 0, cancelled: 0, superseded: 0, skipped: 2 },
     });
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByRole('button', { name: /run now/i })).toBeEnabled());
 
     await userEvent.click(screen.getByRole('button', { name: /run now/i }));
@@ -283,7 +286,7 @@ describe('running it for real', () => {
 
   test('running is refused while SendGrid is unconfigured, and the button says why', async () => {
     api.lifecycleConfig.mockResolvedValue(config({ emailReady: false }));
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
 
     await waitFor(() => expect(screen.getByRole('link', { name: /change this/i })).toBeInTheDocument());
     const run = screen.getByRole('button', { name: /run now/i });
@@ -296,7 +299,7 @@ describe('running it for real', () => {
 
 describe('the ladder', () => {
   test('is drawn in phases, with each rung timed in words', async () => {
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
 
     await waitFor(() => expect(screen.getByText('The ladder')).toBeInTheDocument());
     expect(screen.getByText('Payment')).toBeInTheDocument();
@@ -310,7 +313,7 @@ describe('the ladder', () => {
   });
 
   test('marks the rungs that cancel, the trade-only ones, and the ones with no template', async () => {
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
 
     await waitFor(() => expect(screen.getByText('cancels')).toBeInTheDocument());
     expect(screen.getByText('trade only')).toBeInTheDocument();
@@ -318,7 +321,7 @@ describe('the ladder', () => {
   });
 
   test('says the branch needs no step pressed', async () => {
-    render(<Lifecycle />, { wrapper: MemoryRouter });
+    render(<BookingStatus />, { wrapper: MemoryRouter });
     await waitFor(() => expect(screen.getByText(/there is no step to press/i)).toBeInTheDocument());
   });
 });
@@ -326,7 +329,7 @@ describe('the ladder', () => {
 test('an API failure is shown rather than an empty page', async () => {
   api.lifecycleConfig.mockRejectedValue(new Error('Could not reach the server. Check your connection.'));
   api.lifecycleHeld.mockRejectedValue(new Error('Could not reach the server. Check your connection.'));
-  render(<Lifecycle />, { wrapper: MemoryRouter });
+  render(<BookingStatus />, { wrapper: MemoryRouter });
 
   await waitFor(() =>
     expect(screen.getByText('Could not reach the server. Check your connection.')).toBeInTheDocument(),
@@ -335,9 +338,40 @@ test('an API failure is shown rather than an empty page', async () => {
 
 test('the held banner agrees with itself when more than one booking is waiting', async () => {
   api.lifecycleHeld.mockResolvedValue({ held: [HELD, { ...HELD, bookingId: 'RD-2002' }] });
-  render(<Lifecycle />, { wrapper: MemoryRouter });
+  render(<BookingStatus />, { wrapper: MemoryRouter });
 
   await waitFor(() => expect(screen.getByText(/2 bookings stopped here/i)).toBeInTheDocument());
   expect(screen.getByText(/need your decision/i)).toBeInTheDocument();
   expect(screen.getByText(/nothing was emailed to any of them/i)).toBeInTheDocument();
+});
+
+describe('tour operator reminders', () => {
+  test('live on this page as a tab, reached by the old /reminders address', async () => {
+    api.reminderConfig.mockResolvedValue({
+      configured: true,
+      hasApiKey: true,
+      fromEmail: 'b@example.com',
+      campaigns: {},
+    });
+    api.remindersPending.mockResolvedValue({ reminders: [] });
+    render(
+      <MemoryRouter initialEntries={['/booking-status?tab=operators']}>
+        <BookingStatus />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /tour operator reminders/i })).toBeInTheDocument());
+    // The overview is not drawn underneath it.
+    expect(screen.queryByRole('heading', { name: /nothing goes out unless/i })).not.toBeInTheDocument();
+    // And it says the automatic chasing already covers the balance.
+    expect(screen.getByText(/balance reminders already go to each account automatically/i)).toBeInTheDocument();
+  });
+
+  test('the overview tab is the default', async () => {
+    render(<BookingStatus />, { wrapper: MemoryRouter });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Overview' })).toHaveAttribute('aria-pressed', 'true'),
+    );
+    expect(api.reminderConfig).not.toHaveBeenCalled();
+  });
 });

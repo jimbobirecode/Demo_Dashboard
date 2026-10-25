@@ -33,7 +33,7 @@ const CAMPAIGNS = [
  * booking that has only just fallen due still pulls its account back into the
  * list on its own.
  */
-export default function Reminders() {
+export default function Reminders({ embedded = false }) {
   const [campaignId, setCampaignId] = useState(CAMPAIGNS[0].id);
   const [scope, setScope] = useState('due');
   const [config, setConfig] = useState(null);
@@ -186,7 +186,7 @@ export default function Reminders() {
     <div className="stack">
       <div className="between">
         <div>
-          <h1>Operator Reminders</h1>
+          {embedded ? <h2 style={{ margin: 0 }}>Tour operator reminders</h2> : <h1>Operator Reminders</h1>}
           <p className="muted" style={{ margin: '0.25rem 0 0' }}>
             {campaign.blurb}
           </p>

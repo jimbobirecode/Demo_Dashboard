@@ -53,7 +53,7 @@ describe('the switch', () => {
     show();
     await waitFor(() => expect(chasing()).not.toBeChecked());
     expect(screen.queryByText('Visitors')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /preview today/i })).toHaveAttribute('href', '/lifecycle');
+    expect(screen.getByRole('link', { name: /preview today/i })).toHaveAttribute('href', '/booking-status');
 
     await userEvent.click(chasing());
 

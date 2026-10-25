@@ -39,7 +39,7 @@ export default function BookingLifecycle({ bookingId }) {
       <div className="divider" />
 
       <div className="stack" style={{ gap: '0.5rem' }}>
-        <span className="label">Lifecycle</span>
+        <span className="label">Booking status</span>
 
         <ul className="timeline">
           {history.map((entry) => (

@@ -2,6 +2,13 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – Booking Status, one page for chasing (October 2026)
+
+### Changed
+
+- **Booking Lifecycle is renamed Booking Status** (`/booking-status`; `/lifecycle` redirects) — the nav item, the page, the Settings link and the drawer's history panel.
+- **Operator Reminders is folded into it as a tab.** The per-account digest (one email listing an operator's open bookings or what it owes, picked and sent by hand) was the same job as the ladder's balance chasing, done manually. It now lives at Booking Status → *Tour operator reminders* (`/reminders` redirects there), with a note when chasing is on that balance reminders already go out automatically, so the tab is for a one-off nudge or for bookings still waiting to be confirmed. Nothing about what it sends has changed.
+
 ## Unreleased – settings cut down to a switch and a choice (October 2026)
 
 ### Changed

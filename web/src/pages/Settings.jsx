@@ -22,7 +22,7 @@ export default function Settings() {
         <h1>Settings</h1>
         <p className="muted" style={{ margin: '0.25rem 0 0' }}>
           How this club works, rather than what it is doing today. To see which bookings are waiting on you right now,
-          go to <Link to="/lifecycle">Booking Lifecycle</Link>.
+          go to <Link to="/booking-status">Booking Status</Link>.
         </p>
       </div>
 

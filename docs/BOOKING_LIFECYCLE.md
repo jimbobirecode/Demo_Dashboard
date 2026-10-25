@@ -1,4 +1,4 @@
-# The booking lifecycle ladder
+# Booking Status: the booking lifecycle ladder
 
 The club's spreadsheet draws a grid — five triggers across, three lanes down,
 every cell headed "If Paid" or "If not Paid". What it describes is not a
@@ -183,7 +183,7 @@ the deadline it reminds about, or a final deadline with no room for the 48- and
 ## Switching it on safely
 
 1. Choose **Show me what you would send, but send nothing**. Read a dry run
-   from **Booking Lifecycle → Preview today**: it walks every eligible
+   from **Booking Status → Preview today**: it walks every eligible
    booking, sends nothing and writes nothing.
 
 2. Read the emails. All sixteen are written and ready — nothing to configure
@@ -194,7 +194,7 @@ the deadline it reminds about, or a final deadline with no room for the 48- and
 
 3. Move to **Send reminders, then stop and ask me**.
 
-4. Stay there until *Waiting on you* on the Booking Lifecycle page has been
+4. Stay there until *Waiting on you* on the Booking Status page has been
    read for a while — **if nobody reads it, the ladder has quietly stopped
    doing the last thing the sheet asks of it.** Only then consider the last
    choice.
@@ -257,6 +257,17 @@ built-in email. `sendgrid-templates/booking-lifecycle.html` is a starting
 point, and lists every merge field — including `headline`, `button_url` and
 `button_label`, which carry our copy into your layout if you want the words but
 not the design.
+
+## One page for chasing
+
+The page is **Booking Status** (`/booking-status`; the old `/lifecycle` and
+`/reminders` addresses redirect). Its *Overview* tab is the ladder: what is
+waiting on a person, a dry run, the sequence. Its *Tour operator reminders*
+tab is the former Operator Reminders page — one digest email per account,
+picked and sent by hand — folded in because it is the same job done manually.
+With chasing on it says so: balance reminders already go to each account on
+its own terms, and the tab is for a one-off nudge or for bookings still
+waiting to be confirmed, which the ladder does not chase.
 
 ## Where it lives
 
