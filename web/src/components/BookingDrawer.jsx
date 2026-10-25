@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import PipelineProgress from './PipelineProgress.jsx';
 import PaymentPanel from './PaymentPanel.jsx';
 import BookingConversation from './BookingConversation.jsx';
+import BookingLifecycle from './BookingLifecycle.jsx';
 import StatusPill from './StatusPill.jsx';
 import { ALL_STATUSES } from '../lib/status.js';
 import { BRAND } from '../lib/brand.js';
@@ -199,6 +200,10 @@ export default function BookingDrawer({
             Save notes
           </button>
         </div>
+
+        {/* What the lifecycle ladder has done about this booking, and what it
+            decided not to do. Draws nothing until there is history. */}
+        <BookingLifecycle bookingId={booking.bookingId} />
 
         <div className="secondary" style={{ fontSize: '0.75rem' }}>
           Requested {formatDateTime(booking.timestamp)}

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, exportUrl } from '../lib/api.js';
 import { useBookings } from '../lib/useBookings.js';
 import { DEFAULT_PRESET, resolvePreset, withinRange } from '../lib/dateRanges.js';
@@ -16,7 +17,15 @@ export default function Bookings({ user }) {
   const [preset, setPreset] = useState(DEFAULT_PRESET);
   const [custom, setCustom] = useState({ from: '', to: '' });
   const [statuses, setStatuses] = useState(DEFAULT_STATUS_FILTER);
-  const [selectedId, setSelectedId] = useState(null);
+  // `?ref=` opens a booking straight from a link — the lifecycle page's list
+  // of decisions waiting on somebody is the reason it exists.
+  const [params, setParams] = useSearchParams();
+  const linkedRef = params.get('ref');
+  const [selectedId, setSelectedId] = useState(linkedRef);
+
+  useEffect(() => {
+    if (linkedRef) setSelectedId(linkedRef);
+  }, [linkedRef]);
   const [busyId, setBusyId] = useState(null);
   const [notice, setNotice] = useState(null);
 
@@ -43,7 +52,19 @@ export default function Bookings({ user }) {
     });
   }, [dateFiltered, statuses, search]);
 
-  const selected = filtered.find((booking) => booking.bookingId === selectedId) ?? null;
+  // Resolved against every booking rather than the filtered set: a booking
+  // arrived at by link is usually one the current filters would hide, and a
+  // drawer that snaps shut when a filter changes helps nobody either.
+  const selected = bookings.find((booking) => booking.bookingId === selectedId) ?? null;
+
+  function closeDrawer() {
+    setSelectedId(null);
+    // Leave no stale `?ref=` behind, or Back would reopen what was just closed.
+    if (linkedRef) {
+      params.delete('ref');
+      setParams(params, { replace: true });
+    }
+  }
 
   // Tiles count the date-filtered set so the numbers stay stable while a
   // status tile is toggled on and off. They are the only status filter.
@@ -184,7 +205,7 @@ export default function Bookings({ user }) {
         <BookingDrawer
           booking={selected}
           operators={operators}
-          onClose={() => setSelectedId(null)}
+          onClose={closeDrawer}
           onStatusChange={(booking, status) =>
             mutate(async () => {
               const { booking: updated } = await api.setStatus(booking.bookingId, status);
@@ -238,7 +259,7 @@ export default function Bookings({ user }) {
                   mutate(async () => {
                     await api.remove(booking.bookingId);
                     removeBooking(booking.bookingId);
-                    setSelectedId(null);
+                    closeDrawer();
                   })
               : undefined
           }
