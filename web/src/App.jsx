@@ -11,6 +11,7 @@ import Emails from './pages/Emails.jsx';
 import Operators from './pages/Operators.jsx';
 import Reminders from './pages/Reminders.jsx';
 import Lifecycle from './pages/Lifecycle.jsx';
+import Settings from './pages/Settings.jsx';
 import Users from './pages/Users.jsx';
 import Waitlist from './pages/Waitlist.jsx';
 import Import from './pages/Import.jsx';
@@ -140,6 +141,9 @@ function StaffApp() {
           <NavLink to="/analytics" className={navClass}>
             Analytics
           </NavLink>
+          <NavLink to="/settings" className={navClass}>
+            Settings
+          </NavLink>
           {/* Account administration is hidden from staff. The API refuses them
               too — this only saves them clicking on a page they cannot use. */}
           {user.role === 'admin' && (
@@ -187,6 +191,7 @@ function StaffApp() {
             <Route path="/emails" element={<Emails />} />
             <Route path="/reminders" element={<Reminders />} />
             <Route path="/lifecycle" element={<Lifecycle />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />
             {/* A signed-in reader following an old reset link goes to the
                 bookings table rather than to a form they no longer need. */}

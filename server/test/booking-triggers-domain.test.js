@@ -1,7 +1,8 @@
-import test from 'node:test';
+import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LADDER_DEFAULTS,
+  validateLifecycleSettings,
   balanceDueOn,
   buildLadder,
   evaluateLadder,
@@ -426,4 +427,143 @@ test('a booking already asked for payment by hand is not asked again', () => {
   const asked = booking({ paymentLinkSentAt: '2026-01-01T10:00:00Z' });
   const { byRung } = walk({ on: '2026-01-01', book: asked, started: '2026-01-01' });
   assert.equal(byRung.get('deposit_request').state, 'skipped');
+});
+
+// ---------------------------------------------------------------------------
+// Settings a club saves for itself
+// ---------------------------------------------------------------------------
+
+test("a club's saved settings beat the environment, which beats the defaults", () => {
+  // Nothing saved: exactly the environment the deployment was already running.
+  const inherited = readTriggerConfig({ ...ON, BOOKING_DEPOSIT_WINDOW_DAYS: '14' });
+  assert.equal(inherited.ladder.depositWindowDays, 14);
+  assert.deepEqual(inherited.saved, []);
+
+  // Saved: the club's own number, whatever the environment says.
+  const chosen = readTriggerConfig({ ...ON, BOOKING_DEPOSIT_WINDOW_DAYS: '14' }, { depositWindowDays: 21 });
+  assert.equal(chosen.ladder.depositWindowDays, 21);
+  assert.deepEqual(chosen.saved, ['depositWindowDays']);
+
+  // Neither: the sheet's own number.
+  assert.equal(readTriggerConfig(ON).ladder.depositWindowDays, LADDER_DEFAULTS.depositWindowDays);
+});
+
+test('a club can switch the ladder on without the environment having been set', () => {
+  const config = readTriggerConfig({}, { enabled: true, deadlines: true, scheduled: true });
+  assert.equal(config.enabled, true);
+  assert.equal(config.deadlines, true);
+  assert.equal(config.unattended, true);
+});
+
+test('a club can switch it off even where the environment switched it on', () => {
+  const config = readTriggerConfig({ ...ON, BOOKING_TRIGGERS_SCHEDULE: 'true' }, { enabled: false });
+  assert.equal(config.enabled, false);
+  // And the nesting still holds, so nothing below it survives either.
+  assert.equal(config.deadlines, false);
+  assert.equal(config.unattended, false);
+  assert.equal(config.autoCancel, false);
+});
+
+test('the switches still nest when they come from saved settings', () => {
+  const config = readTriggerConfig({}, { enabled: true, deadlines: false, autoCancel: true, scheduled: true });
+  assert.equal(config.autoCancel, false, 'auto-cancel without deadlines cancels nothing');
+  assert.equal(config.unattended, false, 'a schedule without deadlines runs nothing');
+});
+
+test('how hard a run leans on the database is not a club setting', () => {
+  // batch and minutes belong to whoever runs the server, so a saved value for
+  // them is ignored rather than honoured.
+  const config = readTriggerConfig({ BOOKING_TRIGGERS_BATCH: '50' }, { batch: 99999, minutes: 0.01 });
+  assert.equal(config.batch, 50);
+  assert.equal(config.minutes, 15);
+});
+
+describe('validating what a club tries to save', () => {
+  test('a patch of one field leaves the rest alone', () => {
+    const check = validateLifecycleSettings({ depositReminderDay: 3 });
+    assert.equal(check.ok, true);
+    assert.deepEqual(check.value, { depositReminderDay: 3 });
+  });
+
+  test('a day count must be a whole number within its bounds', () => {
+    assert.equal(validateLifecycleSettings({ depositWindowDays: 0 }).ok, false);
+    assert.equal(validateLifecycleSettings({ depositWindowDays: 2.5 }).ok, false);
+    assert.equal(validateLifecycleSettings({ depositWindowDays: 1000 }).ok, false);
+    assert.equal(validateLifecycleSettings({ depositWindowDays: '7' }).ok, false, 'text is not a number');
+    assert.equal(validateLifecycleSettings({ depositWindowDays: 7 }).ok, true);
+  });
+
+  test('a switch must be a boolean', () => {
+    assert.equal(validateLifecycleSettings({ autoCancel: 'yes' }).ok, false);
+    assert.equal(validateLifecycleSettings({ autoCancel: true }).ok, true);
+  });
+
+  test('a reminder cannot fall after the deadline it is reminding about', () => {
+    const check = validateLifecycleSettings({ depositReminderDay: 9, depositWindowDays: 7 });
+    assert.equal(check.ok, false);
+    assert.match(check.errors.join(' '), /before the deposit window closes/i);
+  });
+
+  test('the final deadline cannot fall before the window it is rescuing', () => {
+    const check = validateLifecycleSettings({ depositWindowDays: 14, depositRescueDay: 10 });
+    assert.equal(check.ok, false);
+    assert.match(check.errors.join(' '), /after the deposit window closes/i);
+  });
+
+  test('there has to be room for the 48- and 24-hour notices', () => {
+    const tight = validateLifecycleSettings({ depositWindowDays: 7, depositRescueDay: 8 });
+    assert.equal(tight.ok, false);
+    assert.match(tight.errors.join(' '), /at least two days/i);
+    assert.equal(validateLifecycleSettings({ depositWindowDays: 7, depositRescueDay: 9 }).ok, true);
+  });
+
+  test('the final details cannot go out before the confirmation', () => {
+    const check = validateLifecycleSettings({ confirmationDaysBeforePlay: 10, finalDetailsDaysBeforePlay: 30 });
+    assert.equal(check.ok, false);
+    assert.match(check.errors.join(' '), /after the confirmation/i);
+  });
+
+  test('an ordering is checked against the settings as they would end up, not the patch alone', () => {
+    // The club already has a 21-day window saved; moving the reminder to day
+    // 9 is fine against that, and would be rejected against the default 7.
+    const check = validateLifecycleSettings(
+      { depositReminderDay: 9 },
+      { current: { depositWindowDays: 21, depositRescueDay: 28 } },
+    );
+    assert.equal(check.ok, true);
+
+    // And a change that breaks the sequence from the other end is caught.
+    const broken = validateLifecycleSettings(
+      { depositWindowDays: 5 },
+      { current: { depositReminderDay: 9, depositRescueDay: 28 } },
+    );
+    assert.equal(broken.ok, false);
+  });
+
+  test('nothing offered is not an error, it just changes nothing', () => {
+    assert.deepEqual(validateLifecycleSettings(undefined), { ok: true, errors: [], value: {} });
+    assert.deepEqual(validateLifecycleSettings({}).value, {});
+  });
+
+  test('anything that is not an object is refused outright', () => {
+    assert.equal(validateLifecycleSettings([1, 2]).ok, false);
+    assert.equal(validateLifecycleSettings('enabled').ok, false);
+  });
+
+  test('unknown keys are dropped rather than stored', () => {
+    const check = validateLifecycleSettings({ depositWindowDays: 7, somethingElse: 'hello', batch: 99 });
+    assert.equal(check.ok, true);
+    assert.deepEqual(Object.keys(check.value), ['depositWindowDays']);
+  });
+});
+
+test("a club's own days actually move the ladder", () => {
+  const config = readTriggerConfig(ON, { depositWindowDays: 21, depositReminderDay: 14, depositRescueDay: 28 });
+  const byKey = new Map(sendableLadder(config).map((rung) => [rung.key, rung]));
+
+  assert.equal(byKey.get('deposit_reminder_1').offset, 14);
+  assert.equal(byKey.get('deposit_reminder_2').offset, 20, '24 hours before the wider window');
+  assert.equal(byKey.get('deposit_overdue').offset, 21);
+  assert.equal(byKey.get('deposit_rescue_48h').offset, 26);
+  assert.equal(byKey.get('deposit_cancelled').offset, 28);
 });

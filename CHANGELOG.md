@@ -2,6 +2,26 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – the lifecycle as the club's own settings (October 2026)
+
+### Added
+
+- **Settings**, a section of its own in the dashboard, holding the booking lifecycle: the four switches, whether visitors are chased, every day count and the catch-up limit. Per club, saved in `club_settings.lifecycle_settings` (migration `0013`). Reading is open to anyone signed in, saving is an administrator's — everybody on the desk should be able to see why a guest was chased on a Tuesday, and far fewer people should be able to change it.
+- The form is built around the three things that are easy to get wrong. The switches **nest**, so one below an unset one is disabled and says what it is waiting for rather than sitting there looking live. Turning **auto-cancel** on asks a second time, because it is the only setting whose first effect a guest reads. And the deposit cadence is written out as a sentence underneath the three numbers as they are edited — "Day 0: payment link · Day 5: reminder · Day 7: window closed · Day 10: cancelled" — so a club sees a sequence rather than three inputs that each look fine alone.
+- A field a club has never set is marked **inherited**, because an inherited default presented as a decision is how a club ends up believing it picked a cadence it has never looked at.
+- Orderings are refused rather than saved: a reminder after the deadline it reminds about, a final deadline with no room for the 48- and 24-hour notices, final details before the confirmation. Checked against the settings as they would be after the save, not the patch alone, so changing one field is never rejected because of another the club has not touched.
+
+### Changed
+
+- **The lifecycle settings are no longer environment variables.** A club's saved value wins, the environment is what a club that has saved nothing inherits, and the spreadsheet's numbers are the fallback — so an install configured entirely from the environment behaves exactly as it did until somebody edits it in the dashboard. `BOOKING_TRIGGERS_BATCH` and `BOOKING_TRIGGERS_MINUTES` stay the deployment's, being about load rather than policy, and `BOOKING_TRIGGERS=off` switches the feature off for a deployment whatever any club has saved.
+- The runner is per club: each club's bookings are walked against that club's own settings and its own ladder, and a club with the ladder switched off is not walked at all. The preview and run endpoints are scoped to the signed-in club, which they were not before.
+- The scheduler starts regardless and asks the clubs on each tick whether anything should happen — one indexed query when nobody is interested. A club that switches the ladder on cannot be made to wait for the next deploy. Its single-flight guard is now per club, so a tick that runs several clubs no longer hands the second one the first one's result.
+- The Booking Lifecycle page's set-up card links to Settings instead of naming environment variables.
+
+### Fixed
+
+- Checkboxes in the new settings form stretched the full width of their row, dropping each label onto its own line: the stylesheet gives every `input` `width: 100%`, which is right for the text fields it was written for. Overridden in the component rather than in the stylesheet, which other screens are laid out against.
+
 ## Unreleased – the booking lifecycle ladder (October 2026)
 
 ### Added

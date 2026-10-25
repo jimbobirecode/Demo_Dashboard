@@ -297,7 +297,7 @@ The no-double-send guarantee is `idx_booking_trigger_sends_once`, a UNIQUE index
 
 ### `club_settings`
 
-One row per club (migration `0008`): `membership_enabled` (the owner's switch: on = enquiries are offered the categories and an application link; off, or no row = they are offered the waitlist), `membership_settings` (JSONB: `intro`, `next_steps`, `closed_message`, `contact_email`, `committee_name`; length-limited by `validateMembershipSettings`), `updated_at`, `updated_by`.
+One row per club. `lifecycle_settings` (JSONB, migration `0013`) holds this club's booking lifecycle settings — the four switches, the day counts and the catch-up limit; an absent key means the club has not chosen and inherits the environment, then the defaults, so an install configured from the environment is unchanged until somebody edits it (see [BOOKING_LIFECYCLE.md](BOOKING_LIFECYCLE.md)). Validated in `booking-triggers-domain.js` rather than by a constraint. Membership (migration `0008`): `membership_enabled` (the owner's switch: on = enquiries are offered the categories and an application link; off, or no row = they are offered the waitlist), `membership_settings` (JSONB: `intro`, `next_steps`, `closed_message`, `contact_email`, `committee_name`; length-limited by `validateMembershipSettings`), `updated_at`, `updated_by`.
 
 ### `membership_categories`
 
