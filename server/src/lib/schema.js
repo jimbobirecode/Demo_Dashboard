@@ -91,6 +91,7 @@ export const OPERATOR_COLUMNS = [
   'currency',
   'on_hold',
   'active',
+  'auto_chase',
   'notes',
   'created_at',
   'updated_at',

@@ -2,6 +2,27 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – settings cut down to a switch and a choice (October 2026)
+
+### Changed
+
+- The five-way "How far should this go?" block is gone. The settings page now has one switch, **Chase unpaid bookings**, and under it one choice for a booking that never pays: **Stop and ask me** (recommended) or **Cancel it and tell them**. The switch moves `enabled`, `deadlines` and `scheduled` together; the choice is `autoCancel`. Nothing else changed underneath.
+- *Preview today* on the Booking Lifecycle page works whether chasing is on or off: a dry run sends nothing, so it is how a club reads the ladder before switching it on. The runner walks a switched-off club in a dry run with deadlines counted, so the preview shows the whole ladder, ending where the club's own cancel choice would.
+- Every instruction on the settings page is shorter. Section blurbs are one line; the trade book is one line with the one red warning that matters (an account with no contact email); the catch-up setting is a single sentence.
+
+## Unreleased – the lifecycle agrees with the tour operator module (October 2026)
+
+### Added
+
+- **Per-account chasing**, under *Chasing* in the operator form: a summary of what the lifecycle will send that account, worked out live from its terms as they are typed, and a switch to send it payment reminders or not (`tour_operators.auto_chase`, migration `0014`, default on). Off, the account still gets the confirmations and arrival details, is never chased for money and is never cancelled by the lifecycle — for an account that pays by invoice on its own cycle. The operators list says "not chased" beside such an account.
+- The Settings page is rebuilt around the one distinction that decides the rest: **Visitors** (pay the club, in full, from the booking date, every email to the guest) and **Tour operators** (pay on account, on each account's own terms, money to the account's contact). The trade section reports the book as the ladder sees it — how many accounts set their own dates, how many are not chased, and in red how many have no contact email and so cannot be chased properly — and links to Tour Operators for the per-account terms rather than carrying a second copy.
+
+### Changed
+
+- **A trade booking is chased towards the account's own deposit date.** The deposit rungs now count from the deposit deadline rather than from the booking: for a visitor that is unchanged (the sheet's 0/5/6/7/8/9/10), for an account with a deposit lead time it is that date, so an operator agreed at 90 days before play is reminded on days −92 and −91, warned on −90 and stopped on −87 — the same dates the operator drawer shows. A date on the booking itself still wins.
+- **Money goes to the account, the round goes to the guest.** Payment and balance emails on a trade booking go to the account's contact email ("where reminders are sent", in the operator module's own words), not to the guest; the confirmation, arrival details and thank-you go to whoever is playing. The ledger records which address each one went to.
+- A retired account is never chased by the lifecycle, as the operator module always promised.
+
 ## Unreleased – the lifecycle emails (October 2026)
 
 ### Added

@@ -153,7 +153,7 @@ export default function Lifecycle() {
 
       <div className="toolbar">
         <span className="grow" />
-        <button type="button" onClick={runPreview} disabled={busy || !switches.enabled}>
+        <button type="button" onClick={runPreview} disabled={busy}>
           {busy ? 'Working…' : 'Preview today'}
         </button>
         <button

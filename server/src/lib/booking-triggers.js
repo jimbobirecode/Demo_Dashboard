@@ -31,6 +31,7 @@ import {
   ladderToday,
   planForBooking,
   readTriggerConfig,
+  recipientFor,
   sendableLadder,
 } from './booking-triggers-domain.js';
 
@@ -113,7 +114,12 @@ async function execute({ reason, env, now, dryRun, club }) {
   const ladderByClub = new Map();
   const configFor = async (forClub) => {
     if (!configByClub.has(forClub)) {
-      const config = readTriggerConfig(env, await loadLifecycleSettings(forClub));
+      const saved = await loadLifecycleSettings(forClub);
+      // A dry run sends nothing, so it may walk a club that is switched off
+      // and show the full ladder - that is how a club reads it before turning
+      // it on. Auto-cancel is left as saved, so the preview ends where the
+      // club's choice would.
+      const config = readTriggerConfig(env, dryRun ? { ...saved, enabled: true, deadlines: true } : saved);
       configByClub.set(forClub, config);
       ladderByClub.set(forClub, sendableLadder(config));
     }
@@ -310,7 +316,11 @@ async function act(booking, entry, { config, email, env, result, dryRun, today, 
     if (!result.unconfigured.includes(rung.key)) result.unconfigured.push(rung.key);
     return;
   }
-  if (!booking.guestEmail) {
+  // Money goes to the trade account, the run-up to the tee to the guest:
+  // see recipientFor. A booking with nobody to write to is skipped on the
+  // ledger, where "why was this one never chased?" can find it.
+  const toEmail = recipientFor(rung, booking, operator);
+  if (!toEmail) {
     if (!dryRun) await record(booking, entry, 'skipped', 'no email address to send to');
     result.skipped += 1;
     return;
@@ -333,7 +343,7 @@ async function act(booking, entry, { config, email, env, result, dryRun, today, 
   }
 
   // Claim the rung. A duplicate key here means another run already has it.
-  const claimed = await record(booking, entry, 'sent', null);
+  const claimed = await record(booking, { ...entry, toEmail }, 'sent', null);
   if (!claimed) {
     log.info(`${booking.bookingId}: ${rung.key} was already claimed by another run`);
     return;
@@ -343,7 +353,7 @@ async function act(booking, entry, { config, email, env, result, dryRun, today, 
     apiKey: email.apiKey,
     fromEmail: email.fromEmail,
     fromName: email.fromName,
-    toEmail: booking.guestEmail,
+    toEmail,
   };
 
   const outcome = templateId
@@ -388,7 +398,7 @@ async function act(booking, entry, { config, email, env, result, dryRun, today, 
     direction: 'outbound',
     booking_id: booking.bookingId,
     from_email: email.fromEmail,
-    to_email: booking.guestEmail,
+    to_email: toEmail,
     subject: built?.subject ?? rung.label,
     body_text: built?.text ?? '',
     sent_by: 'lifecycle',
@@ -457,7 +467,7 @@ async function record(booking, entry, outcome, detail) {
         outcome,
         entry.dueOn,
         detail,
-        outcome === 'sent' ? booking.guestEmail : null,
+        outcome === 'sent' ? (entry.toEmail ?? booking.guestEmail) : null,
       ],
     );
     return true;

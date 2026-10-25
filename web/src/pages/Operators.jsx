@@ -293,6 +293,13 @@ function AccountsTable({ operators, direct, onEdit, onOpen }) {
                     <span className="muted">Retired</span>
                   ) : operator.onHold ? (
                     <span style={{ color: OVERDUE, fontWeight: 600 }}>On hold</span>
+                  ) : operator.autoChase === false ? (
+                    <span>
+                      Trading
+                      <span className="muted" style={{ display: 'block', fontSize: '0.75rem' }}>
+                        not chased
+                      </span>
+                    </span>
                   ) : (
                     <span>Trading</span>
                   )}
