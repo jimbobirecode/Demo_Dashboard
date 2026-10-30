@@ -186,9 +186,9 @@ function StaffApp() {
             <Route path="/membership" element={<Membership user={user} />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/booking-status" element={<BookingStatus />} />
-            {/* Where these used to live. Operator Reminders is now a tab of
-                Booking Status, and the page itself was renamed. */}
-            <Route path="/reminders" element={<Navigate to="/booking-status?tab=operators" replace />} />
+            {/* Where these used to live: the renamed page, and the Operator
+                Reminders page the ladder replaced. */}
+            <Route path="/reminders" element={<Navigate to="/booking-status" replace />} />
             <Route path="/lifecycle" element={<Navigate to="/booking-status" replace />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />

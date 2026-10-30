@@ -261,13 +261,30 @@ not the design.
 ## One page for chasing
 
 The page is **Booking Status** (`/booking-status`; the old `/lifecycle` and
-`/reminders` addresses redirect). Its *Overview* tab is the ladder: what is
-waiting on a person, a dry run, the sequence. Its *Tour operator reminders*
-tab is the former Operator Reminders page — one digest email per account,
-picked and sent by hand — folded in because it is the same job done manually.
-With chasing on it says so: balance reminders already go to each account on
-its own terms, and the tab is for a one-off nudge or for bookings still
-waiting to be confirmed, which the ladder does not chase.
+`/reminders` addresses redirect): what is waiting on a person, a dry run, the
+sequence. The Operator Reminders page it stood beside is gone — one digest
+email per account, picked and sent by hand, was the same job as the ladder's
+chasing, done manually. The ladder asks each trade booking for its deposit and
+its balance at the account, on the account's own dates, and writes every send
+to the ledger.
+
+## Two voices
+
+A visitor pays for their own round, so the chase is written to the person
+playing: "your round", "your tee time", "Hi Ann". A tour operator's booking is
+paid for by the account, and every payment- and balance-phase email goes to
+the account's contact — who holds a dozen of these at once, knows the terms,
+and does not want to be addressed as if they were turning up with their clubs.
+So each of those thirteen rungs carries a second version written to the trade
+partner: the guest named in the third person, the account's own due date, the
+terms stated as terms, Guest and Account rows at the top of the table, and no
+manage-booking link (that is the guest's). The communication rungs — the
+confirmation, the final details, the thank you — go to the guest whoever pays,
+and have one voice.
+
+Which voice is decided per email by who it is actually addressed to, not by the
+ladder alone: an account with no contact email falls back to the guest, and the
+guest is then written to as a guest.
 
 ## Where it lives
 

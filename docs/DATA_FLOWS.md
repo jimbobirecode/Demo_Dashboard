@@ -9,7 +9,7 @@ Controller/processor roles (golf club vs TeeMail) and the lawful basis for proce
 | Subject | How they reach TeeMail |
 |---|---|
 | Guests (golfers, lead bookers) | Email to the club inbox; booking form; manage-booking page; Stripe payment; journey emails |
-| Tour-operator contacts | Operator records entered by staff; portal sign-in; reminders |
+| Tour-operator contacts | Operator records entered by staff; portal sign-in; the booking ladder's payment emails |
 | Club staff | Dashboard accounts |
 | Anyone who emails the club inbox | Inbound email is stored and triaged whatever its content |
 
@@ -23,7 +23,7 @@ Controller/processor roles (golf club vs TeeMail) and the lawful basis for proce
 | Booking details (dates, times, players, courses, lodging, prices, payment status, amounts) | Guest / operator | Both | `bookings` | SendGrid, Stripe (amount, booking reference), Club Vero (date, course, tee time, players, spend) |
 | Membership applicant: name, email, phone, date of birth, address and postcode, handicap, CDH number, home club, other clubs, proposer/seconder, own words, enquiry summary, consent; staff notes and decisions | Prospective member | Core API (enquiry email, application/waitlist form); dashboard (staff notes, decisions) | `membership_applications`, `membership_events`, `email_messages` | SendGrid (decision and invitation emails), Anthropic (enquiry email, core API) |
 | Payment | Guest / operator | Stripe (hosted page) | `bookings` holds Stripe ids, amounts and dates only; **no card data** | – |
-| Operator contact name, email, phone, email domains | Operator contact | Staff | `tour_operators` | SendGrid (reminders, portal links) |
+| Operator contact name, email, phone, email domains | Operator contact | Staff | `tour_operators` | SendGrid (the booking ladder's payment emails, portal links) |
 | Portal sign-in address, IP | Operator contact | Dashboard | `operator_portal_links.email/requested_ip`, `operator_portal_sessions.email/requested_ip` | SendGrid (link) |
 | Staff username, email, full name, password hash, last login | Staff | Dashboard | `dashboard_users` | SendGrid (invite/reset email) |
 | Reset/invite request IP | Staff | Dashboard | `password_resets.requested_ip` | – |
@@ -61,7 +61,7 @@ flowchart LR
 ### Dashboard flows
 
 1. **Staff work** (Bookings, Inbox, Guest Requests, Waitlist, Operators): reads and writes the shared database; every query scoped to the staff member's club.
-2. **Staff email** (Inbox replies, change outcomes, journey campaigns, operator reminders, payment links, receipts, password reset, invitations, portal links): SendGrid Mail Send API; each guest email is recorded in `email_messages` (outbound).
+2. **Staff email** (Inbox replies, change outcomes, journey campaigns, the booking ladder, payment links, receipts, password reset, invitations, portal links): SendGrid Mail Send API; each guest email is recorded in `email_messages` (outbound).
 3. **Payments**: the dashboard creates a Stripe Payment Link carrying `booking_id` and `club` as metadata and a URL prefilled with the guest's email and booking reference; the guest enters card details on Stripe; Stripe sends events to `/api/stripe/webhook` and the dashboard also polls Stripe for pending links (`lib/payment-sync.js`).
 4. **Club Vero** (optional; on when `VERO_BASE_URL` and `VERO_PARTNER_KEY` are set): for each post-play email the dashboard posts `external_ref` (booking reference), `play_date`, `guest_name`, `guest_email`, `guest_phone`, `course_name`, `tee_time`, and `players`/`spend_amount` when known (`buildRoundPayload` in `lib/vero-domain.js`) and receives a survey link. Details: [CLUB_VERO_INTEGRATION.md](CLUB_VERO_INTEGRATION.md).
 5. **Exports**: staff download CSV/XLSX of bookings (guest PII and finance columns); operators download their own statement CSV. Files leave the system's control at that point.

@@ -16,7 +16,7 @@ Server unit files by area:
 | Guests and links | `change-request-domain`, `guest-change-emails`, `portal-domain` |
 | Payments | `payment-link-domain` (incl. Stripe signature verification, idempotency rules), `payment-scope` (webhook log and sync results per club) |
 | Exports and imports | `csv` (formula defusing, CSV and `.xlsx` rows), `import-domain`, `sheet-reader` (row/column caps), `booking-ref` (core API reference format, CSPRNG) |
-| Bookings, analytics, operators, waitlist, email | `bookings-domain`, `analytics-domain`, `operators-domain`, `operator-emails-domain`, `waitlist-domain`, `email-domain`, `email-layout`, `inbox-domain`, `vero-domain`, `currency` |
+| Bookings, analytics, operators, waitlist, email | `bookings-domain`, `analytics-domain`, `operators-domain`, `lifecycle-emails`, `waitlist-domain`, `email-domain`, `email-layout`, `inbox-domain`, `vero-domain`, `currency` |
 | Infrastructure | `logger`, `sentry-scrub` (no query strings, cookies, bodies or addresses), `db-ssl` (TLS for remote databases), `app-loads` (the app module imports and mounts) |
 
 Integration suites:

@@ -150,14 +150,6 @@ Applicant emails name, and take replies at, the membership contact address: `mem
 | GET | `/pending` | `?campaign=pre_arrival\|post_play&scope=due\|all` — who is due |
 | POST | `/send` | `{campaign, bookingIds[≤200], dryRun}` — rows re-read by club; asks Club Vero for a survey link first when enabled; stamps each booking so nobody is emailed twice |
 
-## `/api/reminders` (`routes/reminders.js`) — **Staff**: operator reminders
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/config` | Which reminder campaigns can send |
-| GET | `/pending` | `?campaign=booking_status\|payment_due&scope=due\|all` — accounts due a reminder |
-| POST | `/send` | `{campaign, operatorIds[≤100], dryRun, scope}` — one email per account; stamps bookings (7-day resend guard) |
-
 ## `/api/imports` (`routes/imports.js`) — **Staff** (12 MB JSON body)
 
 | Method | Path | Auth | Purpose |
@@ -196,4 +188,4 @@ Every portal request checks the session row (`operator_portal_sessions`: not rev
 
 ## SPA routes (not API)
 
-Served by `web/src/App.jsx`: staff pages (`/bookings`, `/analytics`, `/requests`, `/inbox`, `/waitlist`, `/membership`, `/operators`, `/emails`, `/reminders`, `/import`, `/users` (admin), `/account/password`); public pages (sign-in at any other path), `/forgot-password`, `/reset-password?token=`, `/accept-invite?token=`, `/manage-booking?ref=&token=`; portal `/portal`, `/portal/sign-in?token=`.
+Served by `web/src/App.jsx`: staff pages (`/bookings`, `/analytics`, `/requests`, `/inbox`, `/waitlist`, `/membership`, `/operators`, `/emails`, `/booking-status`, `/settings`, `/import`, `/users` (admin), `/account/password`); public pages (sign-in at any other path), `/forgot-password`, `/reset-password?token=`, `/accept-invite?token=`, `/manage-booking?ref=&token=`; portal `/portal`, `/portal/sign-in?token=`.

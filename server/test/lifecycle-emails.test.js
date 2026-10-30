@@ -1,6 +1,13 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { WRITTEN_RUNGS, buildLifecycleEmail, hasBuiltInEmail } from '../src/lib/lifecycle-emails.js';
+import {
+  TRADE_RUNGS,
+  WRITTEN_RUNGS,
+  audienceFor,
+  buildLifecycleEmail,
+  hasBuiltInEmail,
+  lifecycleTemplateData,
+} from '../src/lib/lifecycle-emails.js';
 import { buildLadder, moneyState, readTriggerConfig, sendableLadder } from '../src/lib/booking-triggers-domain.js';
 import { formatMoney } from '../src/lib/payment-link-domain.js';
 
@@ -257,20 +264,120 @@ describe('who gets greeted', () => {
   });
 
   test('a trade account is not greeted by the first word of its company name', () => {
-    // "Highland Golf Tours" split on whitespace reads "Hi Highland," which is
-    // nobody's name and sounds like a mailshot.
-    const trade = booking({ guestName: 'Highland Golf Tours' });
-    const account = { name: 'Highland Golf Tours', contactName: '' };
-    const mail = buildLifecycleEmail('balance_notice', { booking: trade, money: money(trade), operator: account });
+    // "Highland Golf Tours" split on whitespace reads "Dear Highland," which
+    // is nobody's name and sounds like a mailshot.
+    const trade = booking();
+    const account = { name: 'Highland Golf Tours', contactName: '', contactEmail: 'accounts@highland.test' };
+    const mail = buildLifecycleEmail('balance_notice', {
+      booking: trade,
+      money: money(trade),
+      operator: account,
+      toEmail: account.contactEmail,
+    });
 
-    assert.match(mail.text, /^Hi Highland Golf Tours,/);
+    assert.match(mail.text, /^Dear Highland Golf Tours,/);
   });
 
   test("an account's named contact is greeted as a person", () => {
-    const trade = booking({ guestName: 'Highland Golf Tours' });
-    const account = { name: 'Highland Golf Tours', contactName: 'Fiona Ross' };
-    const mail = buildLifecycleEmail('balance_notice', { booking: trade, money: money(trade), operator: account });
+    const trade = booking();
+    const account = { name: 'Highland Golf Tours', contactName: 'Fiona Ross', contactEmail: 'accounts@highland.test' };
+    const mail = buildLifecycleEmail('balance_notice', {
+      booking: trade,
+      money: money(trade),
+      operator: account,
+      toEmail: account.contactEmail,
+    });
 
-    assert.match(mail.text, /^Hi Fiona,/);
+    assert.match(mail.text, /^Dear Fiona,/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The trade-account voice
+// ---------------------------------------------------------------------------
+
+const HIGHLAND = {
+  id: 7,
+  name: 'Highland Golf Tours',
+  contactName: 'Fiona Ross',
+  contactEmail: 'accounts@highland.test',
+  active: true,
+  autoChase: true,
+};
+
+function buildForAccount(
+  rung,
+  overrides = {},
+  { operator = HIGHLAND, toEmail = HIGHLAND.contactEmail, dueOn = '2026-01-08' } = {},
+) {
+  const book = booking(overrides);
+  const state = { ...money(book), balanceDueDate: '2026-04-02' };
+  return buildLifecycleEmail(rung, { booking: book, money: state, dueOn, operator, toEmail });
+}
+
+describe('the trade-account voice', () => {
+  test('every rung that asks for money is written a second time, to the account', () => {
+    assert.equal(TRADE_RUNGS.length, 13);
+    for (const rung of TRADE_RUNGS) {
+      const mail = buildForAccount(rung);
+      assert.match(mail.text, /^Dear Fiona,/, `${rung} is addressed to the contact`);
+      assert.match(mail.text, /Ann McLeod/, `${rung} names the guest`);
+      assert.match(mail.text, /Account: Highland Golf Tours/, `${rung} names the account`);
+      assert.doesNotMatch(
+        mail.text,
+        /your round|your tee time|your booking|Hi Ann/i,
+        `${rung} talks to the account, not a guest`,
+      );
+      assert.doesNotMatch(mail.text, /Change or cancel:/, `${rung} carries no manage-booking link`);
+    }
+  });
+
+  test('the communication rungs go to the guest in one voice, whoever pays', () => {
+    for (const rung of ['confirmation', 'final_details', 'post_play']) {
+      assert.equal(audienceFor(rung, { operator: HIGHLAND, toEmail: 'ann@example.com' }), 'guest');
+      const mail = buildForAccount(rung, {}, { toEmail: 'ann@example.com' });
+      assert.match(mail.text, /^Hi Ann,/, rung);
+    }
+  });
+
+  test("the balance notice quotes the account's own due date", () => {
+    const trade = booking({ amountPaid: 250, paymentStatus: 'Deposit paid' });
+    const mail = buildForAccount('balance_notice', trade);
+    assert.match(mail.subject, /^Balance due 2 April: booking RD-4001 \(Ann McLeod\)/);
+    assert.match(mail.text, /payable by 2 April/);
+    assert.ok(mail.text.includes(formatMoney(750)));
+  });
+
+  test('an account with no contact email is written to as a guest, because the guest is who gets it', () => {
+    const quiet = { ...HIGHLAND, contactEmail: '' };
+    assert.equal(audienceFor('deposit_request', { operator: quiet, toEmail: 'ann@example.com' }), 'guest');
+    const mail = buildForAccount('deposit_request', {}, { operator: quiet, toEmail: 'ann@example.com' });
+    assert.match(mail.text, /^Hi Ann,/);
+    assert.match(mail.text, /Thank you for booking with us/);
+  });
+
+  test('the address decides the voice, not the account alone', () => {
+    // A run that, for whatever reason, sends to the guest must not write to
+    // them as the account.
+    assert.equal(audienceFor('deposit_request', { operator: HIGHLAND, toEmail: 'ann@example.com' }), 'guest');
+    assert.equal(audienceFor('deposit_request', { operator: HIGHLAND, toEmail: 'ACCOUNTS@highland.test' }), 'operator');
+  });
+
+  test('a booking with no guest name is still about somebody', () => {
+    const mail = buildForAccount('deposit_reminder_1', { guestName: '' });
+    assert.match(mail.text, /the booking below for your client/);
+  });
+
+  test('the merge fields for a template say which voice they are in', () => {
+    const book = booking();
+    const data = lifecycleTemplateData('deposit_request', {
+      booking: book,
+      money: money(book),
+      dueOn: '2026-01-08',
+      operator: HIGHLAND,
+      toEmail: HIGHLAND.contactEmail,
+    });
+    assert.equal(data.audience, 'operator');
+    assert.match(data.headline, /Thank you for the booking below for Ann McLeod/);
   });
 });

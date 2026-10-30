@@ -52,7 +52,7 @@ The dashboard learns of payments two ways: Stripe's webhook and its own sync (15
 
 ### Emails are not being sent
 
-1. The page that sends (Users, Guest Emails, Operator Reminders, payment panel) lists missing configuration: `SENDGRID_API_KEY`, `FROM_EMAIL`, template ids, `APP_URL`.
+1. The page that sends (Users, Guest Emails, Booking Status, payment panel) lists missing configuration: `SENDGRID_API_KEY`, `FROM_EMAIL`, template ids, `APP_URL`.
 2. Logs: `reset email failed: SendGrid error 403: …`, `[portal] email failed: …`, `[changes] guest email failed: …`. 401/403 → key revoked or lacking Mail Send; "does not match a verified Sender Identity" → verify `FROM_EMAIL` or authenticate its domain; 400 on a template → wrong/deleted template id. `SendGrid timed out` → 15 s timeout.
 3. SendGrid → Activity: was the message accepted, delivered, bounced, blocked?
 4. Password reset and portal sign-in answer the same message whether or not they sent anything; check the log rather than the screen. Throttled requests log `throttled`.
@@ -139,7 +139,7 @@ Formal policy, severity levels and notification duties (including personal-data 
 |---|---|---|
 | SEV1 | Personal-data exposure; payments recorded wrongly; both services down | **TO CONFIRM (owner)** |
 | SEV2 | Dashboard down; emails or payments failing for all guests | **TO CONFIRM (owner)** |
-| SEV3 | One feature degraded (reminders, Vero, analytics) | **TO CONFIRM (owner)** |
+| SEV3 | One feature degraded (the booking ladder, Vero, analytics) | **TO CONFIRM (owner)** |
 
 Roles: incident lead, communications, scribe — names and contacts **TO CONFIRM (owner)**.
 

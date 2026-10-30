@@ -2,12 +2,21 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – the trade-account voice, and the reminders page retired (October 2026)
+
+### Added
+
+- **Every payment and balance email has a trade-account voice.** The thirteen rungs that ask for money — the deposit request, its two reminders, the overdue notice, the two rescue warnings, the cancellation and the receipt; the balance notice, its two warnings, its cancellation and the paid-in-full receipt — are written a second time for the account that pays: the guest in the third person, the account's own due date, the terms stated as terms, Guest and Account rows at the top of the table, and no manage-booking link. Which voice goes is decided per email by who it is actually addressed to, so an account with no contact email, whose chase falls back to the guest, is written to as a guest. The communication rungs keep one voice, to the guest, whoever pays.
+
+### Removed
+
+- **The Operator Reminders page, its API (`/api/reminders`) and its two campaigns.** The ladder does their job per booking rather than per account: a trade booking is asked for its deposit and its balance at the account, on the account's own dates, with warnings before each deadline, and every send is in the ledger. The two stamp columns on `bookings` stay as history; nothing writes them now. `SENDGRID_TEMPLATE_OPERATOR_*`, `OPERATOR_*_REMINDER_DAYS` and `OPERATOR_REMINDER_FALLBACK_EMAIL` are no longer read. `/reminders` redirects to Booking Status.
+
 ## Unreleased – Booking Status, one page for chasing (October 2026)
 
 ### Changed
 
 - **Booking Lifecycle is renamed Booking Status** (`/booking-status`; `/lifecycle` redirects) — the nav item, the page, the Settings link and the drawer's history panel.
-- **Operator Reminders is folded into it as a tab.** The per-account digest (one email listing an operator's open bookings or what it owes, picked and sent by hand) was the same job as the ladder's balance chasing, done manually. It now lives at Booking Status → *Tour operator reminders* (`/reminders` redirects there), with a note when chasing is on that balance reminders already go out automatically, so the tab is for a one-off nudge or for bookings still waiting to be confirmed. Nothing about what it sends has changed.
 
 ## Unreleased – settings cut down to a switch and a choice (October 2026)
 
