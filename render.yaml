@@ -12,12 +12,9 @@ services:
     # this service for the SPA to carry them at all. None are set here: this is
     # the demo, so the SPA uses the defaults in web/src/lib/brand.js.
     buildCommand: npm install --include=dev && npm run build
-    # Migrations are NOT applied at boot. Run `npm run migrate` against this
-    # database before deploying code that needs a new column; the server only
-    # checks, after it is listening, and logs what is missing. Applying at boot
-    # put the database on the critical path of every deploy -- on every
-    # instance, while the old one was still holding its connections.
-    # MIGRATE_ON_START=apply restores the old behaviour.
+    # This service APPLIES pending migrations before it listens, via
+    # MIGRATE_ON_START=apply below. See the note on that variable: the default
+    # is to check and serve anyway, which is wrong for this deployment.
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -27,6 +24,31 @@ services:
         value: "22"
       - key: LOG_FORMAT
         value: json
+      # Apply pending migrations before listening, and fail the deploy if one
+      # cannot be applied.
+      #
+      # The code's own default is 'check': report what is missing and serve
+      # anyway. That is Dashboard_Beta's setting, and it is right for THAT
+      # install -- its club shares a small Supabase connection budget with an
+      # email bot, and migrating at boot put the database on the critical path
+      # of every deploy and broke one on 13 Oct 2026. Its migrations are
+      # applied by hand, deliberately, ahead of the deploy.
+      #
+      # It is wrong here. This deployment has no such constraint, nobody runs
+      # `npm run migrate` against the demo by hand, and 'check' only logs --
+      # so the first deploy carrying the ported features served code that
+      # reads `bookings.booked_at` against a database that had never had
+      # migration 0025, and every page died on `column "booked_at" does not
+      # exist`. "Serve anyway" is hollow when the missing column is in the
+      # SELECT every page runs: the whole dashboard goes blank, not one page.
+      #
+      # So: apply, which is what this repository did before the migration
+      # runner was changed. A deploy that cannot bring the schema up to date
+      # now fails its health check and rolls back, which is the honest
+      # outcome -- far better than serving a dashboard that cannot load a
+      # booking.
+      - key: MIGRATE_ON_START
+        value: apply
       # If this points at Supabase, use a SESSION-mode connection string
       # (direct host, or the pooler on port 5432) — never the transaction
       # pooler on 6543, which breaks the migration runner's session-level

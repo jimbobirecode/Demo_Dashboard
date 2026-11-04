@@ -2,6 +2,31 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – the demo applies its own migrations again (November 2026)
+
+### Fixed
+
+- **The dashboard was down after the previous deploy: every page failed with
+  `column "booked_at" does not exist`.** Bringing this repository into line with
+  Dashboard_Beta took its `MIGRATE_ON_START` default of `check` along with
+  everything else — report what is missing, serve anyway — where this repository
+  had always applied pending migrations at boot. Nobody runs `npm run migrate`
+  against the demo by hand, so the deploy shipped code that reads
+  `bookings.booked_at` against a database that had never had migration `0025`,
+  and `check` only wrote a line in the log.
+
+  `check` is right for Dashboard_Beta: its club shares a small Supabase
+  connection budget with an email bot, migrating at boot broke a deploy on
+  13 Oct 2026, and its migrations are applied deliberately ahead of each
+  release. None of that holds here, and "serve anyway" is hollow when the
+  missing column is in the `SELECT` behind every page — the whole dashboard goes
+  blank rather than one page breaking.
+
+  So this service now sets `MIGRATE_ON_START=apply` in `render.yaml`, which is
+  what it did before. A deploy that cannot bring the schema up to date fails its
+  health check and rolls back, instead of serving a dashboard that cannot load a
+  booking.
+
 ## Unreleased – brought into line with Dashboard_Beta (November 2026)
 
 The dashboard's configuration and feature set were brought up to
