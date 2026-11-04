@@ -61,7 +61,7 @@ Never point `TEST_DATABASE_URL` at real data: the tests create, truncate and dro
 |---|---|
 | `npm run dev` | API (`node --watch`) and Vite dev server together |
 | `npm run build` | Build the SPA into `web/dist` (served by the API in production) |
-| `npm start` | Production server: listen on `PORT` (3001), then check the schema and log anything missing |
+| `npm start` | Production server: apply pending migrations (`MIGRATE_ON_START=apply`, set on the Render service), then listen on `PORT` (3001). With the code's default `check` it listens first and only logs what is missing |
 | `npm run migrate` | Apply pending migrations to `DATABASE_URL` |
 | `npm run migrate:status` | List applied and pending migrations; changes nothing |
 | `npm run seed` | Sample bookings, tour operators and a demo login (`-- --reset` to rebuild sample rows, `-- --operators` for operators only). Never against production |
