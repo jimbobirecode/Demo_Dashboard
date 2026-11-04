@@ -4,9 +4,9 @@
 
 | Suite | Location | Runner | Needs |
 |---|---|---|---|
-| Server unit tests | `server/test/*.test.js` (29 files) | `node --test` | Nothing: domain modules are pure functions; `session-auth.test.js` drives `requireAuth` with a stubbed `pool.query` |
+| Server unit tests | `server/test/*.test.js` (31 files) | `node --test` | Nothing: domain modules are pure functions; `session-auth.test.js` drives `requireAuth` with a stubbed `pool.query` |
 | Server DB integration | `server/test/integration/*.test.js` | `node --test` | `TEST_DATABASE_URL` (skipped when unset) |
-| Web (SPA) | `web/src/**/*.test.{js,jsx}` (4 files) | Vitest + jsdom + Testing Library (`web/vite.config.js`, setup `web/src/test/setup.js`) | Nothing |
+| Web (SPA) | `web/src/**/*.test.{js,jsx}` (5 files) | Vitest + jsdom + Testing Library (`web/vite.config.js`, setup `web/src/test/setup.js`) | Nothing |
 
 Server unit files by area:
 
@@ -16,12 +16,16 @@ Server unit files by area:
 | Guests and links | `change-request-domain`, `guest-change-emails`, `portal-domain` |
 | Payments | `payment-link-domain` (incl. Stripe signature verification, idempotency rules), `payment-scope` (webhook log and sync results per club) |
 | Exports and imports | `csv` (formula defusing, CSV and `.xlsx` rows), `import-domain`, `sheet-reader` (row/column caps), `booking-ref` (core API reference format, CSPRNG) |
-| Bookings, analytics, operators, waitlist, email | `bookings-domain`, `analytics-domain`, `operators-domain`, `lifecycle-emails`, `waitlist-domain`, `email-domain`, `email-layout`, `inbox-domain`, `vero-domain`, `currency` |
+| Bookings, analytics, operators, waitlist, email | `bookings-domain`, `analytics-domain`, `operators-domain`, `booking-trigger-emails`, `waitlist-domain`, `email-domain`, `email-layout`, `inbox-domain`, `vero-domain`, `currency` |
+| Booking trigger workflow | `booking-triggers-domain` (the ladder's dates, the payment conditions, the catch-up horizon, collapsing), `booking-trigger-emails` (every rung renders; the copy follows the configured deadlines) |
 | Infrastructure | `logger`, `sentry-scrub` (no query strings, cookies, bodies or addresses), `db-ssl` (TLS for remote databases), `app-loads` (the app module imports and mounts) |
 
 Integration suites:
 
 - `migrate.test.js` — reads migrations in order with stable checksums; CRLF-insensitive checksums; refuses bad names, duplicate versions and files with their own transaction; applies every migration to an empty database then finds nothing to do; re-running the baseline SQL by hand changes nothing; two concurrent runners apply each file once; an edited applied migration is refused; a failing migration rolls back and is not recorded; a role that owns no table can run every migration on an existing schema (all no-ops); rows that break a new CHECK or unique index leave it `NOT VALID` / skipped, with nothing deleted and new rows still checked.
+- `booking-trigger-ledger.test.js` — the partial unique index behind the no-double-send guarantee: a settled rung cannot be written twice (two overlapping runs claim it once), the guard is per rung rather than per booking, `skipped`/`superseded`/`cleared`/`cancelled` settle it too, a `failed` row is outside the index so a refused send retries and every attempt is kept, two clubs climb their own ladders, and re-running the migrations changes nothing.
+- `booking-trigger-migration-missing.test.js` — the feature's normal first state on a real install: code deployed against a database migrated only to `0025`. Planning, reading the history, writing to the ledger and a whole run each refuse with a `409` naming the table, the migration and `npm run migrate`; the scheduled pass stands down after saying it once rather than once per club; and `/config` still answers, so the page can render the message instead of going blank.
+- `booking-trigger-run.test.js` — one pass of the workflow with SendGrid stubbed at `fetch`: a dry run sends nothing and writes nothing; a real run sends one email, records it and no-ops on the next pass; the email lands on the booking's conversation; a booking that has outrun its ladder gets only the latest rung with the passed ones recorded as superseded; a lapsed booking is left for a person unless `TRIGGER_WORKFLOW_AUTO_CANCEL` is set, and even then is cancelled rather than deleted (including a row carrying the retired `Confirmed` spelling, which must not be told it was cancelled and then not be); a paid booking is thanked rather than chased, and a payment of unknown age earns no receipt; a blocked booking, a switched-off workflow and a club with no payment ledger all do nothing; club scoping; a named selection; and a refused send retrying.
 - `routes.test.js` — real Express app against a migrated scratch database: sign-in (uniform 401, lockout after 5 failures), `requireAuth` (garbage/foreign signatures, revoked `session_version`, club taken from the account not the token, portal token refused), CSRF header and Origin, club scoping (IDOR) for bookings and users, admin-only routes, operator portal isolation and session end on retirement, manage-booking links (uniform refusal, cross-club token refused, private fields withheld); portal sign-out revoking the session, forged portal tokens without a session row, new sign-in links retiring older ones; admin-only operator/waitlist deletes; the payment webhook log per club; in-flight inbound emails kept out of the Inbox and the inbound Message-ID unique index.
 
 Each integration test creates and drops its own databases next to `TEST_DATABASE_URL` (`helpers.js`), so that URL must point at a **disposable server** whose user may `CREATE DATABASE`. Never point it at real data.

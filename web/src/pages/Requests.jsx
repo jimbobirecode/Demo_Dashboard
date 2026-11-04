@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDate, formatDateTime, formatNumber } from '../lib/format.js';
+import Correspondent from '../components/Correspondent.jsx';
 
 /**
  * What guests have asked for, and the club's answer.
@@ -36,9 +37,11 @@ export default function Requests() {
     setNotice(null);
     try {
       const result = await api.resolveChangeRequest(request.id, decision, '');
+      // Named, because the answer goes to whoever asked - which on an
+      // operator's request is the operator, not the booking's lead guest.
       const told = result.guestEmailed
-        ? ` The guest has been emailed${result.guestEmail ? ` at ${result.guestEmail}` : ''}.`
-        : ' No email went to the guest (email sending is not set up, or the booking has no address) - let them know yourself.';
+        ? ` ${result.guestEmail ?? 'Whoever asked'} has been emailed.`
+        : ' No email went out (email sending is not set up, or the request has no address) - let them know yourself.';
       setNotice(
         (result.bookingCancelled
           ? `${request.bookingId} cancelled.`
@@ -84,7 +87,7 @@ export default function Requests() {
             <thead>
               <tr>
                 <th>Booking</th>
-                <th>Guest</th>
+                <th>Contact</th>
                 <th>Asked</th>
                 <th>What they want</th>
                 <th className="num">Days to play</th>
@@ -103,10 +106,7 @@ export default function Requests() {
                     </div>
                   </td>
                   <td>
-                    <div>{request.guestName || '—'}</div>
-                    <div className="muted" style={{ fontSize: '0.75rem' }}>
-                      {request.guestEmail}
-                    </div>
+                    <Correspondent booking={request} />
                   </td>
                   <td>{formatDateTime(request.createdAt)}</td>
                   <td>

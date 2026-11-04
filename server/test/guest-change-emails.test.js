@@ -32,7 +32,7 @@ test('a manage link is issued only when the install can sign one, and the manage
   assert.match(
     manageUrlFor(booking, { BOOKING_LINK_SECRET: 'secret' }),
     /^https:\/\/democlub\.teemail\.io\/manage-booking\?/,
-    'no APP_URL: the TeeMail dashboard',
+    "no APP_URL: this club's own dashboard, never a relative link",
   );
   assert.equal(manageUrlFor(booking, { APP_URL: 'https://x' }), null, 'no secret');
 });

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { BRAND } from '../lib/brand.js';
+import { greetingFirstName, leadGuestAside } from '../lib/correspondent.js';
 import { formatCurrency, formatDate } from '../lib/format.js';
 
 /** How long a sent email can still be taken back. */
@@ -37,7 +38,11 @@ function quickReplies(context) {
   const signOff = `Kind regards,\n${BRAND.fullName}`;
   const when = [context.date, context.teeTime && `at ${context.teeTime}`].filter(Boolean).join(' ');
   const party = context.players ? `${context.players} player${context.players === 1 ? '' : 's'}` : '';
-  const summary = [when, party].filter(Boolean).join(', ');
+  // An operator has several parties with the club at once, and the booking's
+  // lead guest is not who the email is addressed to. Naming them says which
+  // party this is about, which is the one thing that name is good for.
+  const whose = context.leadName ? `for ${context.leadName}'s party` : '';
+  const summary = [when, party, whose].filter(Boolean).join(', ');
   const ref = context.bookingId ? `\nBooking reference: ${context.bookingId}` : '';
 
   return [
@@ -74,11 +79,21 @@ function quickReplies(context) {
   ];
 }
 
-/** What a quick reply can fill in, from whichever booking shape the page has. */
-export function composerContext(booking, fallbackName = '') {
-  const name = booking?.guestName || fallbackName || '';
+/**
+ * What a quick reply can fill in, from the booking and from who the club is
+ * writing to.
+ *
+ * `who` is the correspondent -- the person at the other end of the email, as
+ * the server described them from the club's own records. The greeting is
+ * theirs and nobody else's: both pages used to work this out for themselves,
+ * and a caller who forgot to would open "Hi Lori," to an operator's booking
+ * desk, Lori being a guest in the party rather than whoever is reading it. The
+ * lead guest is passed separately, as a name to mention.
+ */
+export function composerContext(booking, who = null) {
   return {
-    firstName: name.trim().split(/\s+/)[0] || '',
+    firstName: greetingFirstName(who),
+    leadName: leadGuestAside(booking, who),
     bookingId: booking?.bookingId ?? '',
     date: booking?.date ? formatDate(booking.date) : '',
     teeTime: booking?.teeTime && booking.teeTime !== 'Not Specified' ? booking.teeTime : '',
@@ -100,6 +115,10 @@ export function composerContext(booking, fallbackName = '') {
 export default function EmailComposer({
   title = null,
   to,
+  // Who `to` belongs to, from the server: { kind, name, label, note }. The
+  // address is always shown; the name only ever qualifies it.
+  recipient = null,
+  about = null,
   subject = '',
   editableSubject = false,
   subjectPlaceholder = '',
@@ -231,10 +250,53 @@ export default function EmailComposer({
   return (
     <div className="stack composer" style={{ gap: '0.5rem' }}>
       {title && <div className="composer-title">{title}</div>}
-      <div className="muted" style={{ fontSize: '0.8125rem', marginTop: title ? '-0.35rem' : 0 }}>
-        To <strong className="secondary">{to}</strong>
-        {!editableSubject && subject ? <> · {subject}</> : null}
+      {/* The address is the one thing that decides where this email lands, so
+          it is never the small print: a name beside it is a label for it, and
+          what the email is ABOUT is said separately from who it goes TO. The
+          two were running together, and staff could not tell from the top of
+          the composer whether they were writing to the agent or the golfer. */}
+      <div
+        className="composer-to"
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'baseline',
+          gap: '0.4rem',
+          fontSize: '0.875rem',
+          marginTop: title ? '-0.35rem' : 0,
+        }}
+      >
+        <span className="muted">To</span>
+        <strong className="secondary" style={{ fontSize: '0.9375rem' }}>
+          {to}
+        </strong>
+        {recipient?.name && <span className="muted">({recipient.name})</span>}
+        {recipient?.kind === 'operator' && (
+          <span
+            className="chip"
+            style={{
+              padding: '0.1rem 0.5rem',
+              borderRadius: '999px',
+              fontSize: '0.75rem',
+              border: '1px solid var(--brand-gold)',
+              color: 'var(--brand-gold-bright)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Tour operator
+          </span>
+        )}
       </div>
+      {!editableSubject && subject ? (
+        <div className="muted" style={{ fontSize: '0.8125rem', marginTop: '-0.3rem' }}>
+          {subject}
+        </div>
+      ) : null}
+      {(about || recipient?.note) && (
+        <div className="muted" style={{ fontSize: '0.8125rem', marginTop: '-0.2rem' }}>
+          {about ?? recipient.note}
+        </div>
+      )}
 
       {!preview && (
         <div className="quick-replies" aria-label="Start from a ready-made reply">

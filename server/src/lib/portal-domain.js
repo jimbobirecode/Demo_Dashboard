@@ -12,7 +12,7 @@
  * and Inbox, and only staff approve them.
  */
 import { BRAND } from './brand.js';
-import { brandedEmail, escapeHtml } from './email-layout.js';
+import { EMAIL_COLORS, brandedEmail, escapeHtml } from './email-layout.js';
 import { cleanAddress, describeMinutes } from './password-reset-domain.js';
 import { emailDomain, isConsumerDomain } from './operators-domain.js';
 import { csvLine } from './csv.js';
@@ -75,8 +75,8 @@ export function buildPortalSignInEmail({ operatorName, link, ttlMinutes = PORTAL
   const html = brandedEmail(
     `<p style="margin:0 0 14px;">Hello,</p>` +
       `<p style="margin:0 0 20px;">Here is your link to sign in to the ${escapeHtml(BRAND.fullName)} portal for <strong>${escapeHtml(operatorName)}</strong>, where you can see all your bookings, what is due, and send us requests.</p>` +
-      `<div style="text-align:center;padding:4px 0 24px;"><a href="${escapeHtml(link)}" style="display:inline-block;background:#1a5e58;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">Sign in to the portal</a></div>` +
-      `<p style="margin:0 0 14px;font-size:13px;color:#5b6b63;">It works once and expires in ${escapeHtml(expires)}. If you did not ask for it, you can ignore this email.</p>`,
+      `<div style="text-align:center;padding:4px 0 24px;"><a href="${escapeHtml(link)}" style="display:inline-block;background:${EMAIL_COLORS.primary};color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">Sign in to the portal</a></div>` +
+      `<p style="margin:0 0 14px;font-size:13px;color:${EMAIL_COLORS.muted};">It works once and expires in ${escapeHtml(expires)}. If you did not ask for it, you can ignore this email.</p>`,
   );
   return { subject, text, html };
 }
@@ -123,21 +123,14 @@ export function isCurrent(booking, today) {
 }
 
 /** The operator's statement: one row per booking, for their accounts team. */
-export function statementCsv(bookings, { currency = BRAND.currency } = {}) {
-  const header = [
-    'Booking reference',
-    'Invoice',
-    'Play date',
-    'Tee time',
-    'Players',
-    'Course',
-    'Status',
-    `Total (${currency})`,
-    `Paid (${currency})`,
-    `Outstanding (${currency})`,
-    'Due date',
-    'Overdue days',
-  ];
+export function statementCsv(bookings, { currency = BRAND.currency, withBalances = true } = {}) {
+  // A statement of what is owed, where nothing is being recorded as paid, is
+  // a column of the whole booking value called "Outstanding". Without payment
+  // tracking the file is what it honestly is: a list of the rounds booked.
+  const money = withBalances
+    ? [`Total (${currency})`, `Paid (${currency})`, `Outstanding (${currency})`, 'Due date', 'Overdue days']
+    : [`Value (${currency})`];
+  const header = ['Booking reference', 'Invoice', 'Play date', 'Tee time', 'Players', 'Course', 'Status', ...money];
   const rows = bookings.map((b) => [
     b.bookingId,
     b.invoiceNumber,
@@ -146,11 +139,15 @@ export function statementCsv(bookings, { currency = BRAND.currency } = {}) {
     b.players,
     b.course,
     b.status,
-    b.total.toFixed(2),
-    Number(b.paid).toFixed(2),
-    Number(b.outstanding).toFixed(2),
-    b.dueDate,
-    b.daysOverdue || '',
+    ...(withBalances
+      ? [
+          b.total.toFixed(2),
+          Number(b.paid).toFixed(2),
+          Number(b.outstanding).toFixed(2),
+          b.dueDate,
+          b.daysOverdue || '',
+        ]
+      : [b.total.toFixed(2)]),
   ]);
   return [header, ...rows].map(csvLine).join('\r\n') + '\r\n';
 }

@@ -71,10 +71,11 @@ async function post(apiKey, toEmail, fetchImpl, body) {
       return { ok: true, status: response.status, message: `Sent to ${toEmail}` };
     }
 
+    const detail = await describeFailure(response);
     return {
       ok: false,
       status: response.status,
-      message: `SendGrid error ${response.status}: ${await describeFailure(response)}`,
+      message: `SendGrid error ${response.status}: ${detail}${senderIdentityHint(response.status, detail, body.from?.email)}`,
     };
   } catch (err) {
     const message = err?.name === 'AbortError' ? 'SendGrid timed out' : err.message;
@@ -82,6 +83,30 @@ async function post(apiKey, toEmail, fetchImpl, body) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * SendGrid's 403 for an unverified sender says what is wrong but neither which
+ * address it objected to nor what to do, and the address it objected to is
+ * FROM_EMAIL, which is set on the service rather than anywhere in the code. So
+ * the message names it and says where to fix it.
+ *
+ * It is not a fault in this dashboard and no retry helps: SendGrid sends
+ * nothing at all from an account until the From address is verified, or its
+ * domain is. The Streamlit dashboard this replaced special-cased the same 403
+ * for the same reason.
+ */
+function senderIdentityHint(status, detail, fromEmail) {
+  if (status !== 403 || !/sender identity/i.test(detail)) return '';
+  const address = fromEmail ? `"${fromEmail}"` : 'the From address';
+  return (
+    ` — this is FROM_EMAIL (${address}), and SendGrid will not send from it until` +
+    ' it is verified. In SendGrid, either verify that exact address under Sender' +
+    ' Authentication → Single Sender Verification, or authenticate the domain it' +
+    ' belongs to, which covers every address on it. Changing FROM_EMAIL to an' +
+    ' address that is already verified works too. REPLY_TO_EMAIL needs no' +
+    ' verification — only the From address does.'
+  );
 }
 
 /** SendGrid reports the real problem (bad template id, unverified sender) in the body. */

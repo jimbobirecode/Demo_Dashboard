@@ -182,3 +182,32 @@ test('the link secret fingerprint matches the shared test vector and is logged, 
   assert.equal(describeLinkSecret({ BOOKING_LINK_SECRET: '   ' }), 'LINK SECRET: not set');
   assert.doesNotMatch(describeLinkSecret({ BOOKING_LINK_SECRET: 'test-secret' }), /test-secret/);
 });
+
+test('a change request is answered to whoever asked, not to the booking lead guest', async () => {
+  const { changeRequestRecipient } = await import('../src/lib/change-request-domain.js');
+  const booking = { guestEmail: 'Lead.Guest@example.com', guestName: 'John Smith' };
+
+  // An operator asked, through the portal or by email. They are the one
+  // waiting for an answer, and the booking's name is not theirs to be
+  // greeted by.
+  assert.deepEqual(changeRequestRecipient({ request: { guest_email: 'Groups@Tours.test' }, booking }), {
+    to: 'groups@tours.test',
+    leadGuest: false,
+  });
+
+  // The guest asked on the manage page.
+  assert.deepEqual(changeRequestRecipient({ request: { guestEmail: 'lead.guest@example.com' }, booking }), {
+    to: 'lead.guest@example.com',
+    leadGuest: true,
+  });
+
+  // An old request stored no address: the booking's is the only one there is.
+  assert.deepEqual(changeRequestRecipient({ request: {}, booking }), {
+    to: 'lead.guest@example.com',
+    leadGuest: true,
+  });
+
+  // Nothing to write to at all.
+  assert.equal(changeRequestRecipient({ request: {}, booking: {} }), null);
+  assert.equal(changeRequestRecipient(), null);
+});

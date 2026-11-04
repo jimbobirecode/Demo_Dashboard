@@ -141,10 +141,17 @@ function PortalHome() {
   }
 
   const { operator, account, canPayOnline, email } = me.data;
+  // The club does not record payments, so the operator is shown what they
+  // have booked rather than a balance derived from nothing being paid. See
+  // tracksPayments in server/src/lib/operators-domain.js.
+  const money = me.data.tracksPayments ?? false;
   const today = list?.today ?? '';
   const bookings = list?.bookings ?? [];
+  // "Current" means a round still to play, plus anything still owed. Where
+  // nothing is recorded as paid, every booking ever made is "still owed", so
+  // that half of the test would quietly turn the filter off.
   const shown =
-    view === 'current' ? bookings.filter((b) => (b.date && b.date >= today) || b.outstanding > 0) : bookings;
+    view === 'current' ? bookings.filter((b) => (b.date && b.date >= today) || (money && b.outstanding > 0)) : bookings;
 
   async function signOut() {
     await api.portalLogout().catch(() => {});
@@ -200,22 +207,32 @@ function PortalHome() {
         )}
 
         <div className="kpi-row">
-          <KpiTile
-            label="Outstanding"
-            value={formatCurrency(account.outstanding)}
-            sub={`${account.bookings} booking${account.bookings === 1 ? '' : 's'} on account`}
-          />
-          <KpiTile
-            label="Overdue"
-            value={formatCurrency(account.overdueAmount)}
-            sub={
-              account.overdueCount
-                ? `${account.overdueCount} booking${account.overdueCount === 1 ? '' : 's'}, oldest ${account.maxDaysOverdue} days`
-                : 'Nothing overdue'
-            }
-            accent={account.overdueCount ? 'var(--status-rejected)' : undefined}
-          />
-          {account.creditLimit !== null && (
+          {money ? (
+            <KpiTile
+              label="Outstanding"
+              value={formatCurrency(account.outstanding)}
+              sub={`${account.bookings} booking${account.bookings === 1 ? '' : 's'} on account`}
+            />
+          ) : (
+            <KpiTile
+              label="Bookings"
+              value={`${account.bookings}`}
+              sub={`${formatCurrency(account.committedGross)} booked`}
+            />
+          )}
+          {money && (
+            <KpiTile
+              label="Overdue"
+              value={formatCurrency(account.overdueAmount)}
+              sub={
+                account.overdueCount
+                  ? `${account.overdueCount} booking${account.overdueCount === 1 ? '' : 's'}, oldest ${account.maxDaysOverdue} days`
+                  : 'Nothing overdue'
+              }
+              accent={account.overdueCount ? 'var(--status-rejected)' : undefined}
+            />
+          )}
+          {money && account.creditLimit !== null && (
             <KpiTile
               label="Credit available"
               value={formatCurrency(Math.max(account.headroom, 0))}
@@ -265,10 +282,10 @@ function PortalHome() {
                     <th>Tee time</th>
                     <th>Players</th>
                     <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Total</th>
-                    <th style={{ textAlign: 'right' }}>Paid</th>
-                    <th style={{ textAlign: 'right' }}>Outstanding</th>
-                    <th>Due</th>
+                    <th style={{ textAlign: 'right' }}>{money ? 'Total' : 'Value'}</th>
+                    {money && <th style={{ textAlign: 'right' }}>Paid</th>}
+                    {money && <th style={{ textAlign: 'right' }}>Outstanding</th>}
+                    {money && <th>Due</th>}
                     <th />
                   </tr>
                 </thead>
@@ -279,6 +296,7 @@ function PortalHome() {
                       booking={b}
                       today={today}
                       canPayOnline={canPayOnline}
+                      money={money}
                       paying={paying === b.bookingId}
                       open={open?.bookingId === b.bookingId ? open.kind : null}
                       onOpen={(kind) => setOpen(kind ? { bookingId: b.bookingId, kind } : null)}
@@ -301,7 +319,7 @@ function PortalHome() {
   );
 }
 
-function BookingRow({ booking: b, today, canPayOnline, paying, open, onOpen, onPay, onDone }) {
+function BookingRow({ booking: b, today, canPayOnline, money, paying, open, onOpen, onPay, onDone }) {
   const played = b.date && b.date < today;
   const live = !['Cancelled', 'Rejected'].includes(b.status) && !played;
   const teeTimes = Array.isArray(b.teeTimes) && b.teeTimes.length ? b.teeTimes.join(', ') : b.teeTime;
@@ -331,23 +349,27 @@ function BookingRow({ booking: b, today, canPayOnline, paying, open, onOpen, onP
           )}
         </td>
         <td style={{ textAlign: 'right' }}>{formatCurrency(b.total)}</td>
-        <td style={{ textAlign: 'right' }}>{formatCurrency(b.paid)}</td>
-        <td style={{ textAlign: 'right', fontWeight: b.outstanding > 0 ? 700 : 400 }}>
-          {formatCurrency(b.outstanding)}
-        </td>
-        <td>
-          {b.dueDate && b.outstanding > 0 ? (
-            <span style={b.overdue ? { color: 'var(--status-rejected)', fontWeight: 700 } : undefined}>
-              {formatDate(b.dueDate)}
-              {b.overdue ? ` · ${b.daysOverdue}d overdue` : ''}
-            </span>
-          ) : (
-            <span className="muted">-</span>
-          )}
-        </td>
+        {money && <td style={{ textAlign: 'right' }}>{formatCurrency(b.paid)}</td>}
+        {money && (
+          <td style={{ textAlign: 'right', fontWeight: b.outstanding > 0 ? 700 : 400 }}>
+            {formatCurrency(b.outstanding)}
+          </td>
+        )}
+        {money && (
+          <td>
+            {b.dueDate && b.outstanding > 0 ? (
+              <span style={b.overdue ? { color: 'var(--status-rejected)', fontWeight: 700 } : undefined}>
+                {formatDate(b.dueDate)}
+                {b.overdue ? ` · ${b.daysOverdue}d overdue` : ''}
+              </span>
+            ) : (
+              <span className="muted">-</span>
+            )}
+          </td>
+        )}
         <td>
           <div className="row" style={{ gap: '0.35rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-            {canPayOnline && b.canPay && (
+            {money && canPayOnline && b.canPay && (
               <button
                 type="button"
                 className="btn-sm btn-primary"

@@ -1,19 +1,19 @@
 import { Link } from 'react-router-dom';
-import LifecycleSettings from '../components/LifecycleSettings.jsx';
+import GuestEmailSettings from '../components/GuestEmailSettings.jsx';
+import TriggerSettings from '../components/TriggerSettings.jsx';
 
 /**
  * The club's own settings.
  *
- * One section so far — the booking lifecycle — but a section rather than a
- * page of its own, because this is where the next one goes too. Membership
+ * Two sections — chasing unpaid bookings, and what goes to a guest without
+ * anybody pressing a button — and room for the next one. Membership
  * keeps its settings on the Membership page for now; moving them here is a
- * change to a working screen and belongs in its own piece of work, not
- * smuggled into this one.
+ * change to a working screen and belongs in its own piece of work.
  *
  * Reading is open to anyone signed in; saving is an administrator's. That
- * split is deliberate rather than incidental: everybody on the desk should be
- * able to see why a guest was chased on a Tuesday, and far fewer people
- * should be able to change it.
+ * split is deliberate: everybody on the desk should be able to see why a
+ * guest was chased on a Tuesday, and far fewer people should be able to
+ * change it.
  */
 export default function Settings() {
   return (
@@ -28,7 +28,8 @@ export default function Settings() {
 
       {/* Whether this user may save is the server's answer, carried on the
           settings it returns — not this component's guess from the role. */}
-      <LifecycleSettings />
+      <TriggerSettings />
+      <GuestEmailSettings />
     </div>
   );
 }

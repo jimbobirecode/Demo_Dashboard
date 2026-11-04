@@ -71,6 +71,25 @@ export const TIME_BANDS = [
 ];
 
 /**
+ * The row for an enquiry whose day is known but whose time is not.
+ *
+ * Most enquiries are like this: a party writes asking for a Friday in June and
+ * names no hour, and the club answers with what it has. Before this row those
+ * requests were counted as unplaceable and left out of the grid entirely --
+ * 1,296 of County Louth's 1,839, which is most of the demand the report exists
+ * to show. Worse, a day the club never gives a time for at all came out blank,
+ * so Tuesday read as "nobody asks" when in fact 111 parties asked and two got
+ * in.
+ *
+ * It sits at the foot of the grid rather than among the hours, because it is
+ * not a time of day and sorting it between 14:00 and 17:00 would be a lie.
+ */
+export const NO_TIME_BAND = 'No time given';
+
+/** Grid rows: the real hours, then the catch-all. */
+export const REQUEST_GRID_BANDS = [...TIME_BANDS.map((band) => band.key), NO_TIME_BAND];
+
+/**
  * '10:04 AM' / '09:20' / '7:30pm' -> hour as a float. Null when the row has no
  * usable time, which keeps "not specified" out of the request grid rather than
  * piling it onto midnight.
@@ -344,10 +363,10 @@ export function buildRequestUtilisation(bookings) {
   const cells = [];
   const index = new Map();
 
-  for (const band of TIME_BANDS) {
+  for (const band of REQUEST_GRID_BANDS) {
     for (const day of WEEK_ORDER) {
       const cell = {
-        band: band.key,
+        band,
         day,
         requests: 0,
         requestPlayers: 0,
@@ -362,7 +381,7 @@ export function buildRequestUtilisation(bookings) {
         movedOut: 0,
         conversion: 0,
       };
-      index.set(`${band.key}|${day}`, cell);
+      index.set(`${band}|${day}`, cell);
       cells.push(cell);
     }
   }
@@ -374,10 +393,16 @@ export function buildRequestUtilisation(bookings) {
   // An uploaded booking asked for nothing — it arrived already made — so it is
   // neither demand nor a conversion of any.
   for (const booking of enquiriesOnly(bookings)) {
+    // The day is what decides whether an enquiry can be placed at all. The
+    // time only decides WHICH row: without one it goes to NO_TIME_BAND rather
+    // than being dropped, so the grid shows all the demand and not just the
+    // third of it that named an hour.
     const day = weekdayFor(booking.date);
-    const requested = day ? index.get(`${bandFor(requestedTeeHour(booking))}|${day}`) : null;
+    const requestedBand = bandFor(requestedTeeHour(booking));
+    const bookedBand = bandFor(bookedTeeHour(booking));
+    const requested = day ? index.get(`${requestedBand ?? NO_TIME_BAND}|${day}`) : null;
     const committed = COMMITTED.has(booking.status);
-    const booked = committed && day ? index.get(`${bandFor(bookedTeeHour(booking))}|${day}`) : null;
+    const booked = committed && day ? index.get(`${bookedBand ?? NO_TIME_BAND}|${day}`) : null;
 
     if (requested) {
       placed += 1;
@@ -398,7 +423,7 @@ export function buildRequestUtilisation(bookings) {
 
     // A party that asked for one slot and plays another is demand that stayed
     // and supply that moved. Counted on both ends so neither cell lies.
-    if (booked && requested && booked !== requested) {
+    if (booked && requested && booked !== requested && requestedBand && bookedBand) {
       requested.movedOut += 1;
       booked.movedIn += 1;
       const key = `${requested.day} ${requested.band} → ${booked.band}`;
@@ -437,7 +462,7 @@ export function buildRequestUtilisation(bookings) {
 
   return {
     cells,
-    bands: TIME_BANDS.map((band) => band.key),
+    bands: REQUEST_GRID_BANDS,
     days: WEEK_ORDER,
     placed,
     unplaced,
@@ -483,6 +508,39 @@ export function buildPopularTeeTimes(bookings, limit = 8) {
     .map(([key, count]) => ({ key, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, limit);
+}
+
+/**
+ * Every tee time asked for, in the order of the day.
+ *
+ * buildPopularTeeTimes answers "which are the busy ones" and stops at eight,
+ * which is right for a chart and wrong for anybody counting. County Louth asks
+ * for 38 distinct times, so thirty of them were invisible. This returns all of
+ * them, in clock order rather than by popularity, because read that way the
+ * gaps in the day show up as well as the peaks.
+ *
+ * Anything unparseable keeps its place at the end rather than being dropped --
+ * a time nobody can read is itself worth seeing.
+ */
+export function buildAllTeeTimes(bookings) {
+  const counts = new Map();
+  for (const booking of bookings) {
+    const key = booking.teeTime;
+    if (!key || key === 'Not Specified') continue;
+    const entry = counts.get(key) ?? { key, count: 0, players: 0, booked: 0 };
+    entry.count += 1;
+    entry.players += num(booking.players);
+    if (COMMITTED.has(booking.status)) entry.booked += 1;
+    counts.set(key, entry);
+  }
+  return [...counts.values()]
+    .map((entry) => ({ ...entry, hour: parseTeeHour(entry.key) }))
+    .sort((a, b) => {
+      if (a.hour === null && b.hour === null) return a.key.localeCompare(b.key);
+      if (a.hour === null) return 1;
+      if (b.hour === null) return -1;
+      return a.hour - b.hour || a.key.localeCompare(b.key);
+    });
 }
 
 export function buildBusiestDays(bookings) {
@@ -739,10 +797,8 @@ export function classifyCaddie(text) {
 /**
  * The number in the text, or the party size when it asks for everyone.
  *
- * Exported for the booked-customer handover, which sends the same estimate on
- * to the club's own systems: a caddie master reading it should get the number
- * this dashboard's own Analytics page shows, not a second reading of the same
- * sentence.
+ * Exported for lib/booked-webhook-domain.js, which puts the same count in the
+ * handover payload so the receiver reads caddies the way the charts do.
  */
 export function caddieCount(booking) {
   const text = String(booking.caddieRequirements ?? '');
@@ -956,6 +1012,7 @@ export function buildAnalytics(
     accommodation: buildAccommodation(bookings),
     requestUtilisation: buildRequestUtilisation(bookings),
     popularTeeTimes: buildPopularTeeTimes(bookings),
+    allTeeTimes: buildAllTeeTimes(bookings),
     busiestDays: buildBusiestDays(bookings),
 
     // Each of these carries its own "is there anything here" flag, so a club

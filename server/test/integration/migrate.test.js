@@ -4,7 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import pg from 'pg';
-import { MIGRATIONS_DIR, MigrationError, checksum, migrate, readMigrations } from '../../src/db/migrate.js';
+import {
+  MIGRATIONS_DIR,
+  MigrationError,
+  checksum,
+  migrate,
+  pendingMigrations,
+  readMigrations,
+} from '../../src/db/migrate.js';
 import { TEST_DATABASE_URL, createScratchDatabase, skip } from './helpers.js';
 
 function tempMigrations(files) {
@@ -224,6 +231,58 @@ describe('migrate runner behaviour', { skip }, () => {
       assert.equal(three.rows[0].t, null);
     } finally {
       await client.end();
+    }
+  });
+});
+
+describe('the boot-time check', { skip }, () => {
+  let db;
+  before(async () => {
+    db = await createScratchDatabase('migrate_check');
+  });
+  after(async () => {
+    await db?.drop();
+  });
+
+  test('reads what is missing and changes nothing — not even the migration table', async () => {
+    const dir = tempMigrations({
+      '0001_one.sql': 'CREATE TABLE one (id INT);',
+      '0002_two.sql': 'CREATE TABLE two (id INT);',
+    });
+
+    // A database that has had none of them, and no schema_migrations table: the
+    // check must not create one. The server only ever reads here.
+    const before = await pendingMigrations({ connectionString: db.url, dir });
+    assert.deepEqual(
+      before.map((m) => m.file),
+      ['0001_one.sql', '0002_two.sql'],
+    );
+
+    const client = new pg.Client({ connectionString: db.url });
+    await client.connect();
+    try {
+      const { rows } = await client.query("SELECT to_regclass('public.schema_migrations') AS t");
+      assert.equal(rows[0].t, null, 'the check created nothing');
+    } finally {
+      await client.end();
+    }
+
+    // Applied by hand, as a deploy does: now there is nothing to report.
+    await migrate({ connectionString: db.url, dir });
+    assert.deepEqual(await pendingMigrations({ connectionString: db.url, dir }), []);
+  });
+
+  test('an edited migration is reported as drift rather than passed over', async () => {
+    // Its own database: this one records a 0001 of its own, which the database
+    // above has already had under different contents.
+    const own = await createScratchDatabase('migrate_check_drift');
+    try {
+      const dir = tempMigrations({ '0001_one.sql': 'CREATE TABLE only_one (id INT);' });
+      await migrate({ connectionString: own.url, dir });
+      fs.writeFileSync(path.join(dir, '0001_one.sql'), 'CREATE TABLE only_one (id INT, edited INT);');
+      await assert.rejects(pendingMigrations({ connectionString: own.url, dir }), /0001_one\.sql has changed/);
+    } finally {
+      await own.drop();
     }
   });
 });

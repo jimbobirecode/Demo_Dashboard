@@ -19,7 +19,6 @@ import Inbox from './pages/Inbox.jsx';
 import Portal from './pages/Portal.jsx';
 import Membership from './pages/Membership.jsx';
 import { useInboxCount } from './lib/useInboxCount.js';
-import { useHeldCount } from './lib/useHeldCount.js';
 
 // The charting library is only needed on the analytics route — keep it out of
 // the initial bundle so the bookings table loads fast.
@@ -38,9 +37,6 @@ export default function App() {
 function StaffApp() {
   const { user, mustChangePassword, loading, login, logout, completePasswordChange } = useSession();
   const [inboxCount, setInboxCount] = useInboxCount(Boolean(user) && !mustChangePassword);
-  // The lifecycle ladder's held decisions. Badged for the same reason the
-  // Inbox is: with auto-cancel off, nothing happens until somebody looks.
-  const [heldCount] = useHeldCount(Boolean(user) && !mustChangePassword);
 
   if (loading) {
     return <div className="empty">Loading dashboard…</div>;
@@ -114,31 +110,12 @@ function StaffApp() {
           </NavLink>
           <NavLink to="/booking-status" className={navClass}>
             Booking Status
-            {heldCount > 0 && (
-              <span
-                aria-label={`${heldCount} waiting on a decision`}
-                style={{
-                  marginLeft: '0.5rem',
-                  background: 'var(--status-rejected)',
-                  color: 'var(--surface-0)',
-                  borderRadius: '999px',
-                  padding: '0 0.45rem',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                }}
-              >
-                {heldCount}
-              </span>
-            )}
           </NavLink>
           <NavLink to="/import" className={navClass}>
             Upload Tee Sheet
           </NavLink>
           <NavLink to="/analytics" className={navClass}>
             Analytics
-          </NavLink>
-          <NavLink to="/settings" className={navClass}>
-            Settings
           </NavLink>
           {/* Account administration is hidden from staff. The API refuses them
               too — this only saves them clicking on a page they cannot use. */}
@@ -147,6 +124,9 @@ function StaffApp() {
               Users
             </NavLink>
           )}
+          <NavLink to="/settings" className={navClass}>
+            Settings
+          </NavLink>
         </nav>
 
         <div style={{ marginTop: 'auto' }} className="stack">
@@ -186,11 +166,10 @@ function StaffApp() {
             <Route path="/membership" element={<Membership user={user} />} />
             <Route path="/emails" element={<Emails />} />
             <Route path="/booking-status" element={<BookingStatus />} />
-            {/* Where these used to live: the renamed page, and the Operator
-                Reminders page the ladder replaced. */}
-            <Route path="/reminders" element={<Navigate to="/booking-status" replace />} />
-            <Route path="/lifecycle" element={<Navigate to="/booking-status" replace />} />
             <Route path="/settings" element={<Settings />} />
+            {/* The two pages Booking Status replaced. Old bookmarks still land. */}
+            <Route path="/workflow" element={<Navigate to="/booking-status" replace />} />
+            <Route path="/reminders" element={<Navigate to="/booking-status" replace />} />
             <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />
             {/* A signed-in reader following an old reset link goes to the
                 bookings table rather than to a form they no longer need. */}

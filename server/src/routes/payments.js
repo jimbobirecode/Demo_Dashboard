@@ -33,6 +33,7 @@ import {
   PENDING_PAYMENT_STATUS,
   buildPaymentEmail,
   buildPaymentEmailData,
+  describePayment,
   buildReceiptEmail,
   buildReceiptEmailData,
   formatMoney,
@@ -81,14 +82,20 @@ router.post('/bookings/:bookingId/link', async (req, res, next) => {
       secretKey: config.secretKey,
       amount,
       currency: config.currency,
-      productName: `${BRAND.fullName} – booking ${booking.bookingId}`,
+      productName:
+        describePayment(booking.payment, amount).key === 'deposit'
+          ? `${BRAND.fullName} – deposit for booking ${booking.bookingId}`
+          : `${BRAND.fullName} – booking ${booking.bookingId}`,
       bookingId: booking.bookingId,
       club,
       confirmationMessage: `Thank you — your payment for booking ${booking.bookingId} has been received. ${BRAND.fullName}`,
     });
     const url = prefilledLinkUrl(link.url, { email: booking.guestEmail, bookingId: booking.bookingId });
 
-    const data = buildPaymentEmailData(booking, { amount, currency: config.currency, url });
+    // Named from the booking's own stages, not from the request: the word in
+    // the guest's email has to match what is being asked for.
+    const purpose = describePayment(booking.payment, amount);
+    const data = buildPaymentEmailData(booking, { amount, currency: config.currency, url, purpose });
     const outcome = await sendPaymentEmail(config, {
       toEmail: booking.guestEmail,
       templateId: config.templateId,

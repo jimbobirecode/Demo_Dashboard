@@ -61,7 +61,7 @@ Never point `TEST_DATABASE_URL` at real data: the tests create, truncate and dro
 |---|---|
 | `npm run dev` | API (`node --watch`) and Vite dev server together |
 | `npm run build` | Build the SPA into `web/dist` (served by the API in production) |
-| `npm start` | Production server: migrate, then listen on `PORT` (3001) |
+| `npm start` | Production server: listen on `PORT` (3001), then check the schema and log anything missing |
 | `npm run migrate` | Apply pending migrations to `DATABASE_URL` |
 | `npm run migrate:status` | List applied and pending migrations; changes nothing |
 | `npm run seed` | Sample bookings, tour operators and a demo login (`-- --reset` to rebuild sample rows, `-- --operators` for operators only). Never against production |
@@ -75,10 +75,10 @@ Never point `TEST_DATABASE_URL` at real data: the tests create, truncate and dro
 
 | Path | Purpose |
 |---|---|
-| `server/src/index.js` | Boot: `.env` (`env.js`), Sentry, migrations, listen, start-up checks, Stripe payment sync |
+| `server/src/index.js` | Boot: `.env` (`env.js`), Sentry, listen, schema check, start-up checks, Stripe payment sync, the trigger/triage/webhook sweeps and the audit purge |
 | `server/src/app.js` | Express app: helmet/CSP, body limits, CSRF check, routers, SPA fallback, error handler |
 | `server/src/auth.js` | Staff sessions (JWT cookie re-checked against the database), sign-in, password hashing |
-| `server/src/routes/` | One router per area: `auth`, `users`, `bookings`, `analytics`, `changes` (guest manage-booking + approvals), `inbox`, `waitlist`, `operators`, `emails` (guest campaigns), `imports`, `payments`, `stripe-webhook`, `portal` |
+| `server/src/routes/` | One router per area: `auth`, `users`, `bookings`, `analytics`, `changes` (guest manage-booking + approvals), `inbox`, `waitlist`, `operators`, `emails` (guest campaigns), `imports`, `payments`, `stripe-webhook`, `portal`, `membership`, `booking-triggers` |
 | `server/src/lib/` | Rules as pure, unit-tested modules (`*-domain.js`), plus thin clients for SendGrid, Stripe and Club Vero, the logger, throttle, CSV and request guard |
 | `server/src/db/migrate.js` | Migration runner (advisory lock, checksums, one transaction per file) |
 | `server/test/` | Unit tests; `integration/` needs `TEST_DATABASE_URL` |
@@ -93,17 +93,20 @@ Never point `TEST_DATABASE_URL` at real data: the tests create, truncate and dro
 ## Features
 
 - **Bookings**: list and filters over the `Inquiry → Requested → Booked` pipeline (plus `Rejected`, `Cancelled`); edit status, note, tee time; CSV/XLSX export with formula-defused cells; delete (administrators). References the dashboard issues use the core API's format (`TMG-YYYYMMDD-XXXXXXXXXX`, prefix `BOOKING_REF_PREFIX`).
-- **Inbox**: emails the core API held for a person, with what the language model understood and a drafted reply; reply (quoting the guest, booking reference in the subject), dismiss, or attach to a booking. Every booking shows its whole email conversation.
+- **Inbox**: inbound email with what the language model understood, a summary and a drafted reply; reply (quoting the guest, booking reference in the subject), dismiss, or attach to a booking. Every booking shows its whole email conversation. Where the core API is not in front of the mailbox, the dashboard triages the mail itself on a schedule when `ANTHROPIC_API_KEY` is set — a draft is never sent, it opens in the composer for staff to edit.
 - **Guest Requests**: guests (via a signed manage link) and operators ask to amend or cancel; nothing changes until staff approve. Approving a cancellation cancels the booking; approving an amendment leaves the edit to staff. Guests are emailed at each step.
 - **Payments**: Stripe Payment Links emailed from the booking drawer; the webhook and a periodic sync record payments once, move `Inquiry`/`Requested` bookings to `Booked`, start the pre-play clock and email a receipt. Manual payment fields and trade credit terms per booking.
 - **Tour operators**: accounts with email domains, credit terms (deposit, balance, net days, limit), exposure and ageing; bookings matched by assignment or sending domain (a name in prose is only a suggestion); chased for deposits and balances by the booking ladder, at the account and on the account's own terms; the operator portal.
 - **Guest emails**: pre-arrival welcome (after payment by default) and post-play thank-you via SendGrid templates, with dry-run previews and send stamps so nobody is emailed twice; optional Club Vero survey link ([docs/CLUB_VERO_INTEGRATION.md](docs/CLUB_VERO_INTEGRATION.md)).
+- **Booking Workflow**: the ladder every confirmed booking climbs — a payment link to secure it, reminders at 5, 6 and 7 days, a rescue window, then cancellation; or, once the money is in, a receipt, the balance notice 70 days out, confirmation at 60 and 30, arrival details at 10, and a thank you the day after play. Trade bookings and visitors run slightly different ladders. Each rung is sent once, guarded by a ledger. Off by default; each club switches it on and sets its own deadlines under **Settings**, and trade bookings are chased at the account on the account's own terms. Needs `npm run migrate` (migration `0026`) before it will run, and `0027` before a club can save its settings ([docs/BOOKING_TRIGGERS.md](docs/BOOKING_TRIGGERS.md)).
+- **Audit trail**: every state-changing request is recorded — who, what, when, from which address, and whether it was refused — with request bodies redacted and a 12-month retention the server enforces nightly (migration `0023`, [docs/SECURITY.md](docs/SECURITY.md)).
+- **Booked-customer handover**: with `BOOKED_WEBHOOK_URL` set, every booking that reaches `Booked` is POSTed as JSON to another system — the customer and their round, no money and no free text — stamped only once the receiver accepts, with a sweep covering a receiver that was down ([docs/BOOKED_CUSTOMER_WEBHOOK.md](docs/BOOKED_CUSTOMER_WEBHOOK.md)). Unset, nothing about a booking leaves this dashboard.
 - **Waitlist**: entries, conversion to a booking in one transaction, suggested conversions made outside the dashboard, conversion reporting.
 - **Membership**: an on/off switch for membership applications (administrators). On, an enquiry to the club's membership address (demo: `memberships@club.teemail.io`) gets an instant reply from the core API with the club's categories and fees and a signed link to apply; off, a link to join the waitlist. Staff review applications (`submitted → under review → approved / declined → welcomed`), each step emailing the applicant; the waitlist can be invited to apply once applications reopen. Categories and reply wording are edited on the page. Needs `BOOKING_LINK_SECRET` (shared with the core API) and `MEMBERSHIP_FORM_BASE_URL` (the core API's public URL) for invitation links; demo data in `db/seeds/seed_membership_demo.sql`.
 - **Tee-sheet import**: CSV/XLSX, preview before writing, duplicate detection, undo per batch (administrators); imported rows count as play but never as enquiries in the analytics.
 - **Analytics**: KPIs against the previous period, funnel, lead time, party size, course mix, request utilisation, collection and ageing, direct vs trade, accommodation, caddies, journey-email coverage; every chart has a table view.
 - **Accounts**: sign-in by email, roles `admin`/`staff`, invitations and self-service reset by one-time emailed links, forced change of legacy temporary passwords.
-- **Branding**: defaults to "TeeMail Golf Club"; names, currency, time zone, colours and logo are configurable (`CLUB_*`, `VITE_CLUB_*`, `EMAIL_*` in `.env.example`). Club ids in data (`customer_id`, `club`) are data, not branding: rows carrying the demo profile's `royal_dornoch` id display under the configured brand.
+- **Branding**: this is the demo deployment, so nothing is set and the code's own "TeeMail Golf Club" defaults apply; names, currency, time zone, locale, contact details, email colours and logo are all configurable (`CLUB_*`, `VITE_CLUB_*`, `EMAIL_*` in `.env.example` and `render.yaml`). On a single-club install it is worth changing the defaults in `server/src/lib/brand.js` to that club's as well, so a missing variable cannot put the vendor's name in a guest's inbox — which is what [Dashboard_Beta](https://github.com/jimbobirecode/Dashboard_Beta) does for County Louth. Club ids in data (`customer_id`, `club`) are data, not branding: rows carrying the demo profile's `royal_dornoch` id display under the configured brand.
 
 ## Demo profile
 
@@ -128,7 +131,7 @@ Render web service from `render.yaml`; build `npm install --include=dev && npm r
 | [docs/TESTING.md](docs/TESTING.md) | Tests, coverage floors, CI |
 | [docs/AUDIT_READINESS.md](docs/AUDIT_READINESS.md) | Index for auditors across both repositories; open TO CONFIRM items |
 | [docs/CLUB_VERO_INTEGRATION.md](docs/CLUB_VERO_INTEGRATION.md) | Club Vero survey integration |
-| [docs/BOOKING_LIFECYCLE.md](docs/BOOKING_LIFECYCLE.md) | The lifecycle ladder: deposit and balance chasing, the four guards, the switches |
+| [docs/BOOKING_TRIGGERS.md](docs/BOOKING_TRIGGERS.md) | The booking trigger workflow: the deposit and balance ladder, the switches, the per-club settings |
 | [docs/BOOKED_CUSTOMER_WEBHOOK.md](docs/BOOKED_CUSTOMER_WEBHOOK.md) | Posting booked customers as JSON to another system |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md), [.env.example](.env.example) | |
 

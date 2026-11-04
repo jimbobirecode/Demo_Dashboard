@@ -7,8 +7,23 @@ import { OVERDUE } from '../lib/palette.js';
  * Colour is reinforcement only: the status is always spelled, and an overdue
  * balance says how many days late it is in words rather than turning red and
  * leaving the reader to infer it.
+ *
+ * A booking taken before the club began recording payments has no payment
+ * state to show. Calling it "Unpaid" would be a claim about money nobody
+ * tracked, so it says plainly that it is not tracked.
  */
 export default function PaymentPill({ payment, status }) {
+  if (payment?.tracked === false) {
+    return (
+      <span
+        className="muted"
+        style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}
+        title="Taken before the club started recording payments"
+      >
+        Not tracked
+      </span>
+    );
+  }
   const label = payment?.status ?? status ?? 'Unpaid';
 
   return (

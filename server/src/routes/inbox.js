@@ -28,15 +28,19 @@ import { sendHtmlEmail } from '../lib/sendgrid.js';
 import { logEmail } from '../lib/email-log.js';
 import { LOGO_CID, inlineLogoAttachment } from '../lib/email-layout.js';
 import { manageUrlFor } from '../lib/change-request-domain.js';
+import { operatorForEmail } from '../lib/portal-domain.js';
 import {
   DELETED_FILTER,
   IN_FLIGHT_ROUTES,
   REVIEW_STATUSES,
   belongsInInboxSql,
+  bookingRecipient,
   buildReplyEmail,
+  describeCorrespondent,
   noteProblem,
   notDeletedSql,
   notInFlightSql,
+  replyAddress,
   replyProblem,
   replySubject,
   serialiseMessage,
@@ -83,11 +87,82 @@ async function loadNotes(club, messageId) {
   return rows.map(serialiseNote);
 }
 
-async function sendAndRecord(req, { to, subject, body, bookingId = null, original = null }) {
+/**
+ * A way to name any of these addresses, from what the club already knows.
+ *
+ * Two queries for the whole page rather than one per email: the club's
+ * operator accounts, and the booking names each address has been used under.
+ * See describeCorrespondent for the order they are read in.
+ */
+async function correspondentLookup(club, addresses) {
+  const wanted = [
+    ...new Set(
+      (addresses ?? [])
+        .map((address) =>
+          String(address ?? '')
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean),
+    ),
+  ];
+  if (!wanted.length) return () => describeCorrespondent({});
+
+  const [operators, booked, signed] = await Promise.all([
+    query(
+      `SELECT id, name, contact_email, email_domains FROM public.tour_operators
+        WHERE club = $1 AND active IS NOT FALSE`,
+      [club],
+    ),
+    query(
+      `SELECT lower(guest_email) AS email, array_agg(DISTINCT guest_name) AS names
+         FROM public.bookings
+        WHERE club = $1 AND lower(guest_email) = ANY($2::text[])
+        GROUP BY 1`,
+      [club, wanted],
+    ),
+    // How each address last signed itself, off the From header their mail
+    // arrived on. The latest, because a shared desk changes hands and the name
+    // on the most recent email is the one a reply is most likely to reach.
+    query(
+      `SELECT DISTINCT ON (lower(from_email)) lower(from_email) AS email, from_name
+         FROM public.email_messages
+        WHERE club = $1 AND direction = 'inbound' AND from_name IS NOT NULL
+          AND lower(from_email) = ANY($2::text[])
+        ORDER BY lower(from_email), created_at DESC, id DESC`,
+      [club, wanted],
+    ),
+  ]);
+
+  const accounts = operators.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    contactEmail: row.contact_email,
+    emailDomains: row.email_domains ?? [],
+  }));
+  const namesByAddress = new Map(booked.rows.map((row) => [row.email, (row.names ?? []).filter(Boolean)]));
+  const signedByAddress = new Map(signed.rows.map((row) => [row.email, row.from_name]));
+
+  return (address) => {
+    const email = String(address ?? '')
+      .trim()
+      .toLowerCase();
+    return describeCorrespondent({
+      email,
+      operator: operatorForEmail(email, accounts),
+      guestNames: namesByAddress.get(email) ?? [],
+      headerName: signedByAddress.get(email) ?? '',
+    });
+  };
+}
+
+async function sendAndRecord(req, { to: recipient, subject, body, bookingId = null, original = null }) {
   const config = mailConfig();
   if (!config.apiKey || !config.fromEmail) {
     return { ok: false, status: 409, error: 'SendGrid is not configured (SENDGRID_API_KEY, FROM_EMAIL)' };
   }
+  // The address, whatever shape it was stored in: see replyAddress().
+  const to = replyAddress(recipient);
   const problem = replyProblem({ to, body });
   if (problem) return { ok: false, status: 400, error: problem };
 
@@ -118,7 +193,7 @@ async function sendAndRecord(req, { to, subject, body, bookingId = null, origina
     kind: 'reply',
     in_reply_to: original?.id ?? null,
   });
-  return { ok: true, id };
+  return { ok: true, id, to };
 }
 
 router.get('/', async (req, res, next) => {
@@ -141,11 +216,13 @@ router.get('/', async (req, res, next) => {
             ? `${live} AND m.review_status = '${status}' AND ${notInFlightSql('m')}`
             : `${live} AND m.review_status = 'open' AND ${notInFlightSql('m')}`;
     // The guest's name from their booking, so the list reads as people rather
-    // than addresses.
+    // than addresses - but only for the lead guest's own emails, which is why
+    // their address comes with it. An operator's email on the same booking is
+    // listed as the operator, not as the guest they booked for.
 
     const [list, counts] = await Promise.all([
       query(
-        `SELECT m.*, b.guest_name AS booking_guest_name
+        `SELECT m.*, b.guest_name AS booking_guest_name, b.guest_email AS booking_guest_email
            FROM public.email_messages m
            LEFT JOIN public.bookings b ON b.booking_id = m.booking_id AND b.club = m.club
           WHERE m.club = $1 AND ${where}
@@ -164,10 +241,14 @@ router.get('/', async (req, res, next) => {
       ),
     ]);
 
+    const who = await correspondentLookup(
+      club,
+      list.rows.map((row) => row.from_email),
+    );
     res.json({
       status,
       counts: Object.fromEntries(counts.rows.map((row) => [row.review_status, row.n])),
-      messages: list.rows.map(serialiseMessage),
+      messages: list.rows.map((row) => ({ ...serialiseMessage(row), correspondent: who(row.from_email) })),
     });
   } catch (err) {
     next(err);
@@ -183,7 +264,9 @@ router.get('/booking/:bookingId', async (req, res, next) => {
     ]);
     if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
     const thread = await loadThread(club, { bookingId: req.params.bookingId, guestEmail: rows[0].guest_email });
-    res.json({ thread });
+    const to = bookingRecipient({ thread, bookingEmail: rows[0].guest_email });
+    const who = await correspondentLookup(club, [to]);
+    res.json({ thread, recipient: who(to) });
   } catch (err) {
     next(err);
   }
@@ -202,8 +285,17 @@ router.post('/booking/:bookingId/send', async (req, res, next) => {
     const subject = String(req.body?.subject ?? '').trim()
       ? replySubject(req.body.subject, booking.booking_id).replace(/^Re: /i, '')
       : `Your booking ${booking.booking_id} – ${BRAND.fullName}`;
+
+    // Whoever the club has actually been emailing about this booking, which on
+    // an operator's booking is the operator and not the lead guest named on it.
+    const existing = await loadThread(club, { bookingId: booking.booking_id, guestEmail: booking.guest_email });
+    const to = bookingRecipient({
+      thread: existing,
+      bookingEmail: booking.guest_email,
+      requested: req.body?.to,
+    });
     const result = await sendAndRecord(req, {
-      to: booking.guest_email,
+      to,
       subject,
       body: req.body?.body,
       bookingId: booking.booking_id,
@@ -211,7 +303,13 @@ router.post('/booking/:bookingId/send', async (req, res, next) => {
     if (!result.ok) return res.status(result.status).json({ error: result.error });
 
     const thread = await loadThread(club, { bookingId: booking.booking_id, guestEmail: booking.guest_email });
-    res.json({ message: `Email sent to ${booking.guest_email}`, thread });
+    const who = await correspondentLookup(club, [to]);
+    const named = who(to);
+    res.json({
+      message: `Email sent to ${named.name ? `${named.name} (${to})` : to}`,
+      thread,
+      recipient: named,
+    });
   } catch (err) {
     next(err);
   }
@@ -253,10 +351,22 @@ async function withThread(req, message) {
         players: rows[0].players,
         total: Number(rows[0].total) || 0,
         guestName: rows[0].guest_name,
+        // The lead guest's own address: what the dashboard compares the sender
+        // against before it calls them by the lead guest's name.
+        guestEmail: rows[0].guest_email ?? '',
       };
     }
   }
-  return { message, thread, booking, notes: await loadNotes(req.user.customerId, message.id) };
+  const who = await correspondentLookup(req.user.customerId, [guestEmail]);
+  return {
+    message,
+    thread,
+    booking,
+    // Who this email is with, named from the club's own records rather than
+    // from whichever booking happens to be attached.
+    correspondent: who(guestEmail),
+    notes: await loadNotes(req.user.customerId, message.id),
+  };
 }
 
 /**
@@ -336,7 +446,12 @@ router.post('/:id/reply', async (req, res, next) => {
       [req.user.username, message.id, req.user.customerId],
     );
     const updated = await loadMessage(req, res);
-    res.json({ ...(await withThread(req, updated)), notice: `Reply sent to ${message.fromEmail}` });
+    const answered = await withThread(req, updated);
+    const named = answered.correspondent;
+    res.json({
+      ...answered,
+      notice: `Reply sent to ${named?.name ? `${named.name} (${message.fromEmail})` : message.fromEmail}`,
+    });
   } catch (err) {
     next(err);
   }

@@ -11,10 +11,10 @@ import helmet from 'helmet';
 
 import authRoutes from './routes/auth.js';
 import bookingRoutes from './routes/bookings.js';
-import bookingTriggerRoutes from './routes/booking-triggers.js';
 import analyticsRoutes from './routes/analytics.js';
 import emailRoutes from './routes/emails.js';
 import operatorRoutes from './routes/operators.js';
+import bookingTriggerRoutes from './routes/booking-triggers.js';
 import userRoutes from './routes/users.js';
 import waitlistRoutes from './routes/waitlist.js';
 import importRoutes from './routes/imports.js';
@@ -24,6 +24,7 @@ import inboxRoutes from './routes/inbox.js';
 import portalRoutes from './routes/portal.js';
 import membershipRoutes from './routes/membership.js';
 import stripeWebhookRoutes from './routes/stripe-webhook.js';
+import { auditWrites } from './lib/audit.js';
 import { pool } from './db.js';
 import { contentSecurityDirectives, csrfProtection } from './lib/request-guard.js';
 import { logger } from './lib/logger.js';
@@ -83,12 +84,17 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Every state-changing request is recorded: who, what, when, from where.
+// Before the routers so nothing escapes it, but the actor is read after the
+// response, once the route's guard has established one. See lib/audit.js.
+app.use('/api', auditWrites());
+
 app.use('/api/auth', authRoutes);
 app.use('/api/bookings', bookingRoutes);
-app.use('/api/booking-triggers', bookingTriggerRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/operators', operatorRoutes);
+app.use('/api/booking-triggers', bookingTriggerRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/imports', importRoutes);

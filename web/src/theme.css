@@ -162,7 +162,7 @@ textarea:focus-visible {
 .btn-primary {
   background: var(--brand-gold);
   border-color: var(--brand-gold);
-  color: #16210f;
+  color: #0a1c2e;
   font-weight: 700;
 }
 .btn-primary:hover:not(:disabled) {
@@ -296,8 +296,20 @@ textarea {
 
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   gap: 0.875rem;
+}
+
+/* A grid item's min-width is its content, so a tile whose figure is wider
+   than its track paints past it: €1,064,105 ran off the end of the row the
+   day a seventh tile made the tracks narrow enough to matter. The figure
+   wraps inside its own tile now. */
+.kpi-row > * {
+  min-width: 0;
+}
+.kpi-value,
+.kpi .label {
+  overflow-wrap: anywhere;
 }
 
 .kpi {
@@ -409,7 +421,7 @@ table.data tbody tr.selected {
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(6, 20, 12, 0.65);
+  background: rgba(0, 12, 26, 0.65);
   z-index: 40;
 }
 .drawer {
@@ -427,11 +439,30 @@ table.data tbody tr.selected {
   flex-direction: column;
   gap: 1rem;
 }
+/* An account statement is a table read across; 560px left its money columns
+   off the edge. */
+.drawer.drawer-wide {
+  width: min(1040px, 100vw);
+}
 
 .detail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  /* min() so a column can go narrower than 130px rather than overflow the
+     card on a phone. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
   gap: 0.875rem;
+}
+
+/* A grid item's default min-width is its content, so one long unbreakable
+   value -- an email address -- used to paint straight over the field beside
+   it: "bookings@halcyongolftravel.com" ran through "LEAD GUEST IN THE PARTY"
+   and the two were unreadable together. The value wraps inside its own column
+   now, whatever it is. A value too long to read in a column of this width
+   should be given a row of its own (grid-column: 1 / -1) rather than left to
+   break mid-word. */
+.detail-grid > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- pipeline progress ---------- */
@@ -481,7 +512,7 @@ table.data tbody tr.selected {
 .pipeline-node.current .pipeline-dot {
   box-shadow:
     0 0 0 3px var(--surface-1),
-    0 0 0 6px rgba(222, 193, 99, 0.35);
+    0 0 0 6px rgba(235, 217, 143, 0.35);
 }
 .pipeline-label {
   font-size: 0.6875rem;
@@ -492,6 +523,165 @@ table.data tbody tr.selected {
 }
 .pipeline-node.reached .pipeline-label {
   color: var(--text-primary);
+}
+
+/* ---------- the booking flow ---------- */
+/* Stages in order with arrows between them. It wraps on a narrow screen, and
+   an arrow that lands at the end of a line is still read as "then". */
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+.flow-step,
+.flow-summary {
+  flex: 1 1 150px;
+  min-width: 0;
+  text-align: left;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--flow-accent, var(--border));
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  color: inherit;
+  font: inherit;
+}
+.flow-step {
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.flow-step:hover {
+  background: var(--surface-2);
+}
+.flow-step[aria-pressed='true'] {
+  background: var(--surface-2);
+  border-color: var(--flow-accent, var(--brand-gold));
+  border-left-color: var(--flow-accent, var(--brand-gold));
+}
+/* The summary is a total, not a stage: no arrow into it, and it does not
+   invite a click because there is nothing to filter to. */
+.flow-summary {
+  flex-grow: 0;
+  flex-basis: 170px;
+  background: var(--surface-0);
+}
+.flow-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.flow-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+/* One booking's ladder: the steps in order, what is behind it quiet, what is
+   due marked, what is ahead an outline. Never colour alone -- every rung says
+   its state in words. */
+.ladder .ladder-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 0 1 auto;
+  min-width: 128px;
+  max-width: 200px;
+  padding: 0.45rem 0.6rem;
+  border-left-color: var(--border);
+}
+/* Only the rungs somebody can still act on carry a button, so it sits at the
+   bottom of the rung: the chips keep one height and the buttons line up
+   instead of floating wherever the text happens to end. Quiet by default --
+   the rung's own state is the thing being read, not the button. */
+.ladder-clear {
+  align-self: flex-start;
+  margin-top: auto;
+  padding: 0.1rem 0.4rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.ladder-clear:hover:not(:disabled) {
+  border-color: var(--brand-gold);
+  color: var(--text-primary);
+}
+.ladder-clear:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* The fold-away toggle is a sentence, not a stage: it stays out of the row of
+   rungs and reads as text somebody can click. */
+.ladder-toggle {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ladder-toggle:hover {
+  color: var(--text-primary);
+}
+.ladder-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.ladder-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.ladder-state {
+  font-weight: 600;
+}
+.ladder-reason {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+.ladder-step.is-sent {
+  opacity: 0.65;
+}
+.ladder-step.is-sent .ladder-state {
+  color: var(--status-booked);
+}
+.ladder-step.is-due {
+  background: var(--surface-2);
+  border-color: var(--brand-gold);
+  border-left-color: var(--brand-gold);
+}
+.ladder-step.is-due .ladder-state {
+  color: var(--brand-gold-bright);
+}
+.ladder-step.is-missed,
+.ladder-step.is-blocked {
+  border-color: var(--status-rejected);
+  border-left-color: var(--status-rejected);
+}
+.ladder-step.is-missed .ladder-state,
+.ladder-step.is-blocked .ladder-state {
+  color: var(--status-rejected);
+}
+.ladder-step.is-upcoming,
+.ladder-step.is-unknown {
+  border-style: dashed;
+}
+.ladder-step.is-skipped,
+.ladder-step.is-superseded {
+  opacity: 0.5;
+  border-style: dashed;
 }
 
 /* ---------- charts ---------- */
@@ -541,9 +731,41 @@ table.data tbody tr.selected {
   color: #f8cbdc;
 }
 .banner.success {
-  background: rgba(201, 162, 39, 0.12);
+  background: rgba(212, 175, 55, 0.12);
   border-color: var(--brand-gold);
-  color: #f0e0a6;
+  color: #ebd98f;
+}
+/* Saved, but there is something to know: a payment link out for the old
+   amount, more paid than the new total. Not an error, and not to be missed. */
+.banner.warning {
+  background: rgba(230, 150, 60, 0.12);
+  border-color: #e6963c;
+  color: #f5d2a8;
+}
+
+/* A booking a payment booked, still to go on the club's tee sheet. Green,
+   because it is good news with one thing left to do -- not an error. */
+.tee-sheet-card {
+  background: rgba(74, 167, 116, 0.12);
+  border: 1px solid var(--links-green, #4aa774);
+}
+.tee-sheet-flag {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--links-green, #4aa774);
+  white-space: nowrap;
+}
+
+/* A form laid out in pairs, which folds to one column in a narrow drawer. */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 0.75rem;
+}
+.form-grid > * {
+  min-width: 0;
 }
 
 .empty {
@@ -702,8 +924,8 @@ table.data tbody tr.selected {
   border-bottom-left-radius: 4px;
 }
 .from-club .chat-bubble {
-  background: rgba(201, 162, 39, 0.12);
-  border-color: rgba(201, 162, 39, 0.35);
+  background: rgba(212, 175, 55, 0.12);
+  border-color: rgba(212, 175, 55, 0.35);
   border-bottom-right-radius: 4px;
 }
 .chat-bubble.active {
@@ -801,7 +1023,7 @@ table.data tbody tr.selected {
 .quick-replies .chip[aria-pressed='true'] {
   background: var(--brand-gold);
   border-color: var(--brand-gold);
-  color: #1b1a12;
+  color: #0a1c2e;
   font-weight: 600;
 }
 
@@ -899,7 +1121,7 @@ a.button-link:hover {
   transition: transform 0.15s ease;
 }
 .switch[aria-checked='true'] {
-  background: rgba(201, 162, 39, 0.25);
+  background: rgba(212, 175, 55, 0.25);
   border-color: var(--brand-gold);
 }
 .switch[aria-checked='true'] .switch-knob {
@@ -915,7 +1137,7 @@ a.button-link:hover {
   padding: 0.85rem 1rem;
   border: 1px solid var(--brand-gold);
   border-radius: var(--radius-sm);
-  background: rgba(201, 162, 39, 0.08);
+  background: rgba(212, 175, 55, 0.08);
 }
 .tag {
   display: inline-block;

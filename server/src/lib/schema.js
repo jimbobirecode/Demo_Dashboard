@@ -26,6 +26,7 @@ const BOOKING_COLUMNS = [
   'timestamp',
   'created_at',
   'customer_confirmed_at',
+  'booked_at',
   'updated_at',
   'updated_by',
   'hotel_required',
@@ -70,9 +71,28 @@ const BOOKING_COLUMNS = [
   'stripe_last_payment_amount',
   'payment_receipt_sent_at',
   'pre_play_clock_started_at',
+  // Migration 0011: when this booking's customer was accepted by
+  // BOOKED_WEBHOOK_URL. Required rather than optional because 0011 is applied
+  // long before anything here, and lib/booked-webhook-outbox.js writes it.
   'booked_webhook_sent_at',
-  'lifecycle_started_at',
 ];
+
+/**
+ * Booking columns a database may not have yet, read without failing when it
+ * does not -- the same arrangement as OPERATOR_OPTIONAL_COLUMNS below, and for
+ * the same reason: migrations are applied by hand before a deploy, and every
+ * page in the app loads bookings, so a column named before it exists is the
+ * whole dashboard answering "Internal server error". Read out of the row as
+ * JSON, a missing column is NULL, which each of these treats as "nothing to
+ * say". Every BOOKING_SELECT reads from public.bookings by its own name, which
+ * is what `to_jsonb(bookings)` needs.
+ */
+export const BOOKING_OPTIONAL_COLUMNS = {
+  /** Migration 0029: a booking a payment booked, waiting to go on the tee sheet. */
+  tee_sheet_status: 'text',
+  tee_sheet_entered_at: 'timestamptz',
+  tee_sheet_entered_by: 'text',
+};
 
 export const OPERATOR_COLUMNS = [
   'id',
@@ -91,7 +111,6 @@ export const OPERATOR_COLUMNS = [
   'currency',
   'on_hold',
   'active',
-  'auto_chase',
   'notes',
   'created_at',
   'updated_at',
@@ -121,8 +140,37 @@ function selectList(columns) {
   return columns.map((column) => `"${column}"`).join(', ');
 }
 
-export const BOOKING_SELECT = selectList(BOOKING_COLUMNS);
-export const OPERATOR_SELECT = selectList(OPERATOR_COLUMNS);
+export const BOOKING_SELECT = [
+  selectList(BOOKING_COLUMNS),
+  ...Object.entries(BOOKING_OPTIONAL_COLUMNS).map(
+    ([column, type]) => `(to_jsonb(bookings) ->> '${column}')::${type} AS "${column}"`,
+  ),
+].join(', ');
+/**
+ * Operator columns a database may not have yet, read without failing when it
+ * does not.
+ *
+ * Migrations are applied by hand before a deploy (see render.yaml), so the
+ * first state of a new column on a real install is code that names it against
+ * a table that lacks it. For a column the whole app reads -- the Bookings page,
+ * the Tour Operators page and the booking workflow all load the trade book --
+ * a bare "column does not exist" is every page answering "Internal server
+ * error" until somebody runs the migration. So these are read out of the row
+ * as JSON, where a missing key is NULL and `serialiseOperator` treats NULL as
+ * the column's default. Writing them is gated on the column existing; see
+ * routes/operators.js.
+ */
+export const OPERATOR_OPTIONAL_COLUMNS = {
+  /** Migration 0027. NULL reads as TRUE, which is the column's default. */
+  auto_chase: 'boolean',
+};
+
+export const OPERATOR_SELECT = [
+  selectList(OPERATOR_COLUMNS),
+  ...Object.entries(OPERATOR_OPTIONAL_COLUMNS).map(
+    ([column, type]) => `(to_jsonb(tour_operators) ->> '${column}')::${type} AS "${column}"`,
+  ),
+].join(', ');
 export const USER_SELECT = selectList(USER_COLUMNS);
 
 /**

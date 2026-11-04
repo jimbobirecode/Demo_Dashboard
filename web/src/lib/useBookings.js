@@ -55,9 +55,14 @@ export function useBookings() {
     setBookings((current) => current.map((booking) => (booking.bookingId === updated.bookingId ? updated : booking)));
   }, []);
 
+  // Newest first, as the list is served.
+  const addBooking = useCallback((created) => {
+    setBookings((current) => [created, ...current.filter((booking) => booking.bookingId !== created.bookingId)]);
+  }, []);
+
   const removeBooking = useCallback((bookingId) => {
     setBookings((current) => current.filter((booking) => booking.bookingId !== bookingId));
   }, []);
 
-  return { bookings, operators, error, loading, lastUpdated, refresh, replaceBooking, removeBooking };
+  return { bookings, operators, error, loading, lastUpdated, refresh, replaceBooking, addBooking, removeBooking };
 }

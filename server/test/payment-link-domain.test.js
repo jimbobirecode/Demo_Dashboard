@@ -452,3 +452,54 @@ test("the setup check reads Stripe's webhook endpoints as they are registered", 
     },
   ]);
 });
+
+test('a deposit request says it is a deposit, in the words the guest reads', async () => {
+  const { buildPaymentEmail, buildPaymentEmailData, describePayment } =
+    await import('../src/lib/payment-link-domain.js');
+  const payment = {
+    gross: 1000,
+    outstanding: 1000,
+    dueDate: '2027-03-02',
+    stage: 'deposit',
+    stages: [
+      { id: 'deposit', label: 'Deposit (25%)', outstanding: 250, dueDate: '2027-03-02', settled: false },
+      { id: 'balance', label: 'Balance', outstanding: 750, dueDate: '2027-04-17', settled: false },
+    ],
+  };
+
+  // Read from the amount against the booking's own stages, so the word in the
+  // email matches what is being asked for whoever typed the figure.
+  assert.equal(describePayment(payment, 250).key, 'deposit');
+  assert.equal(describePayment(payment, 750).key, 'balance');
+  assert.equal(describePayment(payment, 1000).key, 'full');
+  assert.equal(describePayment(payment, 123).key, 'part');
+
+  const booking = { bookingId: 'B-1', guestName: 'Ann McLeod', total: 1000, date: '2027-05-01' };
+  const email = buildPaymentEmail(
+    buildPaymentEmailData(booking, {
+      amount: 250,
+      currency: 'EUR',
+      url: 'https://pay.example/x',
+      purpose: describePayment(payment, 250),
+    }),
+  );
+
+  assert.match(email.subject, /^Deposit for your booking B-1/);
+  assert.match(email.text, /pay your deposit of/);
+  // A deposit is part of a larger figure, so the whole is stated too — nobody
+  // should have to work out what is still to come.
+  assert.match(email.text, /Booking total/);
+  assert.match(email.html, /Deposit \(25%\)/);
+
+  // The balance, and a plain full payment, read as they always did.
+  const full = buildPaymentEmail(
+    buildPaymentEmailData(booking, {
+      amount: 1000,
+      currency: 'EUR',
+      url: 'https://pay.example/x',
+      purpose: describePayment(payment, 1000),
+    }),
+  );
+  assert.match(full.subject, /^Payment for your booking B-1/);
+  assert.ok(!/Booking total/.test(full.text));
+});

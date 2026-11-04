@@ -10,12 +10,14 @@ import { initErrorReporting } from './lib/error-reporting.js';
 import { logger } from './lib/logger.js';
 import { app } from './app.js';
 import { pool } from './db.js';
-import { migrate } from './db/migrate.js';
+import { migrate, pendingMigrations, startupMode } from './db/migrate.js';
 import { hashLegacyTempPasswords } from './auth.js';
 import { sendReceipt } from './routes/payments.js';
 import { startPaymentSync } from './lib/payment-sync.js';
+import { startInboxTriage } from './lib/inbox-triage-sweep.js';
+import { startBookingTriggers } from './lib/booking-trigger-sweep.js';
 import { startBookedWebhook } from './lib/booked-webhook-outbox.js';
-import { startBookingTriggers } from './lib/booking-triggers.js';
+import { startAuditPurge } from './lib/audit.js';
 import { appBaseUrl } from './lib/brand.js';
 import { bookingLinkSecret, describeLinkSecret } from './lib/change-request-domain.js';
 
@@ -117,20 +119,53 @@ function warnAboutConfiguration() {
   }
 }
 
+/**
+ * Whether the schema matches the code, said at boot and nothing more.
+ *
+ * Migrations are applied deliberately with `npm run migrate`, before the
+ * deploy, so by the time an instance boots there is normally nothing to do and
+ * this is one short query. It runs AFTER listen and never stops the process:
+ * applying at boot put the database on the critical path of every deploy, and
+ * an instance that cannot reach it exited with a migration error that was
+ * never about migrations. A boot that cannot reach the database now fails its
+ * health check, which says what is actually wrong.
+ *
+ * MIGRATE_ON_START=apply restores the old behaviour; see db/migrate.js.
+ */
+async function reportSchema() {
+  const logMigrate = logger.child('migrate');
+  try {
+    const pending = await pendingMigrations({ pool });
+    if (!pending.length) return;
+    logMigrate.error(
+      `the database is missing ${pending.length} migration(s): ${pending.map((m) => m.file).join(', ')}. ` +
+        'Run `npm run migrate` against this database — until then, anything reading what they add will fail.',
+    );
+  } catch (err) {
+    // Not a reason to stop serving: the pages that need the database will say
+    // so themselves, and /api/health already reports it.
+    logMigrate.warn(`could not check the schema: ${err.message}`);
+  }
+}
+
 async function start() {
   await initErrorReporting();
 
-  try {
-    await migrate({ pool });
-  } catch (err) {
-    logger.child('migrate').error(`could not bring the database schema up to date — not starting. ${err.message}`);
-    await pool.end().catch(() => {});
-    process.exit(1);
+  const mode = startupMode();
+  if (mode === 'apply') {
+    try {
+      await migrate({ pool });
+    } catch (err) {
+      logger.child('migrate').error(`could not bring the database schema up to date — not starting. ${err.message}`);
+      await pool.end().catch(() => {});
+      process.exit(1);
+    }
   }
 
   app.listen(PORT, async () => {
     log.info(`listening on http://localhost:${PORT}`);
     warnAboutConfiguration();
+    if (mode === 'check') await reportSchema();
     await hashLegacyTempPasswords()
       .then((count) => count && logger.child('auth').info(`hashed ${count} plaintext temporary password(s)`))
       .catch((err) => logger.child('auth').warn('could not check temporary passwords:', err.message));
@@ -138,13 +173,19 @@ async function start() {
     await reportContents();
     // Stripe payments are fetched, not only waited for: see lib/payment-sync.js.
     startPaymentSync({ sendReceipt });
+    // Inbound email is summarised and drafted on a schedule, because the rows
+    // are written by a database trigger this process never hears about.
+    startInboxTriage();
+    // The booking lifecycle ladder -- the deposit chase, the confirmations and
+    // the thank you. Off unless the club has switched it on; see
+    // lib/booking-triggers-domain.js for the two switches.
+    startBookingTriggers();
     // Booked customers are posted on the transition; this catches the ones
     // that transition somewhere else: see lib/booked-webhook-outbox.js.
     startBookedWebhook();
-    // The booking lifecycle ladder. Off unless the club has switched it on,
-    // and even then it only runs by itself once the schedule switch is on
-    // too: see lib/booking-triggers-domain.js.
-    startBookingTriggers();
+    // The audit trail is kept 12 months; past that it is personal data with
+    // no purpose to point at.
+    startAuditPurge();
   });
 }
 

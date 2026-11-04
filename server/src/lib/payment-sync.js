@@ -15,9 +15,14 @@
  * It records a payment exactly as the webhook would (recordStripePayment is
  * idempotent, so whichever sees a payment first counts it) and sends the
  * receipt.
+ *
+ * A second pass covers payments made on the email bot's booking form. Those
+ * are Checkouts the bot opens itself, not payment links, so nothing on the
+ * booking points at them and the per-link pass never sees one. The pass asks
+ * Stripe once for the form's paid sessions of the last few days.
  */
 import { query } from '../db.js';
-import { paidSessionsForLink } from './stripe.js';
+import { paidBookingFormSessions, paidSessionsForLink } from './stripe.js';
 import { readPaymentLinkConfig } from './payment-link-domain.js';
 import { recordStripePayment } from './record-payment.js';
 import { logger } from './logger.js';
@@ -27,6 +32,8 @@ const log = logger.child('payment-sync');
 /** Links older than this are no longer polled; the drawer can still check one by hand. */
 const LOOKBACK_DAYS = 60;
 const MAX_PER_RUN = 50;
+/** How far back the booking-form pass looks; a webhook missed for longer than this is a problem for a person. */
+const FORM_LOOKBACK_DAYS = 7;
 
 let running = null;
 let lastRun = null;
@@ -117,6 +124,36 @@ async function runSync(reason, sendReceipt) {
         result.errors.push({ bookingId: row.booking_id, club: row.club, error: err.message });
         log.warn(`${row.booking_id}: ${err.message}`);
       }
+    }
+
+    // The booking form's own checkouts. Recording is idempotent, so a session
+    // the webhook already counted comes back "already recorded" and costs one
+    // indexed read.
+    try {
+      const since = Date.now() / 1000 - FORM_LOOKBACK_DAYS * 86_400;
+      const sessions = await paidBookingFormSessions({ secretKey: config.secretKey, since });
+      for (const session of sessions) {
+        const recorded = await recordStripePayment(session);
+        if (!recorded.booking) continue;
+        let receipt = 'not attempted';
+        if (sendReceipt) {
+          const outcome = await sendReceipt(recorded.booking, config).catch((err) => ({
+            ok: false,
+            message: err.message,
+          }));
+          receipt = outcome.ok ? 'sent' : `not sent: ${outcome.message}`;
+        }
+        result.recorded.push({
+          bookingId: recorded.booking.bookingId,
+          club: recorded.booking.club,
+          result: recorded.result,
+          receipt,
+        });
+        log.info(`${recorded.booking.bookingId} (booking form): ${recorded.result}; receipt ${receipt}`);
+      }
+    } catch (err) {
+      result.errors.push({ bookingId: null, club: null, error: `Booking form payments: ${err.message}` });
+      log.warn(`booking form payments: ${err.message}`);
     }
     return result;
   } catch (err) {

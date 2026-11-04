@@ -525,6 +525,131 @@ describe('HTTP routes against Postgres', { skip }, () => {
     });
   });
 
+  describe('the desk changing and taking bookings', () => {
+    test('a party that grows is repriced at its own rate, and the change is stamped', async () => {
+      const agent = await signIn('staff@club-a.test');
+      // A-1 is four players at 400, so 100 a head.
+      const res = await agent.patch('/api/bookings/A-1').set(CSRF).send({ players: 6, teeTime: '10:20' });
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      assert.equal(res.body.booking.players, 6);
+      assert.equal(res.body.booking.total, 600);
+      assert.equal(res.body.booking.teeTime, '10:20');
+      assert.deepEqual(res.body.repriced, { pricePerPlayer: 100, from: 400, to: 600 });
+      assert.deepEqual(res.body.changed.sort(), ['players', 'teeTime', 'total']);
+      assert.equal(res.body.booking.updatedBy, 'staff@club-a.test');
+      // And the payment state is worked out on the new figure.
+      assert.equal(res.body.booking.payment.gross, 600);
+    });
+
+    test('a booking paid online is marked on the tee sheet, and can be unmarked', async () => {
+      await pool.query("UPDATE bookings SET tee_sheet_status = 'to_enter' WHERE booking_id = 'A-1'");
+      const agent = await signIn('staff@club-a.test');
+
+      const done = await agent.patch('/api/bookings/A-1/tee-sheet').set(CSRF).send({ entered: true });
+      assert.equal(done.status, 200, JSON.stringify(done.body));
+      assert.equal(done.body.booking.teeSheetStatus, 'entered');
+      assert.equal(done.body.booking.teeSheetEnteredBy, 'staff@club-a.test');
+      assert.ok(done.body.booking.teeSheetEnteredAt);
+
+      const undone = await agent.patch('/api/bookings/A-1/tee-sheet').set(CSRF).send({ entered: false });
+      assert.equal(undone.body.booking.teeSheetStatus, 'to_enter');
+      assert.equal(undone.body.booking.teeSheetEnteredBy, '');
+
+      assert.equal((await agent.patch('/api/bookings/A-1/tee-sheet').set(CSRF).send({ entered: 'yes' })).status, 400);
+      assert.equal((await agent.patch('/api/bookings/B-1/tee-sheet').set(CSRF).send({ entered: true })).status, 404);
+      await pool.query("UPDATE bookings SET tee_sheet_status = NULL WHERE booking_id = 'A-1'");
+    });
+
+    test('a bad edit writes nothing, and another club’s booking is not there', async () => {
+      const agent = await signIn('staff@club-a.test');
+      const bad = await agent.patch('/api/bookings/A-1').set(CSRF).send({ players: 0, date: 'tomorrow' });
+      assert.equal(bad.status, 400);
+      const { rows } = await pool.query("SELECT players FROM bookings WHERE booking_id = 'A-1'");
+      assert.equal(rows[0].players, 6, 'unchanged by the refused edit');
+
+      const foreign = await agent.patch('/api/bookings/B-1').set(CSRF).send({ players: 2 });
+      assert.equal(foreign.status, 404, 'club B’s booking is invisible to club A');
+    });
+
+    test('a booking taken by phone goes in as Booked, today, under a reference the bot recognises', async () => {
+      const agent = await signIn('staff@club-a.test');
+      const res = await agent.post('/api/bookings').set(CSRF).send({
+        date: '2099-06-12',
+        teeTime: '09:40',
+        players: 4,
+        pricePerPlayer: 325,
+        guestName: 'Michael Byrne',
+        guestEmail: 'michael@example.test',
+        source: 'phone',
+        note: 'Rang on Monday.',
+        operatorId: ids.op1,
+      });
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+      const booking = res.body.booking;
+      assert.match(booking.bookingId, /^BOOK-\d{8}-[A-F0-9]{8}$/);
+      assert.equal(booking.status, 'Booked');
+      assert.equal(booking.total, 1300);
+      assert.equal(booking.operatorName, 'First Tours', 'on the account it was taken for');
+      assert.match(booking.note, /^Taken by staff@club-a\.test \(phone\)\.\n\nRang on Monday\.$/);
+
+      const { rows } = await pool.query(
+        'SELECT club, source, booked_at, timestamp FROM bookings WHERE booking_id = $1',
+        [booking.bookingId],
+      );
+      assert.equal(rows[0].club, 'club_a');
+      // A live booking, not imported history: that is what keeps it in the
+      // payment ledger and on the email ladder.
+      assert.equal(rows[0].source, 'teemail');
+      assert.ok(rows[0].booked_at, 'booked_at stamped, so the deposit window counts from today');
+
+      // And it is on the ladder like any other booking: the payment request
+      // is its first rung, dated today. Whether it goes is the desk's call
+      // on Booking Status -- nothing here sends it.
+      const ladder = await agent.get(`/api/booking-triggers/bookings/${booking.bookingId}`);
+      assert.equal(ladder.status, 200);
+      assert.ok(ladder.body.plan, 'the booking is on the ladder');
+      const request = ladder.body.plan.steps.find((step) => step.step === 'deposit_request');
+      // Dated by the account's own terms: First Tours is on the default net 30,
+      // so its deadline is a month out and the request a week before that.
+      assert.ok(request.dueOn >= ladder.body.today);
+      assert.equal(request.to, 'accounts@first-tours.test', 'the money email goes to the account it was taken for');
+
+      // A visitor taken at the counter has no account terms: the request is
+      // due the day it is taken.
+      const counter = await agent.post('/api/bookings').set(CSRF).send({
+        date: '2099-07-01',
+        players: 2,
+        pricePerPlayer: 385,
+        guestName: 'Anne Kelly',
+        guestEmail: 'anne@visitor.test',
+        source: 'walk_in',
+      });
+      assert.equal(counter.status, 201, JSON.stringify(counter.body));
+      assert.match(counter.body.booking.note, /\(in person\)/);
+      const visitor = await agent.get(`/api/booking-triggers/bookings/${counter.body.booking.bookingId}`);
+      const first = visitor.body.plan.steps.find((step) => step.step === 'deposit_request');
+      assert.equal(first.dueOn, visitor.body.today);
+      assert.equal(first.to, 'anne@visitor.test');
+    });
+
+    test('a booking cannot be taken for a day already gone, or on another club’s account', async () => {
+      const agent = await signIn('staff@club-a.test');
+      const past = await agent
+        .post('/api/bookings')
+        .set(CSRF)
+        .send({ date: '2020-01-01', players: 2, pricePerPlayer: 100, contactPhone: '0871234567', guestName: 'X' });
+      assert.equal(past.status, 400);
+      assert.match(past.body.error, /already passed/);
+
+      const foreign = await agent
+        .post('/api/bookings')
+        .set(CSRF)
+        .send({ date: '2099-01-01', players: 2, pricePerPlayer: 100, guestEmail: 'x@y.test', operatorId: ids.opB });
+      assert.equal(foreign.status, 400);
+      assert.match(foreign.body.error, /not one of this club/);
+    });
+  });
+
   describe('guest manage-booking link', () => {
     test('a bad or missing token is refused without saying whether the booking exists', async () => {
       const bad = await request(app)
@@ -552,6 +677,156 @@ describe('HTTP routes against Postgres', { skip }, () => {
       const text = JSON.stringify(res.body);
       assert.ok(!text.includes('"note"'), 'no staff note');
       assert.ok(!text.includes('amountPaid'), 'no payment state');
+    });
+  });
+
+  describe('what the club sends guests on its own', () => {
+    test('nothing, until an administrator says otherwise', async () => {
+      const agent = await signIn('staff@club-a.test');
+      const res = await agent.get('/api/changes/settings');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body.settings, { requestReceived: false });
+      assert.equal(res.body.canEdit, false, 'the desk can read the setting, not change it');
+    });
+
+    test('only an administrator can change it, and only to a boolean this module owns', async () => {
+      const staff = await signIn('staff@club-a.test');
+      assert.equal(
+        (
+          await staff
+            .put('/api/changes/settings')
+            .set(CSRF)
+            .send({ settings: { requestReceived: true } })
+        ).status,
+        403,
+      );
+
+      const admin = await signIn('admin@club-a.test');
+      assert.equal(
+        (
+          await admin
+            .put('/api/changes/settings')
+            .set(CSRF)
+            .send({ settings: { sendEverything: true } })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await admin
+            .put('/api/changes/settings')
+            .set(CSRF)
+            .send({ settings: { requestReceived: 'on' } })
+        ).status,
+        400,
+      );
+      assert.equal((await admin.put('/api/changes/settings').set(CSRF).send({ settings: {} })).status, 400);
+
+      const saved = await admin
+        .put('/api/changes/settings')
+        .set(CSRF)
+        .send({ settings: { requestReceived: true } });
+      assert.equal(saved.status, 200);
+      assert.deepEqual(saved.body.settings, { requestReceived: true });
+      assert.deepEqual((await admin.get('/api/changes/settings')).body.settings, { requestReceived: true });
+    });
+
+    test('a signed-out caller reaches neither end of it', async () => {
+      assert.equal((await request(app).get('/api/changes/settings')).status, 401);
+      assert.equal(
+        (
+          await request(app)
+            .put('/api/changes/settings')
+            .set(CSRF)
+            .send({ settings: { requestReceived: true } })
+        ).status,
+        401,
+      );
+    });
+
+    test("one club's switch is not another's", async () => {
+      // club_a turned it on in the test above; club_b never did.
+      const other = await signIn('admin@club-b.test');
+      assert.deepEqual((await other.get('/api/changes/settings')).body.settings, { requestReceived: false });
+    });
+  });
+
+  describe('audit trail', () => {
+    // There is no page and no API: the trail is recorded for the database to
+    // answer from, so these read the table the way somebody with SQL would.
+    // The row is written when the response finishes, so it lands just after
+    // the request returns: the trail must never hold a reply up. Waiting for
+    // it here is the test being honest about that, not papering over it.
+    const trail = async (where = '', { expect: wanted = 1, actions = [], params = [] } = {}) => {
+      const sql = `SELECT * FROM public.audit_log ${where ? `WHERE ${where}` : ''} ORDER BY id DESC LIMIT 20`;
+      // Waiting on a row count alone is not enough when earlier tests have
+      // already filled the trail: the count is met before this test's own
+      // rows land, and the poll returns somebody else's rows. So a caller
+      // that knows which actions it is waiting for says so, and waits for
+      // those.
+      const ready = (rows) =>
+        rows.length >= wanted && actions.every((action) => rows.some((row) => row.action === action));
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const { rows } = await pool.query(sql, params);
+        if (ready(rows)) return rows;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return (await pool.query(sql, params)).rows;
+    };
+
+    test('every change is recorded with who did it, and refusals are kept too', async () => {
+      const agent = await signIn('admin@club-a.test');
+
+      await agent.patch('/api/bookings/A-1/note').set(CSRF).send({ note: 'Rang the operator' }).expect(200);
+      // A refused attempt is as audit-worthy as a successful one.
+      await agent.patch('/api/bookings/A-1/status').set(CSRF).send({ status: 'Nonsense' }).expect(400);
+
+      const rows = await trail("club = 'club_a'", {
+        expect: 3,
+        actions: ['booking.note.update', 'booking.status.change', 'auth.login'],
+      });
+      const byAction = new Map(rows.map((row) => [`${row.action}:${row.outcome}`, row]));
+
+      const noted = byAction.get('booking.note.update:applied');
+      assert.ok(noted, 'the change is in the trail');
+      assert.equal(noted.actor, 'admin@club-a.test');
+      assert.equal(noted.actor_role, 'admin');
+      assert.equal(noted.entity_id, 'A-1');
+      assert.deepEqual(noted.details, { note: 'Rang the operator' });
+      assert.ok(noted.ip, 'and where it came from');
+
+      assert.ok(byAction.get('booking.status.change:refused'), 'the refusal is in the trail');
+
+      // Signing in is the first thing an auditor looks for, and the password
+      // is never stored.
+      const login = rows.find((row) => row.action === 'auth.login');
+      assert.ok(login, 'the sign-in is recorded');
+      assert.equal(login.details.password, '[redacted]');
+      assert.ok(!JSON.stringify(rows).includes(PASSWORD), 'no password anywhere in the trail');
+    });
+
+    test('each row carries the club that made the change', async () => {
+      const a = await signIn('admin@club-a.test');
+      await a.patch('/api/bookings/A-1/note').set(CSRF).send({ note: 'club A only' }).expect(200);
+
+      const mine = await trail("club = 'club_a' AND details->>'note' = 'club A only'");
+      assert.equal(mine.length, 1, "it is on this club's trail");
+      const elsewhere = await trail("club <> 'club_a' AND details->>'note' = 'club A only'", { expect: 0 });
+      assert.equal(elsewhere.length, 0, 'and on no other');
+    });
+
+    test('nothing in the dashboard reads or writes the trail', async () => {
+      // Recorded for the database to answer from. A route that served it
+      // would be a route that could be asked to hide something.
+      const agent = await signIn('admin@club-a.test');
+      for (const attempt of [
+        () => agent.get('/api/audit'),
+        () => agent.get('/api/audit/export.csv'),
+        () => agent.delete('/api/audit/1').set(CSRF),
+      ]) {
+        const res = await attempt();
+        assert.ok(res.status === 404 || res.status === 405, `expected no such route, got ${res.status}`);
+      }
     });
   });
 });

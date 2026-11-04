@@ -70,6 +70,21 @@ function refuseThrottled(res, seconds) {
   });
 }
 
+/**
+ * The club an attempted sign-in belongs to, or null.
+ *
+ * Only so a failed attempt on a real account is recorded against that club's
+ * own trail. It tells the caller nothing: the response is identical either
+ * way, and this runs after the answer has been decided.
+ */
+async function clubForLogin(identifier) {
+  const { rows } = await query(
+    'SELECT customer_id FROM public.dashboard_users WHERE lower(username) = $1 OR lower(email) = $1 LIMIT 1',
+    [identifier],
+  );
+  return rows[0]?.customer_id ?? null;
+}
+
 router.post('/login', async (req, res, next) => {
   // `username` is still read so an older client keeps working; either field
   // carries the same thing — an address, or a legacy login.
@@ -96,11 +111,21 @@ router.post('/login', async (req, res, next) => {
     if (!result) {
       loginAccountThrottle.fail(accountKey);
       loginIpThrottle.fail(ip);
+      // Named for the audit trail where the account exists, so a club can
+      // see failed attempts on its own staff. An address belonging to
+      // nobody is not attributed to any club - there is none to attribute
+      // it to, and the throttle's own log already has it.
+      const known = await clubForLogin(accountKey);
+      if (known) req.audit = { club: known, actor: accountKey, actorKind: 'staff' };
       return res.status(401).json({ error: 'Invalid email address or password' });
     }
 
     loginAccountThrottle.clear(accountKey);
     const { user, mustChangePassword } = result;
+    // The session is issued in the response, so the audit middleware has no
+    // req.user to read when it runs. Tell it who this was.
+    // The raw row, so snake_case: authenticateUser does not serialise.
+    req.audit = { club: user.customer_id, actor: user.username, actorKind: 'staff', actorRole: user.role };
     issueSession(res, user);
     if (!mustChangePassword) await updateLastLogin(user.id);
 

@@ -61,6 +61,12 @@ test('club ids are spelled for display', () => {
   assert.equal(clubDisplayName('teemail'), BRAND.fullName);
   assert.equal(clubDisplayName(null), BRAND.fullName);
 
+  // County Louth's rows carry any of these; all three are this install's own.
+  assert.equal(clubDisplayName('teemail'), BRAND.fullName);
+  assert.equal(clubDisplayName('county-louth'), BRAND.fullName);
+  assert.equal(clubDisplayName('countylouth'), BRAND.fullName);
+  assert.equal(clubDisplayName('baltray'), BRAND.fullName);
+
   // A club with a name of its own keeps it, and an unknown id is title-cased
   // rather than guessed at.
   assert.equal(clubDisplayName('pebble_beach'), 'Pebble Beach');

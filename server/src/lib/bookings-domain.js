@@ -44,6 +44,13 @@ const CLUB_NAMES = {
   royaldornoch: BRAND.fullName,
   dornoch: BRAND.fullName,
   demo_club: BRAND.fullName,
+  // County Louth's own ids, carried by rows written by the Streamlit dashboard
+  // this one replaced. 'baltray' is the village the club plays in, and was the
+  // id its accounts were created under; 'countylouth' would otherwise title-case
+  // to "Countylouth".
+  county_louth: BRAND.fullName,
+  countylouth: BRAND.fullName,
+  baltray: BRAND.fullName,
 };
 
 /** The club a user is scoped to, spelled for display. */
@@ -142,9 +149,15 @@ export function serialiseBooking(row) {
     stripePaymentIntentId: text(row.stripe_payment_intent_id),
     lastPaymentAmount: row.stripe_last_payment_amount == null ? null : number(row.stripe_last_payment_amount),
     paymentReceiptSentAt: timestamp(row.payment_receipt_sent_at),
-    bookedWebhookSentAt: timestamp(row.booked_webhook_sent_at),
-    lifecycleStartedAt: timestamp(row.lifecycle_started_at),
     prePlayClockStartedAt: timestamp(row.pre_play_clock_started_at),
+    bookedWebhookSentAt: timestamp(row.booked_webhook_sent_at),
+
+    // Booked by a payment, so nobody at the club has put it on the tee sheet
+    // yet: 'to_enter' until somebody marks it 'entered'. Null for every
+    // booking the club confirmed itself.
+    teeSheetStatus: row.tee_sheet_status ?? null,
+    teeSheetEnteredAt: timestamp(row.tee_sheet_entered_at),
+    teeSheetEnteredBy: text(row.tee_sheet_entered_by),
 
     // Where this booking came from. An install without the column has only
     // ever taken enquiries, which is what 'teemail' means.
@@ -153,6 +166,10 @@ export function serialiseBooking(row) {
     importedAt: timestamp(row.imported_at),
 
     timestamp: timestamp(row.timestamp ?? row.created_at),
+    // When it became Booked, which is when the deposit clock starts. Null on
+    // every booking confirmed before the column existed, and on one that
+    // arrived already Booked -- `timestamp` is the moment of booking there.
+    bookedAt: timestamp(row.booked_at),
     customerConfirmedAt: timestamp(row.customer_confirmed_at),
     updatedAt: timestamp(row.updated_at),
     updatedBy: text(row.updated_by),

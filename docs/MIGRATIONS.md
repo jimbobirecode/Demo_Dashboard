@@ -15,12 +15,19 @@ Current files:
 | 0007 | `0007_email_messages_message_id.sql` | `email_messages.message_id`, unique inbound Message-ID index, pending-row index (core API) |
 | 0008 | `0008_membership.sql` | `club_settings`, `membership_categories`, `membership_applications`, `membership_events` (membership module, shared with the core API) |
 | 0009 | `0009_membership_applicant_details.sql` | `membership_applications.postcode`, `other_clubs`, `cdh_number` (membership contract v2) |
+| 0010 | `0010_email_delete_and_notes.sql` | soft-deleted email, booking notes |
+| 0011 | `0011_booked_customer_webhook.sql` | `bookings.booked_webhook_sent_at` — the booked-customer handover (see [BOOKED_CUSTOMER_WEBHOOK.md](BOOKED_CUSTOMER_WEBHOOK.md)) |
+| 0012–0014 | *(none)* | **Deliberately absent.** The retired Booking Lifecycle ladder held these three versions; the booking trigger workflow that replaced it starts at `0015` so the two could not collide. See [`db/README.md`](../db/README.md) |
+| … | `0015`–`0022` | see the files; delete/notes, County Louth legacy and enquiry columns, core-API writes, bot mail in the Inbox, triage, waitlist duplicates |
+| 0023 | `0023_audit_log.sql` | `audit_log` — every state-changing request, with a 12-month retention the server enforces nightly |
 
 `0001`–`0004` are a **baseline**: they reproduce the schema production was running on when versioned migrations were introduced (folding in the retired `migration_*.sql` files and the core API's old runtime DDL), idempotently, so they are no-ops on a database that already has it — without needing to own its tables (see [Guarded DDL](#guarded-ddl)). What they change on the existing production database, and the first-deploy checklist: [DEPLOYMENT.md](DEPLOYMENT.md#first-deploy-of-the-migration-runner--checklist). Resulting tables: [DATA_MODEL.md](DATA_MODEL.md).
 
 ## How the runner works
 
-- **When**: on every server start, before it listens (`server/src/index.js`). A failure logs `[migrate] could not bring the database schema up to date — not starting. <file> failed (at character N): <postgres error>` and exits with status 1, so a deploy with a broken migration never serves traffic. By hand: `npm run migrate` (uses `DATABASE_URL`, loaded from `.env` in the current directory).
+- **When**: by hand, with `npm run migrate` (uses `DATABASE_URL`, loaded from `.env` in the current directory), before deploying code that needs what it adds. A failure logs `[migrate] <file> failed (at character N): <postgres error>` and exits with status 1.
+
+  **Not at boot.** Applying them there made every deploy depend on getting a database connection at the moment connections are scarcest — two instances of the service overlapping, plus the email bot — and a refused connection read as `could not bring the database schema up to date` on a database with nothing to apply. Once it is listening the server instead *checks*, read-only, and logs `the database is missing N migration(s): …` if the schema is behind; it serves either way, and `/api/health` reports a database it cannot reach. Set `MIGRATE_ON_START=apply` to get the old guarantee back (nothing serves until the schema matches, at the cost of a deploy that fails when it cannot), or `off` to skip the check.
 - **Order**: files matching `NNNN_lower_snake_name.sql` in ascending version. A badly named file, a duplicate version, or a file containing its own `BEGIN`/`COMMIT`/`ROLLBACK` is refused before anything runs.
 - **Record**: `public.schema_migrations (version, name, checksum, applied_at, duration_ms)`, created by the runner.
 - **One transaction per file**: `BEGIN`; `SET LOCAL lock_timeout = '15s'`; the file; the `schema_migrations` insert; `COMMIT`. On error everything in that file rolls back and it is not recorded; earlier files stay applied.
