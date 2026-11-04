@@ -62,7 +62,7 @@ flowchart LR
 | Outbound email | Availability replies, acknowledgements, holding emails | Staff replies, change-request outcomes, payment links and receipts, pre-arrival/post-play campaigns, the booking ladder (guest and trade-account emails), password reset / invitation / portal sign-in links |
 | Membership | Answers enquiries to the membership address (demo: `memberships@club.teemail.io`) with the categories and an apply link, or — when the club has switched applications off — a waitlist link; hosts `/membership/apply` and `/membership/waitlist` | The on/off switch, categories and reply copy; committee review (`submitted → under_review → approved/declined → welcomed`) with an email to the applicant at each step; waitlist invitations |
 | Payments | None | Stripe Payment Links, webhook, periodic sync, receipts |
-| Schema | Never alters it; checks `bookings` columns at start-up | **Owns it**: `db/migrations/`, applied before the server listens ([MIGRATIONS.md](MIGRATIONS.md)) |
+| Schema | Never alters it; checks `bookings` columns at start-up | **Owns it**: `db/migrations/`, applied with `npm run migrate` ahead of the deploy; the server checks and logs, never applies ([MIGRATIONS.md](MIGRATIONS.md)) |
 | Accounts | None | `dashboard_users`, `password_resets`, `operator_portal_links` |
 
 ## Shared contracts

@@ -62,4 +62,27 @@ describe('ChatThread', () => {
     render(<ChatThread thread={[]} />);
     expect(screen.getByText('No emails yet.')).toBeInTheDocument();
   });
+  test('a conversation with two correspondents names each email for whoever sent it', () => {
+    // The operator made the booking; the lead guest wrote in once themselves.
+    // Labelling both with the booking's name hides who the club is talking to.
+    render(
+      <ChatThread
+        guestName="Isla Munro"
+        leadGuestEmail="isla@example.com"
+        thread={[
+          { ...guest, id: 1, fromEmail: 'groups@tours.test', body: 'Can we move the Tuesday group?' },
+          { ...guest, id: 2 },
+        ]}
+      />,
+    );
+    expect(screen.getByText('groups@tours.test')).toBeInTheDocument();
+    expect(screen.getByText('Isla Munro')).toBeInTheDocument();
+  });
+
+  test('without an address to check the name against, the name stands for every inbound email', () => {
+    // A membership thread: the name is the applicant's own, and there is no
+    // second correspondent to tell apart.
+    render(<ChatThread guestName="Isla Munro" thread={[{ ...guest, fromEmail: 'another@example.com' }]} />);
+    expect(screen.getByText('Isla Munro')).toBeInTheDocument();
+  });
 });

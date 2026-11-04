@@ -18,7 +18,7 @@
  */
 import crypto from 'node:crypto';
 import { BRAND, appBaseUrl } from './brand.js';
-import { brandedEmail, escapeHtml } from './email-layout.js';
+import { EMAIL_COLORS, brandedEmail, escapeHtml } from './email-layout.js';
 
 export const REQUEST_KINDS = ['cancel', 'amend'];
 export const REQUEST_STATUSES = ['Pending', 'Approved', 'Declined', 'Applied'];
@@ -200,7 +200,7 @@ export function buildChangeEmail({ outcome, booking, request = null, note = '', 
     `<p style="margin:0 0 14px;">Hi ${escapeHtml(first)},</p>` +
       lines.map((line) => `<p style="margin:0 0 14px;">${escapeHtml(line)}</p>`).join('') +
       (link
-        ? `<p style="margin:0 0 14px;"><a href="${escapeHtml(link)}" style="color:#1a5e58;font-weight:600;">Manage your booking</a></p>`
+        ? `<p style="margin:0 0 14px;"><a href="${escapeHtml(link)}" style="color:${EMAIL_COLORS.accent};font-weight:600;">Manage your booking</a></p>`
         : '') +
       `<p style="margin:0;">Kind regards,<br>${escapeHtml(BRAND.fullName)}</p>`,
   );
@@ -374,3 +374,30 @@ function iso(value) {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
+
+/**
+ * Who hears back about a change request.
+ *
+ * Every request records the address it was asked from: the guest's own on the
+ * manage page, the tour operator's when it came through the portal or was read
+ * out of their email. That address is the person waiting for an answer, and it
+ * is not always the booking's lead guest — an operator books for a group whose
+ * lead guest may never have written to the club at all. Answering the lead
+ * guest instead tells the wrong person and leaves whoever asked with silence.
+ *
+ * `leadGuest` says whether the reply really is going to the name on the
+ * booking, which is what decides whether the email may greet them by it.
+ * Returns null when there is no address to write to.
+ */
+export function changeRequestRecipient({ request = null, booking = null } = {}) {
+  const asked = address(request?.guestEmail ?? request?.guest_email);
+  const lead = address(booking?.guestEmail ?? booking?.guest_email);
+  const to = asked || lead;
+  if (!to) return null;
+  return { to, leadGuest: Boolean(lead) && to === lead };
+}
+
+const address = (value) =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase() || '';

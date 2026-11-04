@@ -157,6 +157,26 @@ export async function paidSessionsForLink({ secretKey, linkId, fetchImpl = fetch
 }
 
 /**
+ * Paid Checkout Sessions the email bot's booking form opened since `since`
+ * (seconds since the epoch). A direct customer pays on the form, which opens
+ * a Checkout of its own rather than a payment link -- so nothing on the
+ * booking points at it, and the per-link poll above can never find it. One
+ * call, newest first, for the payment sync's second pass.
+ */
+export async function paidBookingFormSessions({ secretKey, since, fetchImpl = fetch }) {
+  const page = await call(
+    secretKey,
+    '/checkout/sessions',
+    { status: 'complete', created: { gte: Math.floor(since) }, limit: 100 },
+    fetchImpl,
+    'GET',
+  );
+  return (page?.data ?? []).filter(
+    (session) => session.payment_status === 'paid' && session.metadata?.source === 'booking_form',
+  );
+}
+
+/**
  * The webhook endpoints registered on this Stripe account (in the key's mode).
  * Used by the setup check to see whether Stripe is actually told to call this
  * dashboard, for the events it listens to.

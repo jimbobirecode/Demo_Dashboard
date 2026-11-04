@@ -225,6 +225,7 @@ Who reads (R) and writes (W: insert/update/delete) each table, from `grep` of bo
 | `membership_categories` | `0008` | R/W (`routes/membership.js`, admin writes; seed) | R (reply and form) | |
 | `membership_applications` | `0008` | R/W (`routes/membership.js`: review, notes, invitations) | R/W (enquiry → `enquired`; forms → `submitted`/`waitlisted`) | |
 | `membership_events` | `0008` | R/W (`routes/membership.js`) | W | Timeline; actor `guest`, `bot` or a username |
+| `booking_trigger_sends` | `0026` | R/W (`routes/booking-triggers.js`, `lib/booking-trigger-runner.js`) | — | The ledger of lifecycle steps already climbed; append-only in practice |
 | `schema_migrations` | `server/src/db/migrate.js` | R/W (migration runner only) | — | |
 
 ## Tables
@@ -244,8 +245,6 @@ One row per booking or enquiry. Unique `booking_id` (reference, see [ARCHITECTUR
 | Stripe | `stripe_payment_link_id`, `stripe_payment_link_url`, `payment_link_amount`, `payment_link_sent_at/by`, `stripe_checkout_session_id` (idempotency key), `stripe_paid_at`, `stripe_payment_intent_id`, `stripe_last_payment_amount`, `payment_receipt_sent_at` | No card data |
 | Trade | `tour_operator_id` (FK), `operator_status_email_sent_at`, `operator_payment_email_sent_at` | |
 | Journey emails | `pre_arrival_email_sent_at`, `post_play_email_sent_at`, `pre_play_clock_started_at` | |
-| Handover | `booked_webhook_sent_at` | NULL until the club's booked-customer endpoint has accepted it; a Booked booking with no stamp is swept and retried |
-| Lifecycle | `lifecycle_started_at` | The anchor every payment-phase rung of the ladder is measured from; written once, never moved — see 0012 |
 
 ### `tour_operators`
 
@@ -289,15 +288,9 @@ Deleting an email from the mailbox is recoverable and keeps the row: a membershi
 
 What the team wrote to itself about one email, so the next person reading it knows what has happened off-email. One row per note — `club`, `message_id` (FK, `ON DELETE CASCADE`), `note` (free text, **PII**), `created_by` (dashboard username; never the bot), `created_at` — rather than a text column, so the stamp cannot be edited into something else and the newest is a plain `ORDER BY`. Notes are internal: they are never sent to the guest and never shown outside the dashboard. Index `idx_email_notes_message` on `(club, message_id, created_at)`. Migration `0010`.
 
-### `booking_trigger_sends`
-
-One row per booking per rung of the lifecycle ladder, recording what was decided and why: `club`, `booking_id`, `rung` (e.g. `deposit_overdue` — text, because the rungs are configuration and a club will add more), `phase` (`payment`/`balance`/`communication`), `outcome`, `due_on` (the day it fell due, in the club's zone), `detail`, `email_to` (**PII**, only on a send), `created_at`. A ledger rather than a timestamp column per rung: it also records what a column cannot — that a rung was `skipped` because the booking had already paid, `superseded` because the run reached it late, or `held` because a person has to decide.
-
-The no-double-send guarantee is `idx_booking_trigger_sends_once`, a UNIQUE index on `(club, booking_id, rung) WHERE outcome <> 'failed'` — so a failed send sits outside it and is retried, and nothing else can be sent twice. The row is written before the send, so a crash mid-send leaves a claim that is rewritten as `failed`, never a second cancellation notice. Also `idx_booking_trigger_sends_booking` for a booking's history and `idx_booking_trigger_sends_held` for the list a person has to action. Migration `0012`; see [BOOKING_LIFECYCLE.md](BOOKING_LIFECYCLE.md).
-
 ### `club_settings`
 
-One row per club. `lifecycle_settings` (JSONB, migration `0013`) holds this club's booking lifecycle settings — the four switches, the day counts and the catch-up limit; an absent key means the club has not chosen and inherits the environment, then the defaults, so an install configured from the environment is unchanged until somebody edits it (see [BOOKING_LIFECYCLE.md](BOOKING_LIFECYCLE.md)). Validated in `booking-triggers-domain.js` rather than by a constraint. Membership (migration `0008`): `membership_enabled` (the owner's switch: on = enquiries are offered the categories and an application link; off, or no row = they are offered the waitlist), `membership_settings` (JSONB: `intro`, `next_steps`, `closed_message`, `contact_email`, `committee_name`; length-limited by `validateMembershipSettings`), `updated_at`, `updated_by`.
+One row per club (migration `0008`): `membership_enabled` (the owner's switch: on = enquiries are offered the categories and an application link; off, or no row = they are offered the waitlist), `membership_settings` (JSONB: `intro`, `next_steps`, `closed_message`, `contact_email`, `committee_name`; length-limited by `validateMembershipSettings`), `updated_at`, `updated_by`.
 
 ### `membership_categories`
 
@@ -312,6 +305,12 @@ Allowed staff moves: `submitted → under_review → approved | declined`, `appr
 ### `membership_events`
 
 The timeline: `application_id` (FK, cascade), `club`, `event` (`enquired`, `link_sent`, `submitted`, `waitlisted`, `status:<new>`, `note`, `email:<kind>`, `invited`), `actor` (`guest`, `bot` or a username), `note` (**PII**), `created_at`.
+
+### `booking_trigger_sends`
+
+One row per booking lifecycle step that has fired (migration `0026`): `club`, `booking_id`, `step` (a step id from `lib/booking-triggers-domain.js`, text rather than an enum so adding a rung is a code change), `flow` (`tour_operator`/`visitor`, as the booking was read when it fired), `due_on` (the day it fell due, which may be earlier than `sent_at` if the pass was catching up), `sent_at`, `outcome`, `to_email` (**PII**), `subject`, `detail` (the engine's own words: the condition that matched, the reason it was skipped, the error the mail service gave back), `sent_by` (a dashboard username, or `schedule`).
+
+`outcome` is one of `sent`, `cancelled`, `skipped`, `superseded`, `cleared` or `failed`. The partial unique index `idx_booking_trigger_sends_step` on `(club, booking_id, step) WHERE outcome <> 'failed'` is the whole no-double-send guarantee: a settled step can never fire twice, however often two runs overlap. Failures are deliberately outside it, so a refused send is retried. Also indexed on `(club, booking_id, sent_at DESC)` (how the engine reads the ledger) and `(club, sent_at DESC)` (how the page reads history). See [BOOKING_TRIGGERS.md](BOOKING_TRIGGERS.md).
 
 ### `schema_migrations`
 

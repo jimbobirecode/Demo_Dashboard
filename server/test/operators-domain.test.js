@@ -177,6 +177,105 @@ test('an uninvoiced booking still has a date to chase against — the play date'
   assert.equal(state.balanceDueDate, '2026-05-31');
 });
 
+test('a deposit is invoiced when the booking is taken, not when they play', () => {
+  // Carr Golf, as the club found it: "30% deposit, balance due 60 days before
+  // play, net 7 days". The deposit had no rule of its own, so it shared the
+  // balance's fallback -- the play date -- and came out due a week AFTER the
+  // round, ten weeks after the balance. The page read "Deposit outstanding ·
+  // due in 346 days" on money that was already twelve days late.
+  const terms = operator({
+    deposit_percent: 30,
+    deposit_due_days_before_play: null,
+    balance_due_days_before_play: 60,
+    payment_terms_days: 7,
+  });
+  const state = paymentState(
+    booking({ total: 4620, date: '2027-09-25', timestamp: '2026-09-30T10:00:00.000Z' }),
+    terms,
+    { today: '2026-10-19' },
+  );
+
+  assert.equal(state.depositAmount, 1386);
+  assert.equal(state.balanceAmount, 3234);
+  // Seven days after the booking was taken, which is what the terms say.
+  assert.equal(state.depositDueDate, '2026-10-07');
+  assert.equal(state.balanceDueDate, '2027-07-27');
+  assert.equal(state.stage, 'deposit');
+  assert.equal(state.overdue, true);
+  assert.equal(state.daysOverdue, 12);
+});
+
+test('the deposit clock starts when the booking is booked, not when the enquiry arrived', () => {
+  // An enquiry that sits for three weeks before the club says yes. Counting
+  // the terms from the enquiry makes the deposit overdue before anybody had
+  // agreed to anything -- so it counts from the day it became Booked, which
+  // migration 0025 stamps.
+  const terms = operator({ deposit_percent: 30, balance_due_days_before_play: 60, payment_terms_days: 7 });
+  const enquired = '2026-09-30T10:00:00.000Z';
+  const state = paymentState(
+    booking({ total: 4620, date: '2027-09-25', timestamp: enquired, bookedAt: '2026-10-21T09:00:00.000Z' }),
+    terms,
+    { today: '2026-10-25' },
+  );
+
+  assert.equal(state.depositDueDate, '2026-10-28', 'seven days after it was booked');
+  assert.equal(state.overdue, false, 'and not yet late');
+
+  // Without a stamp -- a booking confirmed before the column existed, or one
+  // the bot wrote already Booked -- the enquiry date stands in.
+  const unstamped = paymentState(booking({ total: 4620, date: '2027-09-25', timestamp: enquired }), terms, {
+    today: '2026-10-25',
+  });
+  assert.equal(unstamped.depositDueDate, '2026-10-07');
+});
+
+test('a deposit is never due after the balance it is a deposit on', () => {
+  // The stages are worked in order and what is paid fills the deposit first,
+  // so a deposit dated later than the balance makes the NEXT milestone the
+  // later of the two. Whatever the terms work out to, the deposit comes first.
+  const terms = operator({
+    deposit_percent: 30,
+    deposit_due_days_before_play: 14,
+    balance_due_days_before_play: 60,
+    payment_terms_days: 7,
+  });
+  const state = paymentState(booking({ date: '2027-09-25', timestamp: '2026-09-30T10:00:00.000Z' }), terms, {
+    today: '2026-10-19',
+  });
+
+  assert.equal(state.balanceDueDate, '2027-07-27');
+  assert.equal(state.depositDueDate, '2027-07-27', 'pulled back to the balance rather than left after it');
+  assert.ok(state.depositDueDate <= state.balanceDueDate);
+});
+
+test('an invoiced booking still takes both dates off the invoice', () => {
+  // Once there is an invoice, that is the date the terms run from -- for the
+  // deposit as much as the balance. Nothing about this case changes.
+  const terms = operator({ deposit_percent: 30, payment_terms_days: 30 });
+  const state = paymentState(
+    booking({ invoicedAt: '2026-03-10', date: '2026-05-01', timestamp: '2025-01-01T10:00:00.000Z' }),
+    terms,
+    { today: TODAY },
+  );
+
+  assert.equal(state.depositDueDate, '2026-04-09');
+  assert.equal(state.balanceDueDate, '2026-04-09');
+});
+
+test('a due date typed onto the booking is left exactly as typed', () => {
+  // Somebody deciding, rather than a rule misfiring: it is not pulled back to
+  // the balance and not recalculated.
+  const terms = operator({ deposit_percent: 30, balance_due_days_before_play: 60, payment_terms_days: 7 });
+  const state = paymentState(
+    booking({ date: '2027-09-25', timestamp: '2026-09-30T10:00:00.000Z', depositDueDate: '2027-09-01' }),
+    terms,
+    { today: '2026-10-19' },
+  );
+
+  assert.equal(state.depositDueDate, '2027-09-01');
+  assert.equal(state.stages[0].overridden, true);
+});
+
 test('a days-before-play rule beats the invoice terms', () => {
   const terms = operator({
     deposit_percent: 25,
@@ -333,6 +432,33 @@ test('a name-only match stays with the direct bookings until somebody assigns it
   assert.equal(direct.bookings, 1);
 });
 
+test('an overdue deposit makes the deposit overdue, not the whole round', () => {
+  // The account summary used to add the booking's entire outstanding to
+  // Overdue the moment any milestone passed. A €4,620 round with an unpaid
+  // €1,386 deposit and a balance not due until next July reported €4,620
+  // overdue -- three times the money anybody was actually owed.
+  const terms = operator({
+    deposit_percent: 30,
+    balance_due_days_before_play: 60,
+    payment_terms_days: 7,
+    credit_limit: 10000,
+  });
+  const account = summarise(
+    terms,
+    [booking({ total: 4620, date: '2027-09-25', timestamp: '2026-09-30T10:00:00.000Z' })],
+    { today: '2026-10-19' },
+  );
+
+  assert.equal(account.outstanding, 4620, 'the account is still owed the lot');
+  assert.equal(account.overdueAmount, 1386, 'but only the deposit is late');
+  assert.equal(account.overdueCount, 1);
+  // The ageing table still sums across to the outstanding balance.
+  assert.equal(
+    Object.values(account.ageing).reduce((sum, value) => sum + value, 0),
+    4620,
+  );
+});
+
 test('the portfolio roll-up adds the accounts up and counts the problems', () => {
   const totals = portfolioTotals([
     summarise(operator({ credit_limit: 100 }), [booking({ status: 'Booked' })], { today: TODAY }),
@@ -340,11 +466,15 @@ test('the portfolio roll-up adds the accounts up and counts the problems', () =>
   ]);
 
   assert.equal(totals.operators, 2);
-  assert.equal(totals.bookings, 2);
+  assert.equal(totals.bookings, 2, 'every row on every account');
+  // Counted apart, because they are not the same thing and the value only
+  // ever counted the booked one. At County Louth the two differ by a factor
+  // of three: 1,302 rows on account, 476 of them actually booked.
+  assert.equal(totals.booked, 1, 'and the ones the club has committed to');
+  assert.equal(totals.unconfirmed, 1, 'and the ones still only asked for');
   assert.equal(totals.outstanding, 1000);
   assert.equal(totals.overLimit, 1);
   assert.equal(totals.onHold, 1);
-  assert.equal(totals.unconfirmed, 1);
 });
 
 // --- input handling ---------------------------------------------------------
@@ -478,4 +608,296 @@ test('isConsumerDomain leaves business domains alone', () => {
     assert.equal(isConsumerDomain(domain), false, domain);
   }
   assert.equal(isConsumerDomain(null), false);
+});
+
+test('balances are shown only where the club says it records payments', async () => {
+  const { tracksPayments } = await import('../src/lib/operators-domain.js');
+
+  // Off unless asked for: outstanding is total minus paid, so a club that
+  // records no payments reads as owing its whole book — County Louth's 1,867
+  // migrated bookings showed €4.2m outstanding and the same again overdue,
+  // which is arithmetic, not debt.
+  assert.equal(tracksPayments({}), false);
+  assert.equal(tracksPayments({ TRACK_PAYMENTS: '' }), false);
+  assert.equal(tracksPayments({ TRACK_PAYMENTS: 'false' }), false);
+  assert.equal(tracksPayments({ TRACK_PAYMENTS: 'nonsense' }), false);
+
+  // And back the moment payments are recorded, with the whole history.
+  assert.equal(tracksPayments({ TRACK_PAYMENTS: 'true' }), true);
+  assert.equal(tracksPayments({ TRACK_PAYMENTS: ' YES ' }), true);
+  assert.equal(tracksPayments({ TRACK_PAYMENTS: '1' }), true);
+});
+
+test('payments are tracked from a start date, so switching on does not invent a year of debt', async () => {
+  const { paymentTracking, inPaymentLedger } = await import('../src/lib/operators-domain.js');
+
+  assert.deepEqual(paymentTracking({ PAYMENTS_TRACKED_FROM: '2026-10-15' }), { tracked: true, from: '2026-10-15' });
+  assert.deepEqual(paymentTracking({ PAYMENTS_TRACKED_FROM: 'all' }), { tracked: true, from: null });
+  assert.deepEqual(paymentTracking({}), { tracked: false, from: null });
+  // A typo must not quietly switch a ledger on, or off: it falls back to the
+  // plain flag rather than being read as a date.
+  assert.deepEqual(paymentTracking({ PAYMENTS_TRACKED_FROM: '15/10/2026' }), { tracked: false, from: null });
+  assert.deepEqual(paymentTracking({ PAYMENTS_TRACKED_FROM: 'nonsense', TRACK_PAYMENTS: 'true' }), {
+    tracked: true,
+    from: null,
+  });
+
+  const tracking = { tracked: true, from: '2026-10-15' };
+  const before = { timestamp: '2026-08-01T10:00:00Z', amountPaid: 0 };
+  assert.equal(inPaymentLedger(before, tracking), false, 'the back catalogue has no balance');
+  assert.equal(inPaymentLedger({ timestamp: '2026-10-15T00:01:00Z' }, tracking), true, 'from the start date on');
+
+  // A real payment pulls an older booking in: taking a card payment on it is
+  // a fact about that booking, and it belongs in the figures it now affects.
+  assert.equal(inPaymentLedger({ ...before, amountPaid: 250 }, tracking), true);
+  assert.equal(inPaymentLedger({ ...before, stripePaidAt: '2026-10-16T09:00:00Z' }, tracking), true);
+  assert.equal(inPaymentLedger({ ...before, paymentLinkSentAt: '2026-10-16T09:00:00Z' }, tracking), true);
+
+  // Tracking off means nothing is in the ledger, whatever its date.
+  assert.equal(inPaymentLedger({ timestamp: '2027-01-01T00:00:00Z' }, { tracked: false, from: null }), false);
+});
+
+test('a booking outside the ledger has a value but no balance, and is never chased', async () => {
+  const { paymentState, summarise } = await import('../src/lib/operators-domain.js');
+  const tracking = { tracked: true, from: '2026-10-15' };
+  const operator = { id: 1, name: 'Links Travel', paymentTermsDays: 30, depositPercent: 50 };
+  const old = {
+    bookingId: 'OLD-1',
+    status: 'Booked',
+    date: '2026-09-01',
+    total: 1000,
+    amountPaid: 0,
+    timestamp: '2026-06-01T09:00:00Z',
+  };
+  const fresh = { ...old, bookingId: 'NEW-1', date: '2027-05-01', timestamp: '2026-10-20T09:00:00Z' };
+
+  const before = paymentState(old, operator, { today: '2026-10-20', tracking });
+  assert.equal(before.tracked, false);
+  assert.equal(before.gross, 1000, 'the round is still worth what it is worth');
+  assert.equal(before.outstanding, 0);
+  assert.equal(before.overdue, false);
+  assert.equal(before.dueDate, null);
+  assert.equal(before.chaseable, false, 'nobody is chased for money that was never recorded');
+
+  const after = paymentState(fresh, operator, { today: '2026-10-20', tracking });
+  assert.equal(after.tracked, true);
+  assert.equal(after.outstanding, 1000);
+
+  // The totals every page reads are summed from those states, so the old
+  // booking's value counts and its phantom balance does not.
+  const account = summarise(operator, [old, fresh], { today: '2026-10-20', tracking });
+  assert.equal(account.bookings, 2);
+  assert.equal(account.committedGross, 2000);
+  assert.equal(account.outstanding, 1000, 'only the tracked booking is owed');
+  assert.equal(account.overdueAmount, 0);
+
+  // With no cutover at all, nothing is filtered: this is the old behaviour.
+  const everything = summarise(operator, [old, fresh], {
+    today: '2026-10-20',
+    tracking: { tracked: true, from: null },
+  });
+  assert.equal(everything.outstanding, 2000);
+});
+
+test("a trade booking carries its operator's terms, stage by stage", async () => {
+  const { paymentState } = await import('../src/lib/operators-domain.js');
+  const operator = {
+    id: 1,
+    name: 'Golfbreaks',
+    paymentTermsDays: 30,
+    depositPercent: 25,
+    depositDueDaysBeforePlay: 60,
+    balanceDueDaysBeforePlay: 14,
+    creditLimit: null,
+  };
+  const booking = {
+    bookingId: 'B-1',
+    status: 'Booked',
+    date: '2027-05-01',
+    total: 1000,
+    amountPaid: 250,
+    paymentStatus: 'Deposit paid',
+  };
+
+  const state = paymentState(booking, operator, { today: '2026-10-20' });
+
+  // The rule behind the figures travels with them, so the booking can say
+  // whose terms produced its dates rather than showing bare numbers.
+  assert.equal(state.terms.source, 'operator');
+  assert.equal(state.terms.operatorName, 'Golfbreaks');
+  assert.equal(state.terms.depositPercent, 25);
+  assert.match(state.terms.summary, /25% deposit due 60 days before play/);
+  assert.match(state.terms.summary, /balance due 14 days before play/);
+
+  const [deposit, balance] = state.stages;
+  assert.equal(deposit.label, 'Deposit (25%)');
+  assert.equal(deposit.amount, 250);
+  assert.equal(deposit.dueDate, '2027-03-02', '60 days before play');
+  assert.equal(deposit.settled, true, 'the 250 paid covers it');
+  assert.equal(deposit.outstanding, 0);
+
+  assert.equal(balance.label, 'Balance');
+  assert.equal(balance.amount, 750);
+  assert.equal(balance.paid, 0, 'what was paid filled the deposit first');
+  assert.equal(balance.outstanding, 750);
+  assert.equal(balance.dueDate, '2027-04-17', '14 days before play');
+  assert.equal(state.stage, 'balance', 'the deposit is behind us');
+});
+
+test('a deposit somebody has marked paid is paid, whatever the percentage works out to', async () => {
+  // The percentage on an account is a default, and the club's real deposit is
+  // not always it: County Louth's accounts all read 30% while the deposits
+  // actually taken are EUR 97.50 a head, which on a EUR 385 round is 25.3%.
+  // Every such booking computed as short of its deposit, which is how an
+  // account that had paid in full came to be chased for the difference.
+  const { paymentState } = await import('../src/lib/operators-domain.js');
+  const operator = { id: 2, name: 'Links Travel', paymentTermsDays: 7, depositPercent: 30 };
+  const booking = {
+    bookingId: 'B-3',
+    status: 'Booked',
+    date: '2027-08-23',
+    players: 8,
+    total: 3080,
+    amountPaid: 780, // 8 x 97.50, the club's own deposit
+    paymentStatus: 'Deposit paid',
+    bookedAt: '2026-10-19T09:00:00.000Z',
+  };
+
+  const state = paymentState(booking, operator, { today: '2026-10-30' });
+  const [deposit, balance] = state.stages;
+  assert.equal(deposit.amount, 924, 'the account still reads 30%');
+  assert.equal(deposit.outstanding, 0, 'but the deposit is settled, because the club says it is');
+  assert.equal(deposit.settled, true);
+  assert.equal(state.stage, 'balance', 'so the next thing owed is the balance');
+  assert.equal(state.dueAmount, 2300, 'what is left to pay');
+  assert.equal(state.dueDate, balance.dueDate, 'and it falls due with the balance, not now');
+
+  // Nothing is forgiven: the booking still owes everything it owed.
+  assert.equal(state.outstanding, 2300);
+
+  // Without that word, the arithmetic stands and the shortfall is real.
+  const unsaid = paymentState({ ...booking, paymentStatus: 'Pending' }, operator, { today: '2026-10-30' });
+  assert.equal(unsaid.stage, 'deposit');
+  assert.equal(unsaid.dueAmount, 144);
+});
+
+test('a part payment is split across the stages, and a date set on the booking says so', async () => {
+  const { paymentState, DEFAULT_TERMS } = await import('../src/lib/operators-domain.js');
+  const operator = { id: 2, name: 'Links Travel', paymentTermsDays: 30, depositPercent: 50 };
+  const booking = {
+    bookingId: 'B-2',
+    status: 'Booked',
+    date: '2027-05-01',
+    total: 1000,
+    amountPaid: 300,
+    // Pending, not "Deposit paid": nobody has said the deposit is settled, so
+    // the arithmetic is all there is to go on. See the test below for what
+    // happens when somebody does say so.
+    paymentStatus: 'Pending',
+    balanceDueDate: '2027-01-31',
+  };
+
+  const [deposit, balance] = paymentState(booking, operator, { today: '2027-02-10' }).stages;
+  assert.equal(deposit.amount, 500);
+  assert.equal(deposit.paid, 300, 'the deposit is filled first');
+  assert.equal(deposit.outstanding, 200);
+  assert.equal(balance.paid, 0, 'and nothing spills into the balance until it is covered');
+  assert.equal(balance.outstanding, 500);
+
+  // A date agreed for this booking alone is flagged, so nobody "corrects" it
+  // back to what the account's terms would have produced.
+  assert.equal(balance.overridden, true);
+  assert.equal(balance.dueDate, '2027-01-31');
+  assert.equal(balance.overdue, true);
+  assert.equal(deposit.overridden, false);
+
+  // A direct booking still says which terms it is being read under.
+  const direct = paymentState(booking, null, { today: '2027-02-10' });
+  assert.equal(direct.terms.source, 'default');
+  assert.equal(direct.terms.operatorName, null);
+  assert.equal(direct.terms.paymentTermsDays, DEFAULT_TERMS.paymentTermsDays);
+  // No deposit percentage, so there is one stage and it is the whole amount.
+  assert.deepEqual(
+    direct.stages.map((stage) => stage.label),
+    ['Full amount'],
+  );
+});
+
+test('a booking outside the ledger carries a plan, not a balance', async () => {
+  const { paymentState } = await import('../src/lib/operators-domain.js');
+  const tracking = { tracked: true, from: '2026-10-15' };
+  const old = {
+    bookingId: 'OLD-1',
+    status: 'Booked',
+    date: '2026-12-01',
+    total: 1300,
+    amountPaid: 0,
+    timestamp: '2026-05-01T09:00:00Z',
+  };
+  const state = paymentState(
+    old,
+    { id: 1, name: 'Grasshopper Golf', paymentTermsDays: 7, depositPercent: 30, balanceDueDaysBeforePlay: 60 },
+    { today: '2026-10-14', tracking },
+  );
+
+  // Nothing is owed in ledger terms...
+  assert.equal(state.tracked, false);
+  assert.equal(state.outstanding, 0);
+  assert.equal(state.chaseable, false);
+
+  // ...but the club can still take the deposit on an older booking, and the
+  // link panel has to know what to ask for. Sending it is what brings the
+  // booking in, so the stages are kept as a plan.
+  assert.deepEqual(
+    state.stages.map((stage) => [stage.label, stage.amount]),
+    [
+      ['Deposit (30%)', 390],
+      ['Balance', 910],
+    ],
+  );
+
+  // Nothing sums the stages, so this cannot leak back into the figures: the
+  // account's totals come from `outstanding`, which is zero.
+  const { summarise } = await import('../src/lib/operators-domain.js');
+  const account = summarise({ id: 1, name: 'Grasshopper Golf', paymentTermsDays: 7, depositPercent: 30 }, [old], {
+    today: '2026-10-14',
+    tracking,
+  });
+  assert.equal(account.outstanding, 0);
+  assert.equal(account.committedGross, 1300);
+
+  // The terms are still named: the account has not changed, only whether the
+  // club is counting money against it.
+  assert.equal(state.terms.operatorName, 'Grasshopper Golf');
+});
+
+test('money actually received is never hidden by a switch', async () => {
+  const { inPaymentLedger, paymentState } = await import('../src/lib/operators-domain.js');
+  const operator = { id: 1, name: 'Grasshopper Golf', paymentTermsDays: 7, depositPercent: 30 };
+  const legacy = { timestamp: '2026-05-01T09:00:00Z', total: 1300 };
+
+  // A club with tracking off still takes the odd card payment, and a
+  // dashboard that says nothing is paid while the money is in the bank is
+  // worse than any phantom balance the switches exist to suppress.
+  for (const tracking of [
+    { tracked: false, from: null },
+    { tracked: true, from: '2026-10-15' },
+  ]) {
+    assert.equal(inPaymentLedger({ ...legacy, amountPaid: 390 }, tracking), true);
+    assert.equal(inPaymentLedger({ ...legacy, stripePaidAt: '2026-10-15T10:00:00Z' }, tracking), true);
+    // A link that is out and awaiting payment counts too: the reply lands
+    // against a booking that is already in the ledger.
+    assert.equal(inPaymentLedger({ ...legacy, paymentLinkSentAt: '2026-10-15T09:00:00Z' }, tracking), true);
+    // ...while a booking nobody has ever paid or billed stays out.
+    assert.equal(inPaymentLedger({ ...legacy, amountPaid: 0 }, tracking), false);
+  }
+
+  const state = paymentState(
+    { bookingId: 'X', status: 'Booked', date: '2027-06-01', total: 1300, amountPaid: 390, ...legacy },
+    operator,
+    { today: '2026-10-16', tracking: { tracked: false, from: null } },
+  );
+  assert.equal(state.tracked, true);
+  assert.equal(state.paid, 390);
+  assert.equal(state.outstanding, 910, 'and the balance that follows from it is owed');
 });

@@ -52,7 +52,7 @@ Every route served by the Express app (`server/src/app.js`, routers in `server/s
 
 | Method | Path | Auth | Purpose / responses |
 |---|---|---|---|
-| GET | `/` | Staff | All bookings of the club with trade account and payment state, operators, payment statuses. First runs a Stripe sync if the last one is older than 10 s (bounded to 8 s) |
+| GET | `/` | Staff | All bookings of the club with trade account and payment state, operators, payment statuses. First runs a Stripe sync if the last one is older than 10 s (bounded to 8 s). Each booking's `payment` carries `terms` (whose credit terms produced its figures: `{source, operatorName, summary, depositPercent, paymentTermsDays, depositDueDaysBeforePlay, balanceDueDaysBeforePlay}`) and `stages` — see below |
 | PATCH | `/:bookingId/payment` | Staff | `{paymentStatus, amountPaid, invoiceNumber, invoicedAt, depositDueDate, balanceDueDate}` (any subset). Validated; `Paid`/`Deposit paid` starts the pre-play clock |
 | PATCH | `/:bookingId/status` | Staff | `{status}` ∈ `Inquiry, Requested, Booked, Rejected, Cancelled` (+ legacy `Pending`, `Confirmed`, normalised) |
 | PATCH | `/:bookingId/note` | Staff | `{note}` (string) |
@@ -74,17 +74,60 @@ Every route served by the Express app (`server/src/app.js`, routers in `server/s
 | GET | `/booking` | **Signed link** (`?ref=&token=`) | 30/15 min per IP **and** per reference → 429 | Thin view of the booking (date, time, players, courses, status, total, guest name) + allowed actions + pending requests. 404 for any bad link (same message); **410** 30 days after play |
 | POST | `/request` | **Signed link** (`{ref, token}` in body) | 10/hour per IP and per reference | `{kind: cancel\|amend, message, requestedDate, requestedTime, requestedPlayers}`. Files a `Pending` request (never changes the booking); 409 if one is already open; emails the guest an acknowledgement |
 | GET | `/` | Staff | – | The club's last 200 requests with booking context |
-| POST | `/:id/:decision` | Staff | – | `decision` = `approve` or `decline`, body `{note}`. Approving a cancellation sets the booking `Cancelled` (request `Applied`); approving an amendment only marks it `Approved` (`needsEditing: true`). Emails the guest. 409 if already resolved |
+| POST | `/:id/:decision` | Staff | – | `decision` = `approve` or `decline`, body `{note}`. Approving a cancellation sets the booking `Cancelled` (request `Applied`); approving an amendment only marks it `Approved` (`needsEditing: true`). Emails **whoever asked** — the request's own `guest_email` (an operator's, where an operator asked through the portal or by email), falling back to the booking's where a request stored none — and greets them by the booking's name only when they are the lead guest. `{guestEmailed, guestEmail}` report whether it went and to which address. 409 if already resolved |
+
+### Who an address belongs to (`correspondent`)
+
+`{email, kind, name, label, note}`, returned on the Inbox list, on one email, and as `recipient` on a booking's conversation. `kind` is one of:
+
+| kind | when | `label` |
+|---|---|---|
+| `operator` | a tour operator account owns the address — its `contact_email`, or its own (non-consumer) sending domain | the operator's name |
+| `guest` | the address is on bookings under exactly **one** guest name | that name |
+| `shared` | the address is on bookings under **several** names — an agency mailbox with no operator account | the address |
+| `unknown` | nothing is known about it | the address |
+
+The order matters: an operator account beats anything inferred from a booking, because the club recorded it deliberately. `guest_email` is not reliably a guest's own address — one agency address here is on six bookings under six different golfers — so a name is attached to an address only when that address belongs to one person. A `name` is what may be greeted in a reply; `operator` and `shared` have none, and the composer greets nobody rather than guessing.
+
+### A booking's payment, stage by stage (`payment.stages`)
+
+A trade booking is worked in the order the money is taken, so `paymentState` resolves the operator's credit terms into the stages themselves rather than leaving one combined balance:
+
+| field | meaning |
+|---|---|
+| `id` / `label` | `deposit` ("Deposit (25%)") or `balance` ("Balance", or "Full amount" where the account takes no deposit) |
+| `amount` | what this stage is for, from the account's `deposit_percent` |
+| `paid` | what has been paid **towards this stage**: the deposit fills first, the balance takes what is left |
+| `outstanding` | `amount − paid`, or 0 on a written-off or refunded booking |
+| `dueDate` | resolved from the account's terms, or the booking's own `deposit_due_date` / `balance_due_date` |
+| `overridden` | true where that date was set on this booking rather than produced by the terms — flagged so nobody "corrects" it back |
+| `settled` / `overdue` / `daysOverdue` / `daysUntilDue` | where this stage stands today |
+
+Stages worth nothing are left out, so a direct booking with no deposit has one. A booking outside the payment ledger (see `PAYMENTS_TRACKED_FROM`) has none, and still names its terms.
+
+## The audit trail — **no endpoint**
+
+Every state-changing request is recorded in `audit_log` by a middleware over the whole API (`lib/audit.js`), so a route added later is covered without anybody instrumenting it. Reads are not logged — this is a record of changes.
+
+**There is deliberately no route that reads, edits or deletes it.** The trail is recorded for the database to answer from: an endpoint that served it would be an endpoint that could be asked to hide something, and the rows name staff and what each of them did. Read it with SQL (Supabase SQL editor, `psql`) — see [SECURITY.md § Audit trail](SECURITY.md#audit-trail) for the queries.
+
+Each row: `club, at, actor, actor_kind, actor_role, action, entity_type, entity_id, outcome, status, method, path, details, ip, user_agent`.
+
+- **`action`** is derived from the path — `PATCH /api/bookings/BOOK-1/payment` → `booking.payment.update` — with the id kept separately in `entity_id`, so every edit of every booking groups under one action. A dozen awkward names are aliased (`payment.link.send`, `auth.login`); anything not aliased still gets its derived name rather than being dropped.
+- **`outcome`** is `applied` (2xx/3xx), `refused` (4xx — an attempt is worth keeping, including a 403) or `failed` (5xx).
+- **`details`** is the request body with every secret replaced by `[redacted]`, matched on the key containing `password`, `token`, `secret`, `apikey`, `authorization`, `cookie` or `signature` at any depth. Long free text is trimmed to 500 characters: the trail records that an email was sent, not a second copy of it. A preview or an upload stores `{skipped: true}`.
+- **Sign-ins** are recorded, including failed ones against an account that exists. An attempt on an address belonging to nobody is attributed to no club — there is none to attribute it to.
+- The row is written when the response finishes, so it lands just after the request returns: the trail never holds a reply up, and never fails one.
 
 ## `/api/inbox` (`routes/inbox.js`) — **Staff**
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/` | `?status=open\|replied\|dismissed\|deleted\|all` — inbound emails for review, with counts. Rows the core API is still handling (`routed_to` `queued`/`processing`) are left out of every status and count except `all`, where they are labelled `Queued` / `Being processed`. Membership correspondence (`routed_to = 'membership'`) is left out of **every** status and count, `all` included: it is read on the Membership page with the application. A membership email that produced no application (membership misconfigured, database unreachable) is routed to `inbox` like anything else needing a person, and does appear. A deleted email (`deleted_at`) is listed and counted only under `status=deleted`, never under `all` |
-| GET | `/booking/:bookingId` | A booking's whole conversation |
-| POST | `/booking/:bookingId/send` | `{subject, body}` — email the booking's guest (address taken from the booking, not the request); logged in `email_messages` |
+| GET | `/booking/:bookingId` | A booking's whole conversation, and `recipient` — who the next email would go to (same shape as `correspondent`) |
+| POST | `/booking/:bookingId/send` | `{subject, body, to}` — email whoever the club has been corresponding with about this booking: the last person to write in, and the booking's own address only when nobody has (a tour operator's booking is answered to the operator, not to the lead guest named on it). `to` is the address the composer showed and is honoured only when it is already part of that conversation (either end of any email on it) or the booking's own; anything else is ignored. Logged in `email_messages` |
 | POST | `/preview` | `{body, replyToId}` — render the HTML a reply would send |
-| GET | `/:id` | One email, its thread and its notes (`{message, thread, booking, notes}`; a note is `{id, messageId, note, createdBy, createdAt}`, oldest first) |
+| GET | `/:id` | One email, its thread, who it is with and its notes (`{message, thread, booking, correspondent, notes}`; a note is `{id, messageId, note, createdBy, createdAt}`, oldest first). `correspondent` is `{email, kind, name, label, note}` — see below |
 | POST | `/:id/reply` | `{subject, body}` — reply to the sender of a received email; closes it in the Inbox |
 | POST | `/:id/status` | `{status: dismissed\|open}` |
 | POST | `/:id/link` | `{bookingId}` — attach to a booking of this club |
@@ -149,6 +192,20 @@ Applicant emails name, and take replies at, the membership contact address: `mem
 | GET | `/config` | Which campaigns can send; Club Vero status (key stripped) |
 | GET | `/pending` | `?campaign=pre_arrival\|post_play&scope=due\|all` — who is due |
 | POST | `/send` | `{campaign, bookingIds[≤200], dryRun}` — rows re-read by club; asks Club Vero for a survey link first when enabled; stamps each booking so nobody is emailed twice |
+
+## `/api/booking-triggers` (`routes/booking-triggers.js`) — **Staff**: the booking lifecycle ladder
+
+The payment and communication triggers each booking climbs. See [BOOKING_TRIGGERS.md](BOOKING_TRIGGERS.md).
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/config` | Staff | The ladder, the deadlines, the three switches, the last pass (key stripped) |
+| GET | `/pending` | Staff | `?scope=due\|missed\|all` — what the workflow would do |
+| GET | `/history` | Staff | `?limit=≤200` — rungs already climbed, newest first |
+| GET | `/bookings/:bookingId` | Staff | One booking's whole ladder |
+| POST | `/run` | Staff | `{bookingIds[≤200]\|null, dryRun}` — climb what is due; rows re-read by club; one email per booking per run |
+| POST | `/clear` | Staff | `{bookingId, steps[]}` — record rungs as handled without emailing |
+| POST | `/sweep` | Admin | Run the scheduled pass now, across every club |
 
 ## `/api/imports` (`routes/imports.js`) — **Staff** (12 MB JSON body)
 

@@ -158,16 +158,25 @@ export default function MoneySection({ payments, trade }) {
 
         <ChartCard
           title="Top trade accounts"
-          subtitle="By committed revenue in this period"
+          // The bars are money from bookings that reached Booked; the table
+          // beside them counts every enquiry. Said plainly in both places,
+          // because the two disagree and the card used to leave the reader to
+          // work out which was which from the word "committed".
+          subtitle="Revenue from bookings that reached Booked, in this period"
           footer={
             <TableView
               label="the numbers"
               columns={[
                 { key: 'key', header: 'Account' },
-                { key: 'count', header: 'Bookings', numeric: true },
+                { key: 'count', header: 'Enquiries', numeric: true },
                 { key: 'players', header: 'Players', numeric: true },
-                { key: 'conversion', header: 'Conversion', numeric: true, render: (r) => `${r.conversion}%` },
-                { key: 'revenue', header: 'Revenue', numeric: true, render: (r) => formatCurrency(r.revenue) },
+                { key: 'conversion', header: 'Converted', numeric: true, render: (r) => `${r.conversion}%` },
+                {
+                  key: 'revenue',
+                  header: 'Booked revenue',
+                  numeric: true,
+                  render: (r) => formatCurrency(r.revenue),
+                },
               ]}
               rows={trade.operators}
             />

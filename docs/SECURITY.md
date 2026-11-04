@@ -130,6 +130,36 @@ Tokens in URLs are posted back in the request **body** (`/reset-password/check`,
 - **CSV formula defusing** (`lib/csv.js`): a cell starting with `= + - @ \t \r` is prefixed with `'` (plain numbers pass). Used by the bookings CSV export and the portal statement. The `.xlsx` export applies the same rule to every string cell (`defuseRow`) as defence in depth, keeping numbers, dates and booleans typed.
 - Campaign and reminder runs re-read rows by club and cap batch sizes (200 bookings, 100 operators).
 
+## Audit trail
+
+`audit_log` (migration `0023`) records **every state-changing request**: who, what, when, from which address, and whether it was applied, refused or failed. It is written by a middleware over the whole API (`lib/audit.js`) rather than by calls in each handler, so a route added later is covered the day it is written — the usual failure of hand-instrumented audit logs is that they are complete on the day they ship.
+
+What it deliberately does **not** contain: passwords, tokens, API keys, authorization headers, cookies and webhook signatures are replaced with `[redacted]`, matched on the key at any depth, so the accountability record cannot itself become the most valuable file in the building. Long free text (an email body, a note) is trimmed to 500 characters — the trail records that an email was sent, not a second copy of it. A test asserts that no password reaches the table, including through the sign-in route whose body contains one.
+
+Who can read it: whoever has database access, and nobody through the dashboard. **There is no page and no endpoint** — not for reading it, not for exporting it, not for deleting a row. That is the point: a trail the application can serve is a trail the application can be asked to filter, and the rows name staff and what each of them did. An integration test pins it by calling the routes that do not exist.
+
+Reading it, in the Supabase SQL editor or `psql`:
+
+```sql
+-- The last day, newest first
+SELECT at, actor, action, entity_id, outcome, details
+  FROM audit_log WHERE club = 'baltray' AND at > NOW() - interval '1 day'
+ ORDER BY at DESC;
+
+-- One booking's whole history
+SELECT at, actor, action, outcome, details FROM audit_log
+ WHERE club = 'baltray' AND entity_type = 'booking' AND entity_id = 'BOOK-20260910-973406B3'
+ ORDER BY at;
+
+-- Everything one person did, or every refused attempt
+SELECT at, action, entity_id, outcome FROM audit_log WHERE club = 'baltray' AND actor = 'alice@club.test' ORDER BY at DESC;
+SELECT at, actor, action, status, path FROM audit_log WHERE club = 'baltray' AND outcome = 'refused' ORDER BY at DESC;
+```
+
+What can change it: nothing in the application. There is no route that edits or deletes a row, and the only thing that removes one is age. Age is the only thing that removes one — the nightly purge at 12 months (`RETENTION_DAYS`), enforced against a real table in `audit-purge.test.js`, because the rows name staff and holding them indefinitely would be personal data with no purpose to point at.
+
+Sign-ins are recorded, including failed attempts against an account that exists. An attempt on an address belonging to nobody is attributed to no club: there is none to attribute it to, and the throttle's own logging already has it.
+
 ## Logging and PII
 
 `server/src/lib/logger.js` (no `console` in `server/src`, enforced by ESLint).

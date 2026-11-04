@@ -7,6 +7,7 @@ import { query } from '../db.js';
 import { serialiseBooking } from './bookings-domain.js';
 import { BOOKING_SELECT } from './schema.js';
 import { applyPaidSession, bookingRefFromSession, paymentKey } from './payment-link-domain.js';
+import { flagForTeeSheet, notifyTeam, paymentBooked } from './tee-sheet.js';
 import { handoverBookedCustomer } from './booked-webhook-outbox.js';
 
 export async function recordStripePayment(session) {
@@ -76,15 +77,25 @@ export async function recordStripePayment(session) {
 
   if (!result.rowCount) return { result: 'already recorded' };
 
-  const paid = serialiseBooking(result.rows[0]);
+  // A payment that booked the round -- a direct customer paying on the form --
+  // has to go on the tee sheet by hand. Flagged after the payment is safely
+  // written, never as part of it.
+  let recorded = serialiseBooking(result.rows[0]);
+  let teeSheet = '';
+  if (paymentBooked(booking.status, change.bookingStatus) && (await flagForTeeSheet(booking.bookingId, booking.club))) {
+    recorded = { ...recorded, teeSheetStatus: 'to_enter', teeSheetEnteredAt: null, teeSheetEnteredBy: '' };
+    teeSheet = '; flagged for the tee sheet';
+    await notifyTeam(recorded);
+  }
+
   // A payment is one of the ways a booking becomes 'Booked', so it is one of
   // the ways a customer becomes one to hand over. Not awaited, for the same
   // reason as the status route: Stripe is waiting on this webhook's response,
   // and a slow receiver must not cost us a redelivery.
-  void handoverBookedCustomer(paid, { reason: 'stripe payment' });
+  void handoverBookedCustomer(recorded, { reason: 'stripe payment' });
 
   return {
-    result: `${booking.bookingId} ${change.paymentStatus} (booking ${change.bookingStatus}), ${change.received} received`,
-    booking: paid,
+    result: `${booking.bookingId} ${change.paymentStatus} (booking ${change.bookingStatus}), ${change.received} received${teeSheet}`,
+    booking: recorded,
   };
 }

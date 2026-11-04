@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
-import { formatCurrency, formatDateTime } from '../lib/format.js';
+import { formatCurrency, formatDate, formatDateTime } from '../lib/format.js';
+import { defaultAmount, nextStage, stageChoices } from '../lib/payments.js';
 
 /**
  * Fetched each time the panel opens rather than once per page: it carries the
@@ -66,6 +67,12 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
   const awaiting = sent && booking.paymentStatus === 'Pending';
 
   const paidViaStripe = Boolean(booking.stripePaidAt) && !awaiting;
+
+  const picks = stageChoices(booking);
+  const stage = nextStage(booking);
+  // "Email deposit link" says what is about to happen; "payment link" does not.
+  const chosenPick = picks.find((pick) => Math.abs(Number(amount) - pick.amount) < 0.005);
+  const sendingLabel = chosenPick?.id === 'deposit' ? 'deposit link' : 'payment link';
 
   async function checkStripe() {
     setBusy(true);
@@ -219,22 +226,60 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
           This booking has no guest email address.
         </div>
       ) : (
-        <div className="row" style={{ alignItems: 'flex-end', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <label className="stack" style={{ gap: '0.25rem' }}>
-            <span className="label">Amount ({config.currency})</span>
-            <input
-              type="number"
-              min="0.5"
-              step="0.01"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              disabled={busy}
-              style={{ width: '9rem' }}
-            />
-          </label>
-          <button type="button" className="btn-primary" onClick={send} disabled={busy || !(Number(amount) > 0)}>
-            {busy ? 'Sending…' : sent ? 'Resend payment link' : 'Email payment link'}
-          </button>
+        <div className="stack" style={{ gap: '0.5rem' }}>
+          {/* The account's terms decide these figures, so they are offered by
+              name. Nobody should be reading a percentage off another page and
+              doing the sum into this box. */}
+          {picks.length > 0 && (
+            <div className="row" style={{ gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span className="muted" style={{ fontSize: '0.8125rem' }}>
+                Ask for:
+              </span>
+              {picks.map((pick) => {
+                const chosen = Math.abs(Number(amount) - pick.amount) < 0.005;
+                return (
+                  <button
+                    key={pick.id}
+                    type="button"
+                    className="btn-sm"
+                    aria-pressed={chosen}
+                    disabled={busy}
+                    onClick={() => setAmount(String(pick.amount))}
+                    style={chosen ? { borderColor: 'var(--brand-gold)', color: 'var(--brand-gold-bright)' } : undefined}
+                    title={pick.dueDate ? `Due ${formatDate(pick.dueDate)}` : undefined}
+                  >
+                    {pick.label} {formatCurrency(pick.amount)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="row" style={{ alignItems: 'flex-end', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <label className="stack" style={{ gap: '0.25rem' }}>
+              <span className="label">Amount ({config.currency})</span>
+              <input
+                type="number"
+                min="0.5"
+                step="0.01"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                disabled={busy}
+                style={{ width: '9rem' }}
+              />
+            </label>
+            <button type="button" className="btn-primary" onClick={send} disabled={busy || !(Number(amount) > 0)}>
+              {busy ? 'Sending…' : sent ? `Resend ${sendingLabel}` : `Email ${sendingLabel}`}
+            </button>
+          </div>
+
+          {stage && (
+            <div className="muted" style={{ fontSize: '0.8125rem' }}>
+              {stage.label} under {booking.payment?.terms?.operatorName ?? 'the default'} terms
+              {stage.dueDate ? `, due ${formatDate(stage.dueDate)}` : ''}. Once it is paid the booking reads{' '}
+              <strong>Deposit paid</strong> and the balance takes over.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -340,10 +385,4 @@ function SetupCheck() {
       ))}
     </div>
   );
-}
-
-function defaultAmount(booking) {
-  const outstanding = booking.payment?.outstanding;
-  const value = Number.isFinite(outstanding) && outstanding > 0 ? outstanding : Number(booking.total) || 0;
-  return String(Math.round(value * 100) / 100);
 }

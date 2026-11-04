@@ -95,6 +95,9 @@ export const api = {
   changeRequests: () => request('/changes'),
   resolveChangeRequest: (id, decision, note) =>
     request(`/changes/${id}/${decision}`, { method: 'POST', body: { note } }),
+  // What the club sends guests without anybody pressing a button.
+  guestEmailSettings: () => request('/changes/settings'),
+  saveGuestEmailSettings: (settings) => request('/changes/settings', { method: 'PUT', body: { settings } }),
 
   bookings: () => request('/bookings'),
   setStatus: (bookingId, status) =>
@@ -107,11 +110,14 @@ export const api = {
       method: 'PATCH',
       body: { note },
     }),
-  setTeeTime: (bookingId, teeTime) =>
-    request(`/bookings/${encodeURIComponent(bookingId)}/tee-time`, {
-      method: 'PATCH',
-      body: { teeTime },
-    }),
+  // A booking a payment booked, put on the club's tee sheet (or not after all).
+  setTeeSheet: (bookingId, entered) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}/tee-sheet`, { method: 'PATCH', body: { entered } }),
+  // The desk's own edits: the date, the party, the price, who it is with.
+  updateBooking: (bookingId, patch) =>
+    request(`/bookings/${encodeURIComponent(bookingId)}`, { method: 'PATCH', body: patch }),
+  // A booking taken by phone or at the counter.
+  createBooking: (booking) => request('/bookings', { method: 'POST', body: booking }),
   remove: (bookingId) => request(`/bookings/${encodeURIComponent(bookingId)}`, { method: 'DELETE' }),
   fixTeeTimes: () => request('/bookings/fix-tee-times', { method: 'POST' }),
 
@@ -132,8 +138,11 @@ export const api = {
   inboxRestore: (id) => request(`/inbox/${id}/restore`, { method: 'POST', body: {} }),
   bookingThread: (bookingId) => request(`/inbox/booking/${encodeURIComponent(bookingId)}`),
   emailPreview: (body, replyToId = null) => request('/inbox/preview', { method: 'POST', body: { body, replyToId } }),
-  emailGuest: (bookingId, body, subject) =>
-    request(`/inbox/booking/${encodeURIComponent(bookingId)}/send`, { method: 'POST', body: { body, subject } }),
+  // `to` is the address the composer showed; the server honours it only when it
+  // is already part of this booking's conversation, and otherwise writes to
+  // whoever last emailed about the booking.
+  emailGuest: (bookingId, body, subject, to = null) =>
+    request(`/inbox/booking/${encodeURIComponent(bookingId)}/send`, { method: 'POST', body: { body, subject, to } }),
   paymentDiagnostics: () => request('/payments/diagnostics'),
   syncPayments: () => request('/payments/sync', { method: 'POST' }),
   checkPayment: (bookingId) => request(`/payments/bookings/${encodeURIComponent(bookingId)}/check`, { method: 'POST' }),
@@ -151,18 +160,17 @@ export const api = {
   assignOperator: (bookingIds, operatorId) =>
     request('/operators/assign', { method: 'POST', body: { bookingIds, operatorId } }),
 
-  // The booking lifecycle ladder. The preview is a dry run — it walks every
-  // booking and sends nothing, which is how a club reads what the ladder
-  // would do before letting it do any of it.
-  lifecycleConfig: () => request('/booking-triggers'),
-  lifecyclePreview: () => request('/booking-triggers/preview', { method: 'POST', body: {} }),
-  lifecycleRun: () => request('/booking-triggers/run', { method: 'POST', body: {} }),
-  lifecycleHeld: () => request('/booking-triggers/held'),
-  // The club's own settings: what it has chosen, what it would inherit, and
-  // the bounds each field is held to.
-  lifecycleSettings: () => request('/booking-triggers/settings'),
-  saveLifecycleSettings: (settings) => request('/booking-triggers/settings', { method: 'PUT', body: { settings } }),
-  bookingLifecycle: (bookingId) => request(`/booking-triggers/booking/${encodeURIComponent(bookingId)}`),
+  // The booking trigger workflow: the lifecycle ladder each booking climbs.
+  triggerConfig: () => request('/booking-triggers/config'),
+  triggersPending: (scope) => request(`/booking-triggers/pending${queryString({ scope })}`),
+  bookingTriggers: (bookingId) => request(`/booking-triggers/bookings/${encodeURIComponent(bookingId)}`),
+  runTriggers: ({ bookingIds = null, dryRun = false } = {}) =>
+    request('/booking-triggers/run', { method: 'POST', body: { bookingIds, dryRun } }),
+  clearTriggerSteps: (bookingId, steps) =>
+    request('/booking-triggers/clear', { method: 'POST', body: { bookingId, steps } }),
+  // The club's own switches and deadlines for it, edited on the Settings page.
+  triggerSettings: () => request('/booking-triggers/settings'),
+  saveTriggerSettings: (settings) => request('/booking-triggers/settings', { method: 'PUT', body: { settings } }),
 
   emailConfig: () => request('/emails/config'),
   emailPending: (campaign, scope) => request(`/emails/pending${queryString({ campaign, scope })}`),

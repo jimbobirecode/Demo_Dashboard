@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../lib/format.js';
+import { correspondent, leadGuestAside } from '../lib/correspondent.js';
 import ChatThread from '../components/ChatThread.jsx';
 import EmailComposer, { composerContext } from '../components/EmailComposer.jsx';
 import StatusPill from '../components/StatusPill.jsx';
@@ -161,7 +162,12 @@ export default function Inbox({ onCountChange }) {
                 <strong
                   style={{ fontSize: '0.8125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                 >
-                  {message.guestName || message.fromEmail}
+                  {message.correspondent?.label ??
+                    correspondent({
+                      email: message.fromEmail,
+                      leadGuestEmail: message.bookingGuestEmail,
+                      leadGuestName: message.guestName,
+                    }).label}
                 </strong>
                 <span
                   className="muted"
@@ -253,7 +259,21 @@ function InboxDetail({ id, onChanged, onHandled }) {
   }
 
   const guestName = booking?.guestName || message.guestName || '';
-  const firstName = guestName.trim().split(/\s+/)[0] || '';
+  // Who wrote in. The server names them from the club's own records — the
+  // operator account that owns the address, or a booking address that belongs
+  // to exactly one person — because a booking's name is not evidence about an
+  // address that books for a different golfer every time.
+  const who =
+    detail.correspondent ??
+    correspondent({
+      email: message.fromEmail,
+      leadGuestEmail: booking?.guestEmail ?? message.bookingGuestEmail,
+      leadGuestName: guestName,
+    });
+  // The booking's lead guest, where the round is for somebody other than
+  // whoever wrote. Only a name to mention: the greeting and the recipient both
+  // come from `who`.
+  const lead = leadGuestAside(booking, who);
   const why = message.reviewReason || message.routeLabel || '';
   const status = deleted
     ? `Deleted by ${message.deletedBy} · ${formatDateTime(message.deletedAt)}`
@@ -268,9 +288,17 @@ function InboxDetail({ id, onChanged, onHandled }) {
       {/* Who, about what, and why it needs a person - in one glance. */}
       <div className="between" style={{ alignItems: 'flex-start', gap: '1rem' }}>
         <div>
-          <div style={{ fontSize: '1.15rem', fontWeight: 700 }}>{guestName || message.fromEmail}</div>
+          <div style={{ fontSize: '1.15rem', fontWeight: 700 }}>
+            {who.label}
+            {who.kind === 'operator' && (
+              <span className="muted" style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+                {' '}
+                · tour operator
+              </span>
+            )}
+          </div>
           <div className="muted" style={{ fontSize: '0.8125rem' }}>
-            {guestName ? `${message.fromEmail} · ` : ''}wrote {formatDateTime(message.createdAt)}
+            {who.name ? `${message.fromEmail} · ` : ''}wrote {formatDateTime(message.createdAt)}
           </div>
         </div>
         <div className="stack" style={{ gap: '0.4rem', alignItems: 'flex-end' }}>
@@ -356,6 +384,10 @@ function InboxDetail({ id, onChanged, onHandled }) {
             {booking.teeTime ? ` at ${booking.teeTime}` : ''} · {booking.players} players ·{' '}
             {formatCurrency(booking.total)}
           </span>
+          {/* Somebody else wrote in about this booking - an operator, or
+              whoever is organising the group. Said plainly, so nobody answers
+              the lead guest by mistake. */}
+          {lead && <span className="muted">Lead guest: {lead}</span>}
         </div>
       ) : (
         <div className="context-strip">
@@ -382,7 +414,12 @@ function InboxDetail({ id, onChanged, onHandled }) {
         <div className="label" style={{ marginBottom: '0.5rem' }}>
           The conversation
         </div>
-        <ChatThread thread={thread} guestName={guestName} activeId={message.id} />
+        <ChatThread
+          thread={thread}
+          guestName={guestName}
+          leadGuestEmail={booking?.guestEmail ?? message.bookingGuestEmail ?? ''}
+          activeId={message.id}
+        />
       </div>
 
       <Notes
@@ -418,17 +455,23 @@ function InboxDetail({ id, onChanged, onHandled }) {
               </div>
             )}
             <EmailComposer
-              title={`Reply to ${firstName || message.fromEmail}`}
+              title={who.name ? `Reply to ${who.name}` : 'Reply'}
               to={message.fromEmail}
+              recipient={who}
+              about={
+                booking && lead
+                  ? `About booking ${booking.bookingId} — the round is for ${lead}, who is not who this email goes to.`
+                  : null
+              }
               subject={`Re: ${(message.subject || '').replace(/^re:\s*/i, '')}`}
               initialBody={message.draftReply || ''}
               draftKey={`inbox-${message.id}`}
-              context={composerContext(booking, guestName)}
+              context={composerContext(booking, who)}
               replyToId={message.id}
               sendLabel="Send reply"
               disabled={busy}
               send={(body) => api.inboxReply(message.id, body)}
-              onSent={() => onHandled(message.id, `Reply sent to ${guestName || message.fromEmail}.`)}
+              onSent={() => onHandled(message.id, `Reply sent to ${who.label}.`)}
               note={
                 open ? (
                   <button type="button" disabled={busy} onClick={dismiss} title="Close this without emailing the guest">

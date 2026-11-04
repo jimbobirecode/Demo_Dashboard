@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { correspondent } from '../lib/correspondent.js';
 import { formatDateTime } from '../lib/format.js';
 
 /** What each email the club sends is, in words a person would use. */
@@ -43,7 +44,7 @@ function sender(message) {
  * `onReplyTo(message)` puts a "Reply to this" link on the guest's emails;
  * `activeId` marks the one being answered.
  */
-export default function ChatThread({ thread, guestName = '', activeId = null, onReplyTo = null }) {
+export default function ChatThread({ thread, guestName = '', leadGuestEmail = '', activeId = null, onReplyTo = null }) {
   if (!thread?.length) {
     return (
       <div className="muted" style={{ fontSize: '0.875rem' }}>
@@ -58,6 +59,7 @@ export default function ChatThread({ thread, guestName = '', activeId = null, on
           key={message.id}
           message={message}
           guestName={guestName}
+          leadGuestEmail={leadGuestEmail}
           active={message.id === activeId}
           onReplyTo={onReplyTo}
         />
@@ -66,8 +68,17 @@ export default function ChatThread({ thread, guestName = '', activeId = null, on
   );
 }
 
-function Bubble({ message, guestName, active, onReplyTo }) {
+function Bubble({ message, guestName, leadGuestEmail, active, onReplyTo }) {
   const fromGuest = message.direction === 'inbound';
+  // Each email is labelled with whoever sent it. A conversation about one
+  // booking can hold two correspondents - the operator who booked it and the
+  // lead guest they booked for - and only one of them wrote any given email,
+  // so `guestName` is used only for mail from the address it belongs to.
+  // Without an address to check it against (a membership thread, where the
+  // name is the applicant's own) the name stands for every inbound email.
+  const wrote = leadGuestEmail
+    ? correspondent({ email: message.fromEmail, leadGuestEmail, leadGuestName: guestName })
+    : { label: guestName || message.fromEmail };
   // A staff reply carries the guest's email quoted underneath (for the guest's
   // benefit); here the guest's email is already in the conversation, so the
   // quote is left off.
@@ -82,7 +93,7 @@ function Bubble({ message, guestName, active, onReplyTo }) {
     <div className={`chat-row ${fromGuest ? 'from-guest' : 'from-club'}`}>
       <div className={`chat-bubble${active ? ' active' : ''}`}>
         <div className="chat-meta">
-          <strong>{fromGuest ? guestName || message.fromEmail : sender(message)}</strong>
+          <strong>{fromGuest ? wrote.label : sender(message)}</strong>
           {!fromGuest && message.kind && message.kind !== 'reply' && (
             <span className="chat-tag">{KIND_LABELS[message.kind] ?? message.kind}</span>
           )}

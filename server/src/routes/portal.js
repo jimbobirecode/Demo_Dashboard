@@ -31,6 +31,7 @@ import {
   buildOperatorIndex,
   describeTerms,
   paymentState,
+  paymentTracking,
   summarise,
 } from '../lib/operators-domain.js';
 import {
@@ -281,7 +282,10 @@ async function loadAccount(req) {
   const today = todayInClubZone();
   const bookings = attachOperators(await loadBookings(club), buildOperatorIndex(operators))
     .filter((booking) => booking.operatorId === operatorId)
-    .map((booking) => ({ ...booking, payment: paymentState(booking, operator, { today }) }));
+    .map((booking) => ({
+      ...booking,
+      payment: paymentState(booking, operator, { today, tracking: paymentTracking() }),
+    }));
 
   let pending = new Map();
   if (bookings.length) {
@@ -313,8 +317,12 @@ router.get('/me', async (req, res, next) => {
         creditLimit: operator.creditLimit,
         onHold: operator.onHold,
       },
-      account: summarise(operator, bookings, { today }),
-      canPayOnline: account.payable,
+      account: summarise(operator, bookings, { today, tracking: paymentTracking() }),
+      // The club does not record payments, so the portal shows the operator
+      // what they have booked and says nothing about money they may or may
+      // not owe. See tracksPayments in lib/operators-domain.js.
+      tracksPayments: paymentTracking().tracked,
+      canPayOnline: account.payable && paymentTracking().tracked,
     });
   } catch (err) {
     next(err);
@@ -329,7 +337,12 @@ router.get('/bookings', async (req, res, next) => {
     const list = bookings
       .map((b) => portalBooking(b, { pendingRequest: pending.get(b.bookingId), payable }))
       .sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')));
-    res.json({ today, bookings: list, current: list.filter((b) => isCurrent(b, today)).length });
+    res.json({
+      today,
+      tracksPayments: paymentTracking().tracked,
+      bookings: list,
+      current: list.filter((b) => isCurrent(b, today)).length,
+    });
   } catch (err) {
     next(err);
   }
@@ -345,7 +358,7 @@ router.get('/statement.csv', async (req, res, next) => {
     const name = account.operator.name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${name}-statement-${account.today}.csv"`);
-    res.send(`\uFEFF${statementCsv(list)}`);
+    res.send(`\uFEFF${statementCsv(list, { withBalances: paymentTracking().tracked })}`);
   } catch (err) {
     next(err);
   }
@@ -423,6 +436,11 @@ router.post('/bookings/:bookingId/request', async (req, res, next) => {
 
 router.post('/bookings/:bookingId/pay', async (req, res, next) => {
   try {
+    // Hidden in the portal, and refused here too: the amount would be derived
+    // from payments this club does not record, so it is not a bill to take.
+    if (!paymentTracking().tracked) {
+      return res.status(409).json({ error: 'Online payment is not available. Please contact the club.' });
+    }
     const config = readPaymentLinkConfig();
     if (!config.configured)
       return res.status(409).json({ error: 'Online payment is not available. Please contact the club.' });

@@ -139,7 +139,7 @@ export default function MembershipDrawer({ applicationId, enabled, onClose, onCh
                   label="Date of birth"
                   value={application.dateOfBirth ? formatDate(application.dateOfBirth) : ''}
                 />
-                <Field label="Email" value={application.email} />
+                <Field label="Email" value={application.email} wide />
                 <Field label="Contact number" value={application.phone} />
               </div>
               <Field
@@ -197,7 +197,7 @@ export default function MembershipDrawer({ applicationId, enabled, onClose, onCh
                     <summary>
                       {thread.length === 1 ? '1 email' : `${thread.length} emails`} with {application.email}
                     </summary>
-                    <ChatThread thread={thread} guestName={application.name || application.email} />
+                    <ChatThread thread={thread} contactName={application.name || application.email} />
                   </details>
                 ) : (
                   data.sourceEmail && (
@@ -395,9 +395,10 @@ function CategoryLine({ category, label }) {
   );
 }
 
-function Field({ label, value, block }) {
+/** `wide` gives the field the whole row: see BookingDrawer's Field. */
+function Field({ label, value, block, wide = false }) {
   return (
-    <div style={block ? { whiteSpace: 'pre-wrap' } : undefined}>
+    <div style={{ ...(block ? { whiteSpace: 'pre-wrap' } : null), ...(wide ? { gridColumn: '1 / -1' } : null) }}>
       <div className="label">{label}</div>
       <div>{value || '—'}</div>
     </div>

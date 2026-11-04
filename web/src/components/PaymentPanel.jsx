@@ -45,6 +45,11 @@ export default function PaymentPanel({
 
   if (!payment) return null;
 
+  // A booking from before the club began recording payments has a value and
+  // no ledger position. Showing it "Paid €0 · Outstanding €0 · Settled" reads
+  // as though the money had been collected.
+  const tracked = payment.tracked !== false;
+
   const set = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
 
   const dirty = JSON.stringify(form) !== JSON.stringify(toForm(booking));
@@ -71,27 +76,108 @@ export default function PaymentPanel({
 
       {message && <div className={`banner ${message.kind}`}>{message.text}</div>}
 
-      <div className="detail-grid">
-        <Cell label="Total" value={formatCurrency(payment.gross)} />
-        <Cell label="Paid" value={formatCurrency(payment.paid)} />
-        <Cell label="Outstanding" value={formatCurrency(payment.outstanding)} accent />
-        <Cell
-          label={payment.stage === 'deposit' ? 'Deposit due' : 'Balance due'}
-          value={payment.dueDate ? formatDate(payment.dueDate) : '—'}
-        />
-      </div>
+      {payment.tracked === false && (
+        <div className="secondary" style={{ fontSize: '0.8125rem' }}>
+          Taken before the club began recording payments, so this booking carries its value and no balance. The
+          account&rsquo;s terms still apply: sending a deposit link below brings it into the ledger, and the balance
+          follows from there.
+        </div>
+      )}
 
-      <div className="secondary" style={{ fontSize: '0.8125rem' }}>
-        {describeStage(payment)} ·{' '}
-        <span style={payment.overdue ? { color: OVERDUE, fontWeight: 600 } : undefined}>{describeDue(payment)}</span>
-        {payment.depositAmount > 0 && (
-          <>
-            {' '}
-            · deposit {formatCurrency(payment.depositAmount)} by{' '}
-            {payment.depositDueDate ? formatDate(payment.depositDueDate) : 'the account terms'}
-          </>
+      {/* Whose terms these figures come from. On a trade booking the account's
+          terms are what decide the deposit and both due dates, and staff were
+          reading the numbers with no way to see the rule behind them. */}
+      {payment.terms && (
+        <div className="secondary" style={{ fontSize: '0.8125rem' }}>
+          {payment.terms.source === 'operator' ? (
+            <>
+              <strong>{payment.terms.operatorName}</strong> terms: {payment.terms.summary}
+            </>
+          ) : (
+            <>Direct booking · {payment.terms.summary === 'No account terms' ? 'net 30 days' : payment.terms.summary}</>
+          )}
+        </div>
+      )}
+
+      <div className="detail-grid">
+        <Cell label={tracked ? 'Total' : 'Value'} value={formatCurrency(payment.gross)} accent={!tracked} />
+        {tracked && <Cell label="Paid" value={formatCurrency(payment.paid)} />}
+        {tracked && <Cell label="Outstanding" value={formatCurrency(payment.outstanding)} accent />}
+        {tracked && (
+          <Cell
+            label={payment.stage === 'deposit' ? 'Deposit due' : 'Balance due'}
+            value={payment.dueDate ? formatDate(payment.dueDate) : '—'}
+          />
         )}
       </div>
+
+      {/* Stage by stage, because that is how the money is taken: the deposit
+          first, the balance after. What has been paid fills the deposit
+          before the balance, so each line owes what it actually owes. */}
+      {tracked && payment.stages?.length > 0 && (
+        <div className="table-wrap">
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Stage</th>
+                <th className="num">Amount</th>
+                <th className="num">Paid</th>
+                <th className="num">Outstanding</th>
+                <th>Due</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payment.stages.map((stage) => (
+                <tr key={stage.id} style={stage.settled ? { opacity: 0.65 } : undefined}>
+                  <td>
+                    {stage.label}
+                    {!stage.settled && payment.stage === stage.id && (
+                      <span className="muted" style={{ fontSize: '0.75rem' }}>
+                        {' '}
+                        · next
+                      </span>
+                    )}
+                  </td>
+                  <td className="num">{formatCurrency(stage.amount)}</td>
+                  <td className="num">{formatCurrency(stage.paid)}</td>
+                  <td className="num" style={stage.outstanding > 0 ? { fontWeight: 600 } : undefined}>
+                    {formatCurrency(stage.outstanding)}
+                  </td>
+                  <td style={{ fontSize: '0.8125rem' }}>
+                    {stage.settled ? (
+                      <span className="muted">Settled</span>
+                    ) : (
+                      <>
+                        <span style={stage.overdue ? { color: OVERDUE, fontWeight: 600 } : undefined}>
+                          {stage.dueDate ? formatDate(stage.dueDate) : 'No due date'}
+                        </span>
+                        <div className={stage.overdue ? undefined : 'muted'} style={{ fontSize: '0.75rem' }}>
+                          {stage.overdue
+                            ? `${stage.daysOverdue} day${stage.daysOverdue === 1 ? '' : 's'} overdue`
+                            : stage.daysUntilDue === 0
+                              ? 'Due today'
+                              : `in ${stage.daysUntilDue} day${stage.daysUntilDue === 1 ? '' : 's'}`}
+                          {/* A date agreed for this booking alone, not one the
+                              account's terms produced: say so, so nobody
+                              "corrects" it back to the terms. */}
+                          {stage.overridden ? ' · set on this booking' : ''}
+                        </div>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tracked && (
+        <div className="secondary" style={{ fontSize: '0.8125rem' }}>
+          {describeStage(payment)} ·{' '}
+          <span style={payment.overdue ? { color: OVERDUE, fontWeight: 600 } : undefined}>{describeDue(payment)}</span>
+        </div>
+      )}
 
       {statusDisagrees(payment) && (
         <div className="banner">

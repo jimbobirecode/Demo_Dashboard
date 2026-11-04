@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import PipelineProgress from './PipelineProgress.jsx';
 import PaymentPanel from './PaymentPanel.jsx';
 import BookingConversation from './BookingConversation.jsx';
-import BookingLifecycle from './BookingLifecycle.jsx';
+import BookingDetailsForm from './BookingDetailsForm.jsx';
 import StatusPill from './StatusPill.jsx';
 import { ALL_STATUSES } from '../lib/status.js';
 import { BRAND } from '../lib/brand.js';
@@ -14,7 +14,8 @@ export default function BookingDrawer({
   onClose,
   onStatusChange,
   onNoteSave,
-  onTeeTimeSave,
+  onDetailsSave,
+  onTeeSheet,
   onPaymentSave,
   onSendPaymentLink,
   onSendReceipt,
@@ -23,7 +24,6 @@ export default function BookingDrawer({
   onDelete,
 }) {
   const [note, setNote] = useState(booking.note);
-  const [teeTime, setTeeTime] = useState(booking.teeTime);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -31,10 +31,9 @@ export default function BookingDrawer({
   // Reset local edits whenever a different booking is opened.
   useEffect(() => {
     setNote(booking.note);
-    setTeeTime(booking.teeTime);
     setConfirmDelete(false);
     setMessage(null);
-  }, [booking.bookingId, booking.note, booking.teeTime]);
+  }, [booking.bookingId, booking.note]);
 
   useEffect(() => {
     const onKeyDown = (event) => event.key === 'Escape' && onClose();
@@ -73,6 +72,51 @@ export default function BookingDrawer({
 
         {message && <div className={`banner ${message.kind}`}>{message.text}</div>}
 
+        {/* Booked by a payment: nobody at the club has put it on the tee
+            sheet, which the dashboard cannot write to. Top of the drawer,
+            because it is the one thing still to do. */}
+        {booking.teeSheetStatus === 'to_enter' && (
+          <div className="card tee-sheet-card stack" style={{ gap: '0.5rem' }}>
+            <div style={{ fontWeight: 700 }}>Paid online — put it on the tee sheet</div>
+            <div className="secondary" style={{ fontSize: '0.8125rem' }}>
+              {booking.guestName || booking.guestEmail} paid {formatCurrency(booking.amountPaid)}
+              {booking.stripePaidAt ? ` on ${formatDateTime(booking.stripePaidAt)}` : ''}, which booked it. It is not on
+              the club&apos;s tee sheet until somebody puts it there.
+            </div>
+            {onTeeSheet && (
+              <div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={busy}
+                  onClick={() => run(() => onTeeSheet(booking, true), 'Marked as on the tee sheet')}
+                >
+                  Done — it&apos;s on the tee sheet
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {booking.teeSheetStatus === 'entered' && (
+          <div className="secondary row" style={{ fontSize: '0.8125rem', gap: '0.5rem' }}>
+            <span>
+              On the tee sheet
+              {booking.teeSheetEnteredBy ? ` · marked by ${booking.teeSheetEnteredBy}` : ''}
+              {booking.teeSheetEnteredAt ? `, ${formatDateTime(booking.teeSheetEnteredAt)}` : ''}
+            </span>
+            {onTeeSheet && (
+              <button
+                type="button"
+                className="link-button"
+                disabled={busy}
+                onClick={() => run(() => onTeeSheet(booking, false), 'Flagged again for the tee sheet')}
+              >
+                Undo
+              </button>
+            )}
+          </div>
+        )}
+
         <PipelineProgress status={booking.status} />
 
         <div className="detail-grid">
@@ -81,6 +125,8 @@ export default function BookingDrawer({
           <Field label="Players" value={booking.players} />
           <Field label="Total" value={formatCurrency(booking.total)} accent />
         </div>
+
+        {onDetailsSave && <BookingDetailsForm booking={booking} onSave={(patch) => onDetailsSave(booking, patch)} />}
 
         <BookingConversation booking={booking} />
 
@@ -96,10 +142,19 @@ export default function BookingDrawer({
           />
         )}
 
-        {(booking.guestName || booking.contactPhone || booking.caddieRequirements || booking.specialRequests) && (
+        {(booking.guestEmail ||
+          booking.guestName ||
+          booking.contactPhone ||
+          booking.caddieRequirements ||
+          booking.specialRequests) && (
           <div className="card" style={{ background: 'var(--surface-0)' }}>
-            <div className="label">Guest details (booking form)</div>
+            <div className="label">Who this booking is with</div>
             <div className="detail-grid" style={{ marginTop: '0.5rem' }}>
+              {/* Two different people, so both are named for what they are.
+                  "Lead guest" on its own was read as the person being emailed,
+                  and at County Louth the address usually belongs to a tour
+                  operator while the name is a guest in the party. */}
+              {booking.guestEmail && <Field label="Email we reply to" value={booking.guestEmail} wide />}
               {booking.guestName && <Field label="Lead guest" value={booking.guestName} />}
               {booking.contactPhone && <Field label="Phone" value={booking.contactPhone} />}
               {booking.caddieRequirements && <Field label="Caddies" value={booking.caddieRequirements} />}
@@ -171,24 +226,6 @@ export default function BookingDrawer({
         </div>
 
         <div className="stack" style={{ gap: '0.4rem' }}>
-          <span className="label">Tee time</span>
-          <div className="row">
-            <input
-              value={teeTime === 'Not Specified' ? '' : teeTime}
-              placeholder="e.g. 10:04 AM"
-              onChange={(event) => setTeeTime(event.target.value)}
-            />
-            <button
-              type="button"
-              disabled={busy || !teeTime.trim() || teeTime === booking.teeTime}
-              onClick={() => run(() => onTeeTimeSave(booking, teeTime.trim()), 'Tee time saved')}
-            >
-              Save
-            </button>
-          </div>
-        </div>
-
-        <div className="stack" style={{ gap: '0.4rem' }}>
           <span className="label">Notes / original enquiry</span>
           <textarea rows={12} value={note} onChange={(event) => setNote(event.target.value)} />
           <button
@@ -200,10 +237,6 @@ export default function BookingDrawer({
             Save notes
           </button>
         </div>
-
-        {/* What the lifecycle ladder has done about this booking, and what it
-            decided not to do. Draws nothing until there is history. */}
-        <BookingLifecycle bookingId={booking.bookingId} />
 
         <div className="secondary" style={{ fontSize: '0.75rem' }}>
           Requested {formatDateTime(booking.timestamp)}
@@ -247,9 +280,17 @@ export default function BookingDrawer({
   );
 }
 
-function Field({ label, value, accent }) {
+/**
+ * One labelled value in a detail grid.
+ *
+ * `wide` gives it the whole row. An email address is one long unbreakable
+ * token: in a 130px column it either paints over its neighbour or breaks
+ * mid-domain, and neither is an address somebody can read back over the
+ * phone.
+ */
+function Field({ label, value, accent, wide = false }) {
   return (
-    <div>
+    <div style={wide ? { gridColumn: '1 / -1' } : undefined}>
       <div className="label">{label}</div>
       <div
         style={{

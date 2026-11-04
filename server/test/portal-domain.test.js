@@ -116,3 +116,39 @@ test('statementCsv defuses spreadsheet formulas but keeps amounts numeric', () =
   assert.doesNotMatch(row, /,=/);
   assert.match(row, /3440\.00,1000\.00,2440\.00/);
 });
+
+test('a statement without payment tracking lists the rounds, not a ledger', async () => {
+  const { statementCsv } = await import('../src/lib/portal-domain.js');
+  const bookings = [
+    {
+      bookingId: 'BOOK-1',
+      invoiceNumber: 'INV-1',
+      date: '2027-09-13',
+      teeTime: '09:00 AM',
+      players: 4,
+      course: 'Championship Course',
+      status: 'Booked',
+      total: 400,
+      paid: 0,
+      outstanding: 400,
+      dueDate: '2027-08-13',
+      daysOverdue: 0,
+    },
+  ];
+
+  // Where nothing is ever recorded as paid, "Outstanding 400.00" is the whole
+  // value of the round wearing the word owed, and the club would be sending
+  // operators a demand for money nobody is tracking.
+  const plain = statementCsv(bookings, { withBalances: false });
+  assert.ok(!/Outstanding/.test(plain));
+  assert.ok(!/Paid/.test(plain));
+  assert.ok(!/Overdue/.test(plain));
+  assert.match(plain, /Value \(/, 'the round is still worth what it is worth');
+  assert.match(plain, /400\.00/);
+
+  // With tracking on, the full ledger is back, unchanged.
+  const ledger = statementCsv(bookings, { withBalances: true });
+  for (const column of ['Total', 'Paid', 'Outstanding', 'Due date', 'Overdue days']) {
+    assert.ok(ledger.includes(column), `${column} belongs on a real statement`);
+  }
+});

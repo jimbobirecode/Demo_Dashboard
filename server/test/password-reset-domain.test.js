@@ -26,7 +26,7 @@ const ENV = {
 test('configuration names every missing piece', () => {
   assert.deepEqual(readResetConfig({}).missing, ['SENDGRID_API_KEY', 'FROM_EMAIL', 'SENDGRID_TEMPLATE_PASSWORD_RESET']);
   assert.equal(readResetConfig({}).configured, false);
-  // Links are never relative: without APP_URL they open the TeeMail dashboard.
+  // Links are never relative: without APP_URL they open this club's dashboard.
   assert.equal(readResetConfig({}).appUrl, 'https://democlub.teemail.io');
   assert.equal(readResetConfig({ PUBLIC_URL: 'https://x.example/' }).appUrl, 'https://x.example');
 

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatCurrency, formatDate, formatNumber } from '../lib/format.js';
 import KpiTile from '../components/KpiTile.jsx';
 import { PIPELINE_RAMP, STATUS_COLORS } from '../lib/palette.js';
+import Correspondent from '../components/Correspondent.jsx';
 
 /**
  * Parties waiting for a time the club could not give them, and what became of
@@ -250,15 +251,16 @@ function Suggestions({ rows, busy, onLink }) {
       <div>
         <h3>Possible conversions ({rows.length})</h3>
         <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8125rem' }}>
-          People on the list who already have a booking. Confirm one and it counts toward conversion — nothing is linked
-          until you say so.
+          Someone on the waitlist who already has a booking — usually because they were given a time over the phone,
+          with nothing tying it back to the list. Linking one records it as a waitlist conversion. Nothing is linked
+          until you say so, and linking changes no booking and emails nobody.
         </p>
       </div>
       <div className="table-wrap">
         <table className="data">
           <thead>
             <tr>
-              <th>Guest</th>
+              <th>Contact</th>
               <th>Waiting for</th>
               <th>Booking</th>
               <th>Why it matches</th>
@@ -270,10 +272,7 @@ function Suggestions({ rows, busy, onLink }) {
             {rows.map((row) => (
               <tr key={row.key}>
                 <td>
-                  <div>{row.guestName || '—'}</div>
-                  <div className="muted" style={{ fontSize: '0.75rem' }}>
-                    {row.guestEmail}
-                  </div>
+                  <Correspondent booking={row} />
                 </td>
                 <td>{formatDate(row.requestedDate)}</td>
                 <td className="mono">
@@ -299,8 +298,14 @@ function Suggestions({ rows, busy, onLink }) {
                   )}
                 </td>
                 <td className="num">
-                  <button type="button" className="btn-sm" disabled={busy} onClick={() => onLink(row)}>
-                    This is the one
+                  <button
+                    type="button"
+                    className="btn-sm"
+                    disabled={busy}
+                    onClick={() => onLink(row)}
+                    title="Record this booking as the one this waitlist entry turned into"
+                  >
+                    Link to this booking
                   </button>
                 </td>
               </tr>
@@ -352,8 +357,48 @@ function Demand({ rows }) {
   );
 }
 
+/**
+ * One party's entries, kept together.
+ *
+ * A party that will take any of three days is three entries, and the list
+ * showed them scattered by date under the same name and address — which reads
+ * as the same enquiry recorded three times. It is not: each is a real date
+ * they would play, and each converts into a different booking, so they cannot
+ * be merged into one row.
+ *
+ * So they are put side by side and numbered. Of County Louth's 46 live
+ * entries, 11 are a second or third date for a party already in the list.
+ */
+function groupByParty(entries) {
+  const keyOf = (entry) =>
+    `${String(entry.guestEmail ?? '')
+      .trim()
+      .toLowerCase()}:${entry.players}`;
+  const sizes = new Map();
+  for (const entry of entries) sizes.set(keyOf(entry), (sizes.get(keyOf(entry)) ?? 0) + 1);
+
+  // Each party sits where its earliest date put it, so the list still reads
+  // in date order and nothing jumps to the top for having several dates.
+  const firstSeen = new Map();
+  entries.forEach((entry, index) => {
+    const key = keyOf(entry);
+    if (!firstSeen.has(key)) firstSeen.set(key, index);
+  });
+
+  const counted = new Map();
+  return [...entries]
+    .sort((a, b) => firstSeen.get(keyOf(a)) - firstSeen.get(keyOf(b)))
+    .map((entry) => {
+      const key = keyOf(entry);
+      const position = (counted.get(key) ?? 0) + 1;
+      counted.set(key, position);
+      return { ...entry, partySize: sizes.get(key), partyPosition: position };
+    });
+}
+
 function EntryTable({ entries, busy, onNotify, onCancel, onConvert, onDelete }) {
   const [converting, setConverting] = useState(null);
+  const rows = useMemo(() => groupByParty(entries), [entries]);
 
   if (!entries.length) return <div className="empty">Nobody is waiting.</div>;
 
@@ -362,7 +407,7 @@ function EntryTable({ entries, busy, onNotify, onCancel, onConvert, onDelete }) 
       <table className="data">
         <thead>
           <tr>
-            <th>Guest</th>
+            <th>Contact</th>
             <th>Date wanted</th>
             <th>Preferred</th>
             <th className="num">Players</th>
@@ -372,15 +417,25 @@ function EntryTable({ entries, busy, onNotify, onCancel, onConvert, onDelete }) 
           </tr>
         </thead>
         <tbody>
-          {entries.map((entry) => (
+          {rows.map((entry) => (
             <tr key={entry.waitlistId} style={{ opacity: entry.open ? 1 : 0.6 }}>
               <td>
-                <div>{entry.guestName || '—'}</div>
-                <div className="muted" style={{ fontSize: '0.75rem' }}>
-                  {entry.guestEmail}
-                </div>
+                {entry.partyPosition === 1 ? (
+                  <Correspondent booking={entry} />
+                ) : (
+                  <span className="muted" style={{ fontSize: '0.8125rem' }}>
+                    ↳ same party, another date
+                  </span>
+                )}
               </td>
-              <td>{entry.requestedDate ? formatDate(entry.requestedDate) : '—'}</td>
+              <td>
+                {entry.requestedDate ? formatDate(entry.requestedDate) : '—'}
+                {entry.partySize > 1 && (
+                  <div className="muted" style={{ fontSize: '0.75rem' }}>
+                    date {entry.partyPosition} of {entry.partySize} they would take
+                  </div>
+                )}
+              </td>
               <td>
                 {entry.preferredTime || 'Any'}
                 {entry.timeFlexibility ? ` · ${entry.timeFlexibility}` : ''}

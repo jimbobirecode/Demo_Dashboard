@@ -13,7 +13,7 @@
 import { BRAND } from './brand.js';
 import { toCurrencyCode } from './currency.js';
 import { fromMinorUnits } from './stripe.js';
-import { brandTemplateData, emailShell } from './email-layout.js';
+import { EMAIL_COLORS, brandTemplateData, brandedEmail } from './email-layout.js';
 import { manageUrlFor } from './change-request-domain.js';
 
 /** The payment status a booking carries while a link is out and unpaid. */
@@ -104,8 +104,33 @@ function firstName(booking) {
   return 'there';
 }
 
+/**
+ * What this payment is for, read from the amount against the booking's stages.
+ *
+ * Derived here rather than taken from the request: the guest's email says
+ * "deposit" or "balance", and that word has to match what is actually being
+ * asked for, whoever pressed the button and whatever they typed in the box.
+ */
+export function describePayment(payment, amount) {
+  const value = Number(amount) || 0;
+  const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
+  const stage = (payment?.stages ?? []).find((line) => !line.settled && near(line.outstanding, value));
+  if (stage) {
+    return {
+      key: stage.id,
+      label: stage.label,
+      noun: stage.id === 'deposit' ? 'deposit' : 'balance',
+      dueDate: stage.dueDate ?? null,
+    };
+  }
+  if (near(value, payment?.gross) || near(value, payment?.outstanding)) {
+    return { key: 'full', label: 'Amount due', noun: 'payment', dueDate: payment?.dueDate ?? null };
+  }
+  return { key: 'part', label: 'Part payment', noun: 'part payment', dueDate: null };
+}
+
 /** What a dynamic template is given, and what the built-in email is written from. */
-export function buildPaymentEmailData(booking, { amount, currency, url }) {
+export function buildPaymentEmailData(booking, { amount, currency, url, purpose = null }) {
   return {
     ...brandTemplateData(),
     first_name: firstName(booking),
@@ -118,6 +143,11 @@ export function buildPaymentEmailData(booking, { amount, currency, url }) {
     course: booking.golfCourses ?? '',
     amount: formatMoney(amount, currency),
     booking_total: formatMoney(booking.total, currency),
+    // What the money is for, so a deposit request reads as one rather than as
+    // a bill for the whole round.
+    purpose_label: purpose?.label ?? 'Amount due',
+    purpose_noun: purpose?.noun ?? 'payment',
+    purpose_key: purpose?.key ?? 'full',
     payment_url: url,
     manage_url: manageUrlFor(booking) ?? '',
   };
@@ -126,7 +156,7 @@ export function buildPaymentEmailData(booking, { amount, currency, url }) {
 /** The "change or cancel" line both built-in emails end with, where a link can be issued. */
 function manageLine(url) {
   return url
-    ? `<br><br>Need to change or cancel? <a href="${escape(url)}" style="color:#1a5e58;font-weight:600;">Manage your booking</a>.`
+    ? `<br><br>Need to change or cancel? <a href="${escape(url)}" style="color:${EMAIL_COLORS.accent};font-weight:600;">Manage your booking</a>.`
     : '';
 }
 
@@ -142,20 +172,26 @@ const escape = (value) =>
  * SENDGRID_TEMPLATE_PAYMENT_LINK and this is never used.
  */
 export function buildPaymentEmail(data) {
-  const subject = `Payment for your booking ${data.booking_id} – ${data.club_name}`;
+  const deposit = data.purpose_key === 'deposit';
+  const subject = deposit
+    ? `Deposit for your booking ${data.booking_id} – ${data.club_name}`
+    : `Payment for your booking ${data.booking_id} – ${data.club_name}`;
   const details = [
     ['Booking reference', data.booking_id],
     ['Date', data.play_date],
     ['Tee time', data.tee_time],
     ['Course', data.course],
     ['Players', data.players],
-    ['Amount due', data.amount],
-  ].filter(([, value]) => value !== '' && value != null);
+    [data.purpose_label ?? 'Amount due', data.amount],
+    // A deposit is part of a larger figure, so the whole is said too: nobody
+    // should have to work out what is still to come.
+    deposit ? ['Booking total', data.booking_total] : null,
+  ].filter((row) => row && row[1] !== '' && row[1] != null);
 
   const text = [
     `Hi ${data.first_name},`,
     '',
-    `Thank you for booking with ${data.club_name}. You can pay ${data.amount} securely online here:`,
+    `Thank you for booking with ${data.club_name}. You can pay your ${data.purpose_noun ?? 'payment'} of ${data.amount} securely online here:`,
     data.payment_url,
     '',
     ...details.map(([label, value]) => `${label}: ${value}`),
@@ -170,13 +206,13 @@ export function buildPaymentEmail(data) {
     clubName: data.club_name,
     paragraphs: [
       `Hi ${escape(data.first_name)},`,
-      `Thank you for booking with ${escape(data.club_name)}. You can pay <strong>${escape(data.amount)}</strong> securely online using the button below.`,
+      `Thank you for booking with ${escape(data.club_name)}. You can pay your ${escape(data.purpose_noun ?? 'payment')} of <strong>${escape(data.amount)}</strong> securely online using the button below.`,
     ],
     button: { href: data.payment_url, label: `Pay ${data.amount}` },
     details,
     footer:
       'Payments are processed securely by Stripe. If the button does not work, copy this link into your browser:<br>' +
-      `<a href="${escape(data.payment_url)}" style="color:#1a5e58;word-break:break-all;">${escape(data.payment_url)}</a><br><br>` +
+      `<a href="${escape(data.payment_url)}" style="color:${EMAIL_COLORS.accent};word-break:break-all;">${escape(data.payment_url)}</a><br><br>` +
       'Questions? Just reply to this email.' +
       manageLine(data.manage_url),
   });
@@ -188,6 +224,30 @@ export function buildPaymentEmail(data) {
  * The frame both built-in emails share. `paragraphs` and `footer` are HTML the
  * caller has already escaped; `details` and the button are escaped here.
  */
+function emailShell({ clubName, paragraphs, button = null, details = [], footer = '' }) {
+  const c = EMAIL_COLORS;
+  const rows = details
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 0;color:${c.muted};">${escape(label)}</td>` +
+        `<td style="padding:6px 0;text-align:right;font-weight:600;color:${c.text};">${escape(value)}</td></tr>`,
+    )
+    .join('');
+
+  const content =
+    paragraphs.map((p, i) => `<p style="margin:0 0 ${i === paragraphs.length - 1 ? 20 : 12}px;">${p}</p>`).join('\n') +
+    (button
+      ? `<div style="text-align:center;padding:4px 0 24px;"><a href="${escape(button.href)}" style="display:inline-block;background:${c.primary};color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:6px;">${escape(button.label)}</a></div>`
+      : '') +
+    (rows
+      ? `<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${c.rule};font-size:14px;">${rows}</table>`
+      : '') +
+    (footer ? `<div style="padding-top:16px;font-size:13px;line-height:1.6;color:${c.muted};">${footer}</div>` : '');
+
+  // clubName is carried by the shared header and footer.
+  void clubName;
+  return brandedEmail(content);
+}
 
 /**
  * What a receipt template is given, and what the built-in receipt is written

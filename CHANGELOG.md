@@ -2,6 +2,76 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – brought into line with Dashboard_Beta (November 2026)
+
+The dashboard's configuration and feature set were brought up to
+[Dashboard_Beta](https://github.com/jimbobirecode/Dashboard_Beta), which had
+run ahead of this repository on a separate line of work. This install stays the
+**demo**: the TeeMail branding, the demo service name, the booked-customer
+webhook and the accommodation analytics are deliberately kept, and none of
+County Louth's club profile, Supabase credentials or mailbox came across.
+(Dashboard_Beta still computes the lodging figures server-side but renders no
+section for them, because its club has no accommodation; this one does.)
+
+### Added
+
+- **The Booking Workflow page and its trigger ladder**, replacing the Booking
+  Lifecycle ladder below — the deposit request and its chases, the rescue
+  window, cancellation; then the receipt, the balance notice, the confirmations,
+  the arrival details and the thank you. Per-club settings under **Settings**,
+  a ledger that fires each rung once, and an unattended sweep that is off until
+  a club switches it on (`docs/BOOKING_TRIGGERS.md`).
+- **An audit trail**: every state-changing request is recorded with who, what,
+  when and from where, bodies redacted, kept 12 months and purged nightly.
+- **Inbox triage.** Where no core API sits in front of the mailbox, the
+  dashboard summarises, classifies and drafts a reply to inbound mail itself on
+  a schedule, when `ANTHROPIC_API_KEY` is set. A draft is never sent — it opens
+  in the composer for staff to edit.
+- **The tee-sheet flag**, a new-booking and booking-details form, guest-email
+  settings per club, the correspondent column on the Inbox, payment-tracking
+  switches (`TRACK_PAYMENTS`, `PAYMENTS_TRACKED_FROM`), and a connection-budget
+  cap (`PGPOOL_MAX`).
+
+### Changed
+
+- **Migrations are no longer applied at boot.** `npm run migrate` applies them
+  deliberately, before deploying code that needs them; once listening the server
+  only checks and logs what is missing. `MIGRATE_ON_START=apply` restores the old
+  behaviour, `off` skips the check.
+- **An `APP_URL` with no scheme is given `https://`.** Without it, a value like
+  `democlub.teemail.io` produced a relative, dead link in every email while
+  looking correct in the source.
+- **Email colours come from one place.** The frame read `EMAIL_BRAND_COLOR` and
+  `EMAIL_ACCENT_COLOR` while each body hardcoded the teal, so a club that set its
+  own colours got a rebranded frame round a differently-coloured message. The page
+  and rule tints are now derived from the brand colour, and the header logo is
+  fitted to a box so a crest no longer swamps the message.
+
+### Removed
+
+- **The Booking Lifecycle ladder** (`BookingLifecycle`, `LifecycleSettings`,
+  `LifecycleTimeline`, `LadderDiagram`, `lifecycle-emails.js`,
+  `booking-triggers.js`, `docs/BOOKING_LIFECYCLE.md` and the
+  `booking-lifecycle.html` template), superseded by the trigger workflow above.
+  Its `BOOKING_TRIGGERS_*` and `BOOKING_*_DAYS` variables are no longer read.
+
+### Migrations
+
+- **Versions `0012`-`0014` are now deliberately absent.** They belonged to the
+  retired lifecycle ladder; the ported workflow is numbered from `0015` so the
+  two sets could not collide on a version number, which the runner's checksum
+  guard treats as drift and refuses. `0011` (the booked-customer webhook) is
+  unchanged and still applied. A database that ran the old ladder keeps those
+  three recorded versions, and the runner reports them as versions with no file
+  — a warning by design.
+- **`0026` moves the retired ladder's ledger aside rather than failing.** Both
+  ladders call their ledger `booking_trigger_sends`, with different columns, so
+  on a database that ran the old one the new index came out as
+  `column "step" does not exist` mid-deploy. The old table is renamed to
+  `booking_trigger_sends_retired_lifecycle`, with its primary key and sequence,
+  and kept: it records email that really reached guests. Covered by
+  `server/test/integration/lifecycle-ledger-handover.test.js`.
+
 ## Unreleased – the trade-account voice, and the reminders page retired (October 2026)
 
 ### Added

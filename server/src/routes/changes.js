@@ -12,7 +12,7 @@
  */
 import { Router } from 'express';
 import { query } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
 import { BOOKING_SELECT } from '../lib/schema.js';
 import { BRAND } from '../lib/brand.js';
@@ -20,6 +20,7 @@ import { sendHtmlEmail } from '../lib/sendgrid.js';
 import { logEmail } from '../lib/email-log.js';
 import {
   buildChangeEmail,
+  changeRequestRecipient,
   describeOptions,
   linkSecret,
   manageLinkExpired,
@@ -29,6 +30,12 @@ import {
   validateChangeRequest,
   verifyBookingToken,
 } from '../lib/change-request-domain.js';
+import {
+  GUEST_EMAIL_DEFAULTS,
+  loadGuestEmailSettings,
+  saveGuestEmailSettings,
+  validateGuestEmailSettings,
+} from '../lib/guest-email-settings.js';
 import { createThrottle } from '../lib/password-reset-domain.js';
 import { clientIp } from '../lib/request-guard.js';
 import { logger } from '../lib/logger.js';
@@ -38,22 +45,31 @@ const log = logger.child('changes');
 const router = Router();
 
 /**
- * Tell the guest what happened to their request, and file the email on the
- * booking's conversation. Resolves true only when the email really went, so
- * nobody is told "a confirmation is on its way" when it is not.
+ * Tell whoever asked what happened to their request, and file the email on the
+ * booking's conversation.
+ *
+ * The recipient is the address the request came from, not the booking's lead
+ * guest: a tour operator who asks for a change has to be the one who hears the
+ * answer. Where that is somebody other than the lead guest the email drops the
+ * greeting by name - it is not their booking to be addressed about by name.
+ *
+ * Resolves true only when the email really went, so nobody is told "a
+ * confirmation is on its way" when it is not.
  */
 async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request = null } = {}) {
   const apiKey = process.env.SENDGRID_API_KEY;
   const fromEmail = process.env.FROM_EMAIL;
-  if (!apiKey || !fromEmail || !booking?.guestEmail) return false;
+  const recipient = changeRequestRecipient({ request, booking });
+  if (!apiKey || !fromEmail || !recipient) return false;
   try {
-    const email = buildChangeEmail({ outcome, booking, request, note, manageUrl: manageUrlFor(booking) });
+    const addressee = recipient.leadGuest ? booking : { ...booking, guestName: '' };
+    const email = buildChangeEmail({ outcome, booking: addressee, request, note, manageUrl: manageUrlFor(booking) });
     const outcomeOf = await sendHtmlEmail({
       apiKey,
       fromEmail,
       fromName: process.env.FROM_NAME ?? BRAND.fromName,
       replyTo: process.env.REPLY_TO_EMAIL ?? fromEmail,
-      toEmail: booking.guestEmail,
+      toEmail: recipient.to,
       subject: email.subject,
       text: email.text,
       html: email.html,
@@ -67,13 +83,13 @@ async function emailGuest(booking, outcome, { note = '', sentBy = 'bot', request
       direction: 'outbound',
       booking_id: booking.bookingId,
       from_email: fromEmail,
-      to_email: booking.guestEmail,
+      to_email: recipient.to,
       subject: email.subject,
       body_text: email.text,
       sent_by: sentBy,
       kind: 'change_decision',
     });
-    return true;
+    return recipient.to;
   } catch (err) {
     log.error('guest email failed:', err.message);
     return false;
@@ -195,7 +211,11 @@ router.post('/request', async (req, res, next) => {
       ],
     );
 
-    const emailed = await emailGuest(booking, 'received', { request: { kind: check.value.kind } });
+    // The acknowledgement is the club's to switch on. Off by default: the
+    // page the guest just submitted already told them the club has it, and
+    // the answer follows from the Requests page either way.
+    const announce = (await loadGuestEmailSettings(booking.club)).requestReceived;
+    const emailed = announce ? await emailGuest(booking, 'received', { request: { kind: check.value.kind } }) : false;
 
     res.status(201).json({
       ok: true,
@@ -214,6 +234,45 @@ router.post('/request', async (req, res, next) => {
 });
 
 /* ---------- the club ---------- */
+
+/**
+ * What this club sends guests without anybody pressing a button.
+ *
+ * Reading is open to anyone signed in — whoever answers the phone should be
+ * able to say whether the guest has already heard from us. Saving is an
+ * administrator's.
+ */
+router.get('/settings', requireAuth, async (req, res, next) => {
+  try {
+    res.json({
+      settings: await loadGuestEmailSettings(req.user.customerId),
+      defaults: { ...GUEST_EMAIL_DEFAULTS },
+      canEdit: req.user.role === 'admin',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Change them. A patch: only the switches it names are touched. */
+router.put('/settings', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const check = validateGuestEmailSettings(req.body?.settings);
+    if (!check.ok) return res.status(400).json({ error: check.errors.join('. '), errors: check.errors });
+    if (!Object.keys(check.value).length) return res.status(400).json({ error: 'Nothing to change' });
+
+    const before = await loadGuestEmailSettings(req.user.customerId);
+    const settings = await saveGuestEmailSettings(req.user.customerId, check.value, req.user.username);
+    for (const [key, value] of Object.entries(settings)) {
+      if (value !== before[key]) {
+        log.info(`guest email "${key}" ${value ? 'switched on' : 'switched off'} by ${req.user.username}`);
+      }
+    }
+    res.json({ settings });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
@@ -295,18 +354,22 @@ router.post('/:id/:decision', requireAuth, async (req, res, next) => {
 
     const booking = await loadBooking(request.booking_id, req.user.customerId);
     const note = String(req.body?.note ?? '').trim();
-    const guestEmailed = booking
+    // Answered to the address the request came from - the operator's, where an
+    // operator asked - rather than to the booking's lead guest.
+    const answered = booking
       ? await emailGuest(booking, cancelling ? 'cancelled' : approving ? 'approved' : 'declined', {
           note,
           sentBy: req.user.username,
+          request: rows[0],
         })
       : false;
 
     res.json({
       request: serialiseChangeRequest(rows[0]),
       bookingCancelled: cancelling,
-      guestEmailed,
-      guestEmail: booking?.guestEmail ?? null,
+      guestEmailed: Boolean(answered),
+      // Who was told, so the dashboard names the address it actually wrote to.
+      guestEmail: answered || changeRequestRecipient({ request: rows[0], booking })?.to || null,
       // An approved amendment is an instruction to a person, not a state change.
       needsEditing: approving && request.kind === 'amend',
     });

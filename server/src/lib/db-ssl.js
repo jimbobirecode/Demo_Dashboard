@@ -34,6 +34,68 @@ export function isLocalDatabase(url) {
  * { connectionString, ssl, mode } for a DATABASE_URL. `mode` is one of
  * 'local', 'verify', 'encrypt' (no certificate check) or 'disabled'.
  */
+/**
+ * The connection as `user@host:port/database`, for the boot log — never the
+ * password, which is why this builds the string by hand rather than printing
+ * the URL.
+ *
+ * It earns its place on a managed host. Supabase offers three connection
+ * strings and getting the wrong one is three different failures that all look
+ * like the migration runner falling over: the direct host resolves only to IPv6
+ * (ENETUNREACH where there is no IPv6 route), the transaction pooler on 6543
+ * breaks the runner's session-level advisory lock and the migrations' pg_temp
+ * guards, and the session pooler needs the project ref in the username
+ * (`postgres.abcdefgh`, not `postgres`) because that is how it picks the
+ * project. Printing the user and host turns each of those from a guess into a
+ * glance.
+ *
+ * Note what the log cannot tell you: the pooler strips that `.ref` suffix and
+ * authenticates upstream as `postgres`, so a failure always reads
+ * `password authentication failed for user "postgres"` whether the ref was
+ * there or not. Read the username off this line, not out of the error.
+ */
+export function describeConnection(databaseUrl) {
+  const text = String(databaseUrl ?? '').trim();
+  if (!text) return 'not set';
+
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    return 'unparsed';
+  }
+
+  const user = url.username ? decodeURIComponent(url.username) : '(no user)';
+  const database = url.pathname.replace(/^\//, '') || '(no database)';
+  const host = url.hostname || '(no host)';
+  const port = url.port || '5432';
+  return `${user}@${host}:${port}/${database}`;
+}
+
+/**
+ * True when the password carries leading or trailing whitespace, which a URL
+ * keeps (as %20 or a raw space) and Postgres then rejects.
+ *
+ * It is worth its own check because it is invisible everywhere else: the host,
+ * port, user and database all parse correctly, the connection reaches the
+ * server, and the only symptom is `password authentication failed` — identical
+ * to simply having the wrong password. A value pasted into a dashboard field
+ * with a stray newline fails this way and looks like nothing at all. Reports
+ * only that whitespace is present, never the password or its length.
+ */
+export function passwordHasOuterWhitespace(databaseUrl) {
+  const text = String(databaseUrl ?? '').trim();
+  if (!text) return false;
+  try {
+    const password = new URL(text).password;
+    if (!password) return false;
+    const decoded = decodeURIComponent(password);
+    return decoded !== decoded.trim();
+  } catch {
+    return false;
+  }
+}
+
 export function databaseOptions(databaseUrl, env = process.env, readFile = (file) => fs.readFileSync(file, 'utf8')) {
   if (!databaseUrl) return { connectionString: databaseUrl, ssl: undefined, mode: 'unset' };
 

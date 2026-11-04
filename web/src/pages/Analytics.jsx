@@ -177,7 +177,7 @@ export default function Analytics() {
               tooltipRows={(row) => [
                 { label: 'Bookings', value: formatNumber(row.count), color: SERIES },
                 { label: 'Players', value: formatNumber(row.players) },
-                { label: 'Committed revenue', value: formatCurrency(row.revenue) },
+                { label: 'Booked value', value: formatCurrency(row.revenue) },
               ]}
               emptyMessage="No bookings with a tee date in this period."
             />
@@ -276,7 +276,7 @@ export default function Analytics() {
                 tooltipRows={(row) => [
                   { label: 'Bookings', value: formatNumber(row.count), color: SERIES },
                   { label: 'Players', value: formatNumber(row.players) },
-                  { label: 'Committed revenue', value: formatCurrency(row.revenue) },
+                  { label: 'Booked value', value: formatCurrency(row.revenue) },
                 ]}
                 emptyMessage="No bookings in this period."
               />
@@ -346,7 +346,29 @@ export default function Analytics() {
           <RequestUtilisation grid={data.requestUtilisation} />
 
           <div className="chart-grid">
-            <ChartCard title="Most requested tee times" subtitle="Top slots by volume">
+            <ChartCard
+              title="Most requested tee times"
+              subtitle={
+                data.allTeeTimes?.length
+                  ? `Top slots by volume · ${formatNumber(data.allTeeTimes.length)} distinct times asked for`
+                  : 'Top slots by volume'
+              }
+              // The bars stop at eight so the chart stays readable; the table
+              // underneath carries every time asked for, in clock order, so
+              // the whole day can be read and counted.
+              footer={
+                <TableView
+                  label="every requested time"
+                  columns={[
+                    { key: 'key', header: 'Time' },
+                    { key: 'count', header: 'Requests', numeric: true },
+                    { key: 'booked', header: 'Booked', numeric: true },
+                    { key: 'players', header: 'Players', numeric: true },
+                  ]}
+                  rows={data.allTeeTimes ?? []}
+                />
+              }
+            >
               <BarChart
                 data={data.popularTeeTimes}
                 valueFormatter={formatNumber}
@@ -365,12 +387,12 @@ export default function Analytics() {
           </div>
 
           <MoneySection payments={data.payments} trade={data.trade} />
-          <StaySection lodging={data.lodging} accommodation={data.accommodation} />
           <ServiceSection
             caddies={data.caddies}
             requestThemes={data.requestThemes}
             emailCoverage={data.emailCoverage}
           />
+          <StaySection lodging={data.lodging} accommodation={data.accommodation} />
           <GuestSection guests={data.guests} responseTimes={data.responseTimes} />
         </>
       )}
@@ -390,9 +412,9 @@ function KpiRow({ totals }) {
         accent={PIPELINE_RAMP[1]}
       />
       <KpiTile
-        label="Committed revenue"
+        label="Booked value"
         value={formatCurrency(totals.revenue)}
-        sub="Booked only"
+        sub="Booked rounds only"
         delta={delta.revenue}
         accent={STATUS_COLORS.Booked}
       />

@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  NO_TIME_BAND,
+  REQUEST_GRID_BANDS,
   TIME_BANDS,
   WEEK_ORDER,
   buildAccommodation,
+  buildAllTeeTimes,
+  buildPopularTeeTimes,
   buildAnalytics,
   buildCaddieDemand,
   buildCourseMix,
@@ -201,18 +205,40 @@ test('accommodation attach rate and basket size', () => {
   assert.equal(stay.averageWithout, 200);
 });
 
-test('the request grid is complete and drops untimed rows', () => {
+test('the request grid is complete, and an enquiry with no time still lands on its day', () => {
   const grid = buildRequestUtilisation(ROWS);
   const at = (band, day) => grid.cells.find((c) => c.band === band && c.day === day);
 
-  assert.equal(grid.cells.length, TIME_BANDS.length * 7, 'every cell exists, even at zero');
-  assert.equal(grid.placed, 3, 'the Not Specified row carries no slot to ask for');
-  assert.equal(grid.unplaced, 1);
+  assert.equal(grid.cells.length, REQUEST_GRID_BANDS.length * 7, 'every cell exists, even at zero');
+  assert.equal(grid.cells.length, (TIME_BANDS.length + 1) * 7, 'the hours, plus the catch-all row');
+
+  // The day is what places an enquiry; the time only chooses the row. Most
+  // enquiries name a day and no hour, and they used to be dropped entirely --
+  // which left a day the club never times at all reading as "nobody asked".
+  assert.equal(grid.placed, 4, 'the Not Specified row is placed too');
+  assert.equal(grid.unplaced, 0, 'nothing here is missing a date');
+  assert.equal(at(NO_TIME_BAND, 'Thursday').requests, 1, 'placed on its own day');
+
   assert.equal(at('09:00–11:59', 'Wednesday').requests, 1);
   assert.equal(at('Before 09:00', 'Friday').requests, 1);
   assert.equal(at('14:00–16:59', 'Sunday').requests, 1);
   assert.deepEqual(grid.days, WEEK_ORDER);
   assert.equal(grid.days[0], 'Monday', 'a tee sheet is read Monday-first');
+  assert.equal(grid.bands.at(-1), NO_TIME_BAND, 'it sits at the foot, not among the hours');
+});
+
+test('only a missing date leaves an enquiry out of the grid', () => {
+  const grid = buildRequestUtilisation([
+    { status: 'Inquiry', players: 2, date: null, teeTime: '10:00', timestamp: '2026-01-01T09:00:00Z' },
+    { status: 'Inquiry', players: 2, date: '2026-03-18', teeTime: null, timestamp: '2026-01-01T09:00:00Z' },
+    { status: 'Inquiry', players: 2, date: '2026-03-18', teeTime: 'half eleven', timestamp: '2026-01-01T09:00:00Z' },
+  ]);
+  const at = (band, day) => grid.cells.find((c) => c.band === band && c.day === day);
+
+  assert.equal(grid.unplaced, 1, 'only the undated one');
+  assert.equal(grid.placed, 2);
+  // A time nobody can parse is not a reason to lose the enquiry.
+  assert.equal(at(NO_TIME_BAND, 'Wednesday').requests, 2);
 });
 
 test('the request grid separates what was asked for from what was booked', () => {
@@ -234,12 +260,13 @@ test('the request grid separates what was asked for from what was booked', () =>
   assert.equal(cancelled.conversion, 0);
   assert.equal(cancelled.bookings, 0, 'a cancellation never occupies the sheet');
 
-  assert.equal(grid.totals.requests, 3);
+  assert.equal(grid.totals.requests, 4);
   assert.equal(grid.totals.converted, 2);
   assert.equal(grid.totals.declined, 1);
-  assert.equal(grid.totals.open, 0, 'the open enquiry has no slot to sit in');
-  assert.equal(grid.totals.missed, 1);
-  assert.equal(grid.totals.conversion, 66.7);
+  assert.equal(grid.totals.open, 1, 'the untimed enquiry now has a row to sit in');
+  assert.equal(grid.totals.missed, 2);
+  // 2 of 4, where it used to be 2 of 3 by leaving the untimed enquiry out.
+  assert.equal(grid.totals.conversion, 50);
   assert.equal(grid.totals.bookings, 2);
 });
 
@@ -557,4 +584,41 @@ test('buildAnalytics carries every new section, and survives an empty period', (
   assert.equal(empty.responseTimes.medianHours, null);
   assert.equal(empty.lodging.detailed, false);
   assert.equal(empty.trade.channels[0].count, 0);
+});
+
+test('every requested tee time is listed, in clock order', () => {
+  // buildPopularTeeTimes stops at eight, which is right for a chart and wrong
+  // for counting: County Louth asks for 38 distinct times, so thirty of them
+  // were not visible anywhere. Clock order rather than popularity, so the
+  // gaps in the day read as well as the peaks.
+  const rows = [
+    { teeTime: '10:04 AM', players: 4, status: 'Booked' },
+    { teeTime: '7:30am', players: 2, status: 'Inquiry' },
+    { teeTime: '10:04 AM', players: 3, status: 'Inquiry' },
+    { teeTime: '1:30 PM', players: 2, status: 'Booked' },
+    { teeTime: 'Not Specified', players: 4, status: 'Inquiry' },
+    { teeTime: null, players: 4, status: 'Inquiry' },
+    { teeTime: 'half eleven', players: 1, status: 'Inquiry' },
+  ];
+  const all = buildAllTeeTimes(rows);
+
+  assert.deepEqual(
+    all.map((row) => row.key),
+    ['7:30am', '10:04 AM', '1:30 PM', 'half eleven'],
+    'in order of the day, with the unreadable one last rather than dropped',
+  );
+  assert.equal(all.length, 4, '"Not Specified" and no time at all are not times');
+
+  const ten = all.find((row) => row.key === '10:04 AM');
+  assert.equal(ten.count, 2, 'both requests for the slot');
+  assert.equal(ten.booked, 1, 'of which one was booked');
+  assert.equal(ten.players, 7);
+
+  // The chart's eight and the table's everything come from the same bookings.
+  const popular = buildPopularTeeTimes(rows);
+  assert.ok(popular.length <= all.length);
+  assert.equal(
+    popular.reduce((total, row) => total + row.count, 0) <= all.reduce((total, row) => total + row.count, 0),
+    true,
+  );
 });

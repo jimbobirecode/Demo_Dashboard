@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import { formatDate, formatDateTime, formatNumber } from '../lib/format.js';
 import StatusPill from '../components/StatusPill.jsx';
 import KpiTile from '../components/KpiTile.jsx';
+import { leadGuestAside } from '../lib/correspondent.js';
 
 /** The API caps one run; a wide catch-up window can hold more than that. */
 const BATCH_SIZE = 200;
@@ -289,8 +290,8 @@ export default function Emails() {
                 />
               </th>
               <th>Booking</th>
-              <th>Guest</th>
               <th>Email</th>
+              <th>Lead guest</th>
               <th>Play date</th>
               <th>Tee time</th>
               <th className="num">Players</th>
@@ -312,8 +313,8 @@ export default function Emails() {
                   />
                 </td>
                 <td className="mono">{booking.bookingId}</td>
-                <td>{booking.guestName || '—'}</td>
                 <td>{booking.guestEmail || <span className="muted">No address</span>}</td>
+                <td>{leadGuestAside(booking) || '—'}</td>
                 <td>{formatDate(booking.date)}</td>
                 <td>{booking.teeTime}</td>
                 <td className="num">{formatNumber(booking.players)}</td>

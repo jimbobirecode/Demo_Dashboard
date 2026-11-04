@@ -10,7 +10,13 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAdmin, requireAuth } from '../auth.js';
 import { serialiseBooking } from '../lib/bookings-domain.js';
-import { BOOKING_SELECT, OPERATOR_COLUMNS, OPERATOR_SELECT, buildAuditSet } from '../lib/schema.js';
+import {
+  BOOKING_SELECT,
+  OPERATOR_COLUMNS,
+  OPERATOR_OPTIONAL_COLUMNS,
+  OPERATOR_SELECT,
+  buildAuditSet,
+} from '../lib/schema.js';
 import {
   AGEING_BANDS,
   PAYMENT_STATUSES,
@@ -24,6 +30,7 @@ import {
   summariseAll,
   toOperatorColumns,
   validateOperator,
+  paymentTracking,
 } from '../lib/operators-domain.js';
 import { todayInClubZone } from '../lib/email-domain.js';
 
@@ -32,6 +39,57 @@ router.use(requireAuth);
 
 /** Columns a form may write; names are interpolated into SQL, so only these. */
 const WRITABLE = new Set(OPERATOR_COLUMNS);
+
+/** The migration that adds auto_chase, named in the refusal below. */
+const AUTO_CHASE_MIGRATION = '0027_trigger_settings_and_auto_chase.sql';
+
+/**
+ * Which of the optional columns this database actually has.
+ *
+ * Reading them survives their absence (see OPERATOR_SELECT); writing them
+ * cannot, so a save only names the ones that exist. Asked once and remembered
+ * once the answer is "all of them" -- a column is added exactly once -- and
+ * asked again on every save until then, which is one catalog lookup on a
+ * form nobody saves more than a few times a day.
+ */
+let optionalPresent = null;
+async function presentOptionalColumns() {
+  if (optionalPresent) return optionalPresent;
+  const wanted = Object.keys(OPERATOR_OPTIONAL_COLUMNS);
+  const { rows } = await query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'tour_operators' AND column_name = ANY($1::text[])`,
+    [wanted],
+  );
+  const present = new Set(rows.map((row) => row.column_name));
+  if (present.size === wanted.length) optionalPresent = present;
+  return present;
+}
+
+/**
+ * The column names a save may write, and the refusal if it cannot write one
+ * it was asked to.
+ *
+ * Leaving `auto_chase` out of a save silently is the default anyway, so a form
+ * that did not touch the switch loses nothing on a database without 0027. A
+ * form that switched it OFF would be told "saved" while the account went on
+ * being chased, which is the one outcome worth a refusal that names the fix.
+ */
+async function writableNames(values) {
+  const present = await presentOptionalColumns();
+  const names = Object.keys(values).filter((name) => WRITABLE.has(name) || present.has(name));
+  if (values.auto_chase === false && !present.has('auto_chase')) {
+    const err = new Error(
+      'Switching chasing off for an account needs a database column it cannot find ' +
+        `(public.tour_operators.auto_chase, from migration ${AUTO_CHASE_MIGRATION}). ` +
+        'Run "npm run migrate" against this database, then try again.',
+    );
+    err.status = 409;
+    err.migration = AUTO_CHASE_MIGRATION;
+    throw err;
+  }
+  return names;
+}
 
 export async function loadOperators(club) {
   const { rows } = await query(
@@ -57,11 +115,20 @@ router.get('/', async (req, res, next) => {
     const today = todayInClubZone();
     const [operators, bookings] = await Promise.all([loadOperators(club), loadBookings(club)]);
 
-    const { operators: summaries, direct } = summariseAll(operators, bookings, { today });
+    const tracking = paymentTracking();
+    const { operators: summaries, direct } = summariseAll(operators, bookings, { today, tracking });
     const byId = new Map(summaries.map((summary) => [summary.operatorId, summary]));
 
     res.json({
       today,
+      // Balances are derived from payments this club may not record; see
+      // tracksPayments. The figures are still computed and still sent - the
+      // page simply does not put a ledger in front of somebody who has no
+      // ledger - so turning it on shows the whole history at once.
+      tracksPayments: tracking.tracked,
+      // The day the club started recording payments; bookings before it carry
+      // a value and no balance. Null means the whole history counts.
+      paymentsTrackedFrom: tracking.from,
       ageingBands: AGEING_BANDS,
       paymentStatuses: PAYMENT_STATUSES,
       operators: operators.map((operator) => ({
@@ -93,15 +160,18 @@ router.get('/:id', async (req, res, next) => {
     const operator = operators.find((entry) => entry.id === id);
     if (!operator) return res.status(404).json({ error: 'Operator not found' });
 
-    const { operators: summaries, groups } = summariseAll(operators, bookings, { today });
+    const tracking = paymentTracking();
+    const { operators: summaries, groups } = summariseAll(operators, bookings, { today, tracking });
     const theirs = groups.get(id) ?? [];
 
     res.json({
       today,
+      tracksPayments: tracking.tracked,
+      paymentsTrackedFrom: tracking.from,
       operator: { ...operator, terms: describeTerms(operator) },
       account: summaries.find((summary) => summary.operatorId === id),
       bookings: theirs
-        .map((booking) => ({ ...booking, payment: paymentState(booking, operator, { today }) }))
+        .map((booking) => ({ ...booking, payment: paymentState(booking, operator, { today, tracking }) }))
         .sort((a, b) => String(b.date).localeCompare(String(a.date))),
     });
   } catch (err) {
@@ -117,7 +187,7 @@ router.post('/', async (req, res, next) => {
     const values = toOperatorColumns(req.body);
     const record = { club: req.user.customerId, ...values, updated_by: req.user.username };
 
-    const names = Object.keys(record).filter((name) => WRITABLE.has(name));
+    const names = await writableNames(record);
     const placeholders = names.map((_, index) => `$${index + 1}`);
 
     const { rows } = await query(
@@ -132,6 +202,9 @@ router.post('/', async (req, res, next) => {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'An operator with that name already exists.' });
     }
+    if (err.status === 409 && err.migration) {
+      return res.status(409).json({ error: err.message, migration: err.migration });
+    }
     next(err);
   }
 });
@@ -145,7 +218,7 @@ router.patch('/:id', async (req, res, next) => {
 
   try {
     const values = toOperatorColumns(req.body);
-    const names = Object.keys(values).filter((name) => WRITABLE.has(name));
+    const names = await writableNames(values);
 
     const sets = names.map((name, index) => `"${name}" = $${index + 1}`);
     const params = names.map((name) => values[name]);
@@ -167,6 +240,9 @@ router.patch('/:id', async (req, res, next) => {
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'An operator with that name already exists.' });
+    }
+    if (err.status === 409 && err.migration) {
+      return res.status(409).json({ error: err.message, migration: err.migration });
     }
     next(err);
   }

@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { logger } from '../lib/logger.js';
 import { databaseOptions } from '../lib/db-ssl.js';
+import { describePoolExhaustion, looksLikePoolExhaustion } from '../lib/db-budget.js';
 
 const log = logger.child('migrate');
 
@@ -147,6 +148,51 @@ function connectionOptions(url) {
 }
 
 /**
+ * How long to keep trying for a connection the pooler has no room for.
+ *
+ * The one connection this runner needs is the one most likely to be refused.
+ * Migrations run before the server listens, and on a zero-downtime host the
+ * old copy of the service is still up and still holding its share of the
+ * project's clients while the new copy boots. For those few seconds the budget
+ * can be spent, and a runner that gives up on the first refusal fails the
+ * deploy - then fails it again on every restart, because each restart arrives
+ * into the same crowd.
+ *
+ * Waiting is right where the refusal is about room rather than credentials: a
+ * deploy's overlap clears in seconds, an instance being replaced in a minute or
+ * two. A wrong password or an unreachable host is not retried at all - that
+ * does not improve with waiting, and the deploy should fail on it immediately.
+ */
+export const CONNECT_ATTEMPTS = 6;
+export const CONNECT_BACKOFF_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * A client for the migration run, waiting out a pooler with no room.
+ *
+ * `attempts` and `backoff` are arguments so a test does not have to sleep.
+ */
+export async function connectForMigration(
+  source,
+  { attempts = CONNECT_ATTEMPTS, backoff = CONNECT_BACKOFF_MS, sleep = wait } = {},
+) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await source.connect();
+    } catch (err) {
+      if (!looksLikePoolExhaustion(err) || attempt >= attempts) throw err;
+      const pause = backoff[Math.min(attempt - 1, backoff.length - 1)];
+      // Said in full once, then counted down: the first line is what explains
+      // the deploy, and the rest say it is still trying rather than hung.
+      if (attempt === 1) log.warn(describePoolExhaustion(err));
+      log.warn(`waiting ${Math.round(pause / 1000)}s for a connection (attempt ${attempt} of ${attempts})`);
+      await sleep(pause);
+    }
+  }
+}
+
+/**
  * Apply every pending migration. Pass a pg Pool or a connection string; with
  * neither, DATABASE_URL is used. Resolves to the list of files applied.
  */
@@ -155,7 +201,7 @@ export async function migrate({ pool, connectionString, dir = MIGRATIONS_DIR, st
   const ownPool = pool
     ? null
     : new pg.Pool({ ...connectionOptions(connectionString ?? process.env.DATABASE_URL), max: 1 });
-  const client = await (pool ?? ownPool).connect();
+  const client = await connectForMigration(pool ?? ownPool);
   const onNotice = (notice) => {
     // RAISE WARNING from a migration is something an operator must see.
     if (notice.severity === 'WARNING') log.warn(notice.message);
@@ -191,6 +237,69 @@ export async function migrate({ pool, connectionString, dir = MIGRATIONS_DIR, st
     }
   } finally {
     client.off('notice', onNotice);
+    client.release();
+    if (ownPool) await ownPool.end();
+  }
+}
+
+/**
+ * What the server does about migrations when it boots.
+ *
+ *   check (default)  read whether anything is pending, say so, serve anyway
+ *   apply            apply pending migrations before listening, as it used to
+ *   off              do not look at all
+ *
+ * 'check' is the default because applying at boot put the database on the
+ * critical path of every deploy, on every instance, at the busiest moment for
+ * connections -- and bought nothing on a deployment whose migrations are
+ * applied deliberately, ahead of the deploy, with `npm run migrate`. A boot
+ * that cannot reach the database now fails its health check with a database
+ * error, which is what it is, instead of exiting with a migration error that
+ * was never about migrations.
+ *
+ * 'apply' is kept for a deployment that would rather have the old guarantee:
+ * nothing serves until the schema matches the code, at the cost of a deploy
+ * that fails when the schema cannot be brought up to date.
+ */
+export const STARTUP_MODES = ['check', 'apply', 'off'];
+
+export function startupMode(env = process.env) {
+  const asked = String(env.MIGRATE_ON_START ?? '')
+    .trim()
+    .toLowerCase();
+  if (!asked) return 'check';
+  // 'false' and 'true' are what somebody sets when they think it is a switch.
+  if (asked === 'false' || asked === 'no') return 'off';
+  if (asked === 'true' || asked === 'yes') return 'apply';
+  return STARTUP_MODES.includes(asked) ? asked : 'check';
+}
+
+/**
+ * Which migrations the database has not had, changing nothing.
+ *
+ * Read-only on purpose: it creates no table, takes no advisory lock and waits
+ * behind no other runner, so a booting instance can ask the question without
+ * joining the queue or leaving a mark. A database with no schema_migrations
+ * table has had none of them.
+ *
+ * Throws on a migration file that was edited after it was applied -- drift
+ * worth hearing about at boot, whoever applies the migrations.
+ */
+export async function pendingMigrations({ pool, connectionString, dir = MIGRATIONS_DIR } = {}) {
+  const migrations = readMigrations(dir);
+  const ownPool = pool
+    ? null
+    : new pg.Pool({ ...connectionOptions(connectionString ?? process.env.DATABASE_URL), max: 1 });
+  // One attempt, no waiting: this only reports, so a full pooler should make
+  // it give up at once and let the boot carry on. Waiting here spent a minute
+  // and a half of the log saying "waiting 30s for a connection" about a
+  // question nobody was blocked on.
+  const client = await connectForMigration(pool ?? ownPool, { attempts: 1 });
+  try {
+    const { rows } = await client.query("SELECT to_regclass('public.schema_migrations') IS NOT NULL AS present");
+    const applied = rows[0]?.present ? await appliedVersions(client) : new Map();
+    return plan(migrations, applied);
+  } finally {
     client.release();
     if (ownPool) await ownPool.end();
   }

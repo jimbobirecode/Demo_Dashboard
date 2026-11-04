@@ -7,9 +7,17 @@ services:
     plan: free
     # --include=dev is required: NODE_ENV=production makes npm skip
     # devDependencies, and vite (the build tool) is one of them.
+    #
+    # Any VITE_CLUB_* values are read at BUILD time, so they must be set on
+    # this service for the SPA to carry them at all. None are set here: this is
+    # the demo, so the SPA uses the defaults in web/src/lib/brand.js.
     buildCommand: npm install --include=dev && npm run build
-    # The server applies pending db/migrations before it listens, and exits
-    # (failing the deploy's health check) if one cannot be applied.
+    # Migrations are NOT applied at boot. Run `npm run migrate` against this
+    # database before deploying code that needs a new column; the server only
+    # checks, after it is listening, and logs what is missing. Applying at boot
+    # put the database on the critical path of every deploy -- on every
+    # instance, while the old one was still holding its connections.
+    # MIGRATE_ON_START=apply restores the old behaviour.
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -19,8 +27,32 @@ services:
         value: "22"
       - key: LOG_FORMAT
         value: json
+      # If this points at Supabase, use a SESSION-mode connection string
+      # (direct host, or the pooler on port 5432) — never the transaction
+      # pooler on 6543, which breaks the migration runner's session-level
+      # advisory lock and the migrations' pg_temp helpers. Render has no IPv6,
+      # so in practice that means the session pooler.
       - key: DATABASE_URL
         sync: false
+      # The share of the database's connection budget this service may hold.
+      #
+      # Supabase session mode caps the whole PROJECT at pool_size clients -- 15
+      # by default -- shared with anything else pointed at it, such as an email
+      # bot with a pool of its own.
+      #
+      # Count a deploy, not a quiet afternoon: Render keeps the OLD instance
+      # serving until the new one passes its health check, so for the length of
+      # a deploy TWO copies of this service draw on the same budget. Five each
+      # plus a bot's five is the whole 15, with nothing left for a migration
+      # run -- which is how the 13 Oct 2026 deploy of the County Louth install
+      # failed, and kept failing on every restart.
+      #
+      # Three, three and five leaves four: a migration run, a psql session and
+      # the SQL editor. Raise it only after raising the project's pool size in
+      # Supabase under Settings -> Database -> Connection pooling, and remember
+      # a deploy doubles whatever is set here.
+      - key: PGPOOL_MAX
+        value: "3"
       - key: JWT_SECRET
         generateValue: true
       # Shared with the core API, which issues the manage-booking links: the
@@ -51,3 +83,30 @@ services:
       # Optional: error reporting. Leave empty to keep it off.
       - key: SENTRY_DSN
         sync: false
+      # Reading inbound email: the Inbox's summary, intent and drafted reply.
+      # Without it the Inbox still receives mail, with no summary and no draft.
+      # A draft is never sent -- it opens in the composer for staff to edit.
+      # The guest's email is sent to Anthropic's API to be read.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Booked customers, posted to another system (docs/BOOKED_CUSTOMER_WEBHOOK.md).
+      # Both blank: unset, nothing about a booking leaves this dashboard. The
+      # URL must be https and the key is required, because an endpoint that
+      # accepts a club's guests from anybody who finds the URL is not somewhere
+      # to send them.
+      - key: BOOKED_WEBHOOK_URL
+        sync: false
+      - key: BOOKED_WEBHOOK_KEY
+        sync: false
+
+      # ---------------------------------------------------------------------
+      # The club profile is deliberately NOT set here.
+      #
+      # This is the demo deployment, so it runs on the TeeMail defaults in
+      # server/src/lib/brand.js and web/src/lib/brand.js. To serve a real club
+      # from this Blueprint, add CLUB_ID, CLUB_NAME, CLUB_FULL_NAME,
+      # CLUB_LOCALE, CLUB_CURRENCY, CLUB_TIMEZONE, CLUB_PHONE, CLUB_ADDRESS,
+      # CLUB_WEBSITE, DEFAULT_COURSE and BOOKING_REF_PREFIX (which must match
+      # the core API's profile for that club), plus the VITE_CLUB_* half for
+      # the SPA -- and see .env.example for what each one does.
+      # ---------------------------------------------------------------------

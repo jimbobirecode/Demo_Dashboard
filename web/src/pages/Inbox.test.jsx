@@ -127,4 +127,85 @@ describe('Inbox', () => {
     expect(await screen.findByText(/No notes yet/)).toBeInTheDocument();
     expect(screen.queryByLabelText('Add a note for the team')).not.toBeInTheDocument();
   });
+  test('an operator writing about a booking is answered as the operator, not as the lead guest', async () => {
+    // The booking is in the lead guest's name; the email is from the tour
+    // operator who made it. Nothing on screen may call the operator by the
+    // guest's name - that is how a reply ends up written to the wrong person.
+    const fromOperator = {
+      ...EMAIL,
+      fromEmail: 'groups@tours.test',
+      guestName: 'Isla Byrne',
+      bookingGuestEmail: 'isla@example.com',
+    };
+    const booking = {
+      bookingId: 'TMG-1',
+      status: 'Requested',
+      date: '2026-05-12',
+      teeTime: '09:00 AM',
+      players: 4,
+      total: 400,
+      guestName: 'Isla Byrne',
+      guestEmail: 'isla@example.com',
+    };
+    api.inbox.mockResolvedValue(list(fromOperator));
+    api.inboxMessage.mockResolvedValue({ message: fromOperator, thread: [fromOperator], booking, notes: [] });
+    renderInbox();
+
+    // No name is borrowed from the booking: the address is what is shown, and
+    // the composer is titled for a reply to nobody in particular.
+    expect(await screen.findByText('Reply')).toBeInTheDocument();
+    expect(screen.getAllByText('groups@tours.test').length).toBeGreaterThan(0);
+    expect(screen.getByText('Lead guest: Isla Byrne')).toBeInTheDocument();
+    expect(screen.queryByText(/Reply to Isla/)).not.toBeInTheDocument();
+  });
+
+  test('the lead guest writing in is answered by name', async () => {
+    const booking = {
+      bookingId: 'TMG-1',
+      status: 'Requested',
+      date: '2026-05-12',
+      teeTime: '09:00 AM',
+      players: 4,
+      total: 400,
+      guestName: 'Isla Byrne',
+      guestEmail: 'isla@example.com',
+    };
+    api.inboxMessage.mockResolvedValue({ message: EMAIL, thread: [EMAIL], booking, notes: [] });
+    renderInbox();
+
+    expect(await screen.findByText('Reply to Isla Byrne')).toBeInTheDocument();
+    expect(screen.queryByText(/Lead guest:/)).not.toBeInTheDocument();
+  });
+  test('an address the club knows as a tour operator is named as the operator, not as a golfer', async () => {
+    // One agency mailbox books for a different golfer every time, so the name
+    // on any one booking says nothing about who owns the address. The server
+    // names it from the operator account; the screen must not undo that.
+    const message = { ...EMAIL, fromEmail: 'john@destinationgolfservices.com', guestName: 'Daniel De Mot' };
+    const booking = {
+      bookingId: 'BOOK-1',
+      status: 'Requested',
+      date: '2027-09-13',
+      teeTime: '09:00 AM',
+      players: 4,
+      total: 400,
+      guestName: 'Daniel De Mot',
+      guestEmail: 'john@destinationgolfservices.com',
+    };
+    const correspondent = {
+      email: 'john@destinationgolfservices.com',
+      kind: 'operator',
+      name: 'Destination Golf Services',
+      label: 'Destination Golf Services',
+      note: 'Tour operator. This address books on behalf of their clients, so it is not any one guest’s.',
+    };
+    api.inbox.mockResolvedValue(list({ ...message, correspondent }));
+    api.inboxMessage.mockResolvedValue({ message, thread: [message], booking, notes: [], correspondent });
+    renderInbox();
+
+    expect(await screen.findByText('Reply to Destination Golf Services')).toBeInTheDocument();
+    expect(screen.getAllByText('Tour operator').length).toBeGreaterThan(0);
+    // The golfer is named as what the booking is about, never as the addressee.
+    expect(screen.getByText(/the round is for Daniel De Mot, who is not who this email goes to/)).toBeInTheDocument();
+    expect(screen.queryByText('Reply to Daniel De Mot')).not.toBeInTheDocument();
+  });
 });

@@ -30,13 +30,17 @@ export default function RequestUtilisation({ grid }) {
     <>
       <ChartCard
         title="Booking request utilisation"
+        // Most enquiries name a day and no hour. They are the bottom row
+        // rather than nothing at all -- see NO_TIME_BAND in analytics-domain.js.
         subtitle={
           grid.placed
-            ? `${formatNumber(totals.requests)} enquiries asked for a slot · ` +
+            ? `${formatNumber(totals.requests)} enquiries placed · ` +
               `${formatNumber(totals.converted)} booked (${totals.conversion}%) · ` +
               `${formatNumber(totals.missed)} did not` +
-              (totals.unplaced ? ` · ${formatNumber(totals.unplaced)} carry no usable date or time` : '')
-            : 'No enquiry in this period carries a date and a time to place'
+              // Only a missing DATE leaves an enquiry out now; a missing time
+              // has its own row at the foot of the grid.
+              (totals.unplaced ? ` · ${formatNumber(totals.unplaced)} carry no usable date` : '')
+            : 'No enquiry in this period carries a date to place'
         }
         action={<Segmented label="Request measure" options={REQUEST_MEASURES} value={metric} onChange={setMetric} />}
         footer={
@@ -79,7 +83,7 @@ export default function RequestUtilisation({ grid }) {
           emptyMessage={
             metric === 'conversion'
               ? 'No slot in this period has an enquiry to convert.'
-              : 'No enquiry in this period has a date and a time to place.'
+              : 'No enquiry in this period has a date to place.'
           }
         />
       </ChartCard>

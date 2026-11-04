@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import ChatThread from './ChatThread.jsx';
 import EmailComposer, { composerContext } from './EmailComposer.jsx';
+import { correspondent } from '../lib/correspondent.js';
 
 /**
  * The booking's emails, and one place to write the next one.
@@ -25,7 +26,10 @@ export default function BookingConversation({ booking }) {
     setNotice(null);
     api
       .bookingThread(booking.bookingId)
-      .then((payload) => live && setState({ loading: false, thread: payload.thread ?? [] }))
+      .then(
+        (payload) =>
+          live && setState({ loading: false, thread: payload.thread ?? [], recipient: payload.recipient ?? null }),
+      )
       .catch((err) => live && setState({ loading: false, thread: [], error: err.message }));
     return () => {
       live = false;
@@ -45,9 +49,16 @@ export default function BookingConversation({ booking }) {
     target === 'new'
       ? null
       : (thread.find((message) => message.id === target) ?? (target === null ? latestInbound : null));
-  const to = replyingTo?.fromEmail || booking.guestEmail;
-  const context = composerContext(booking);
-  const firstName = context.firstName;
+  // A reply goes back to whoever wrote; a fresh email goes to whoever the club
+  // has been emailing about this booking, which is the operator's address on an
+  // operator's booking and only then the lead guest's.
+  const to = replyingTo?.fromEmail || latestInbound?.fromEmail || booking.guestEmail;
+  // The server names the default recipient from the club's own records; a
+  // reply to an earlier email falls back to the local rule for that address.
+  const served = state.recipient && state.recipient.email === String(to).toLowerCase() ? state.recipient : null;
+  const who =
+    served ?? correspondent({ email: to, leadGuestEmail: booking.guestEmail, leadGuestName: booking.guestName });
+  const context = composerContext(booking, who);
 
   function sent(result) {
     setState({ loading: false, thread: result.thread });
@@ -58,7 +69,14 @@ export default function BookingConversation({ booking }) {
   return (
     <div className="card stack" style={{ background: 'var(--surface-0)', gap: '0.75rem' }}>
       <div className="between">
-        <div className="label">Emails with {firstName || 'the guest'}</div>
+        <div>
+          <div className="label">Emails with {who.label || 'the guest'}</div>
+          {context.leadName && (
+            <div className="muted" style={{ fontSize: '0.75rem' }}>
+              Lead guest: {context.leadName} — named on the booking, not the address above
+            </div>
+          )}
+        </div>
         {thread.length > 0 && (
           <span className="muted" style={{ fontSize: '0.75rem' }}>
             {thread.length} email{thread.length === 1 ? '' : 's'}
@@ -82,6 +100,7 @@ export default function BookingConversation({ booking }) {
           <ChatThread
             thread={thread}
             guestName={booking.guestName}
+            leadGuestEmail={booking.guestEmail}
             activeId={replyingTo?.id ?? null}
             onReplyTo={(message) => {
               setTarget(message.id);
@@ -100,9 +119,17 @@ export default function BookingConversation({ booking }) {
         (to ? (
           <div className="stack" style={{ gap: '0.4rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
             <EmailComposer
-              title={replyingTo ? `Reply to ${firstName || 'the guest'}` : `New email to ${firstName || 'the guest'}`}
+              title={
+                who.name ? `${replyingTo ? 'Reply' : 'New email'} to ${who.name}` : replyingTo ? 'Reply' : 'New email'
+              }
               key={replyingTo ? `reply-${replyingTo.id}` : 'new'}
               to={to}
+              recipient={who}
+              about={
+                booking.guestName && booking.guestName !== who.name
+                  ? `About booking ${booking.bookingId} — the round is for ${booking.guestName}, who is not who this email goes to.`
+                  : null
+              }
               subject={replyingTo ? `Re: ${(replyingTo.subject || '').replace(/^re:\s*/i, '')}` : ''}
               editableSubject={!replyingTo}
               subjectPlaceholder={`Your booking ${booking.bookingId}`}
@@ -113,7 +140,7 @@ export default function BookingConversation({ booking }) {
               replyToId={replyingTo?.id ?? null}
               sendLabel={replyingTo ? 'Send reply' : 'Send email'}
               send={(body, subject) =>
-                replyingTo ? api.inboxReply(replyingTo.id, body) : api.emailGuest(booking.bookingId, body, subject)
+                replyingTo ? api.inboxReply(replyingTo.id, body) : api.emailGuest(booking.bookingId, body, subject, to)
               }
               onSent={sent}
             />

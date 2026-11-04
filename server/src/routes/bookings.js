@@ -13,11 +13,19 @@ import {
   normalisePaymentStatus,
   paymentState,
   serialiseOperator,
+  paymentTracking,
 } from '../lib/operators-domain.js';
 import { CLOCK_STARTING_PAYMENTS, todayInClubZone } from '../lib/email-domain.js';
 import { syncIfStale } from '../lib/payment-sync.js';
-import { handoverBookedCustomer } from '../lib/booked-webhook-outbox.js';
+import {
+  NEW_BOOKING_SOURCES,
+  columnFor,
+  mintDeskReference,
+  validateBookingEdit,
+  validateNewBooking,
+} from '../lib/booking-edit-domain.js';
 import { BRAND } from '../lib/brand.js';
+import { handoverBookedCustomer } from '../lib/booked-webhook-outbox.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -69,7 +77,7 @@ export async function withAccount(booking, club) {
     ...booking,
     operatorId: operator?.id ?? null,
     operatorName: operator?.name ?? null,
-    payment: paymentState(booking, operator, { today: todayInClubZone() }),
+    payment: paymentState(booking, operator, { today: todayInClubZone(), tracking: paymentTracking() }),
   };
 }
 
@@ -86,12 +94,13 @@ async function loadBookingsWithAccounts(club) {
   const [bookings, operators] = await Promise.all([loadBookings(club), loadOperators(club)]);
 
   const today = todayInClubZone();
+  const tracking = paymentTracking();
   const index = buildOperatorIndex(operators);
   const byId = new Map(operators.map((operator) => [operator.id, operator]));
 
   const enriched = attachOperators(bookings, index).map((booking) => ({
     ...booking,
-    payment: paymentState(booking, byId.get(booking.operatorId) ?? null, { today }),
+    payment: paymentState(booking, byId.get(booking.operatorId) ?? null, { today, tracking }),
   }));
 
   return { bookings: enriched, operators, today };
@@ -202,6 +211,121 @@ router.patch('/:bookingId/payment', async (req, res, next) => {
   }
 });
 
+/**
+ * Take a booking by hand: over the phone, at the counter, or from an email
+ * that reached the office rather than the bot.
+ *
+ * It goes in exactly as one the bot took would -- a reference in the bot's own
+ * format, so the guest's replies find it; `booked_at` stamped when it is taken
+ * as Booked, so the payment ladder counts its deposit window from today -- and
+ * from there it is an ordinary booking: paid for from the drawer, chased and
+ * confirmed by the same emails as any other.
+ */
+router.post('/', async (req, res, next) => {
+  try {
+    const club = req.user.customerId;
+    const operators = await loadOperators(club);
+    const check = validateNewBooking(req.body, { today: todayInClubZone(), operators });
+    if (!check.ok) return res.status(400).json({ error: check.errors.join('. '), errors: check.errors });
+
+    const booking = check.value;
+    const source = NEW_BOOKING_SOURCES[booking.source];
+    // Who took it and how, at the head of the note, so the record says so
+    // wherever the note is read.
+    const note = [`Taken by ${req.user.username} (${source.toLowerCase()}).`, booking.note]
+      .filter(Boolean)
+      .join('\n\n');
+
+    let inserted = null;
+    // A clash on eight random hex characters within one day is all but
+    // impossible; trying again is cheaper than reasoning about it.
+    for (let attempt = 0; attempt < 3 && !inserted; attempt += 1) {
+      const { rows } = await query(
+        `INSERT INTO public.bookings
+           (booking_id, club, guest_email, guest_name, contact_phone, date, tee_time, players, total,
+            status, note, special_requests, tour_operator_id, source, timestamp, booked_at, updated_at, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::text,$11,$12,$13,$14,NOW(),
+                 CASE WHEN $10::text = 'Booked' THEN NOW() END, NOW(), $15)
+         ON CONFLICT (booking_id) DO NOTHING
+         RETURNING ${BOOKING_SELECT}`,
+        [
+          mintDeskReference(),
+          club,
+          booking.guestEmail ?? '',
+          booking.guestName ?? '',
+          booking.contactPhone ?? '',
+          booking.date,
+          booking.teeTime ?? 'Not Specified',
+          booking.players,
+          booking.total,
+          booking.status,
+          note,
+          booking.specialRequests ?? '',
+          booking.operatorId ?? null,
+          // The column knows two origins: a live booking ('teemail') and
+          // history loaded from a spreadsheet ('imported'), which is kept out
+          // of the payment ledger and the emails. A phone booking is live, so
+          // it is the first; how it came in is in the note above.
+          'teemail',
+          req.user.username,
+        ],
+      );
+      inserted = rows[0] ?? null;
+    }
+    if (!inserted) return res.status(500).json({ error: 'Could not issue a booking reference. Try again.' });
+
+    res.status(201).json({ booking: await withAccount(serialiseBooking(inserted), club) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Change a booking's details: the date, the tee time, the party, the price,
+ * and who it is with.
+ *
+ * Only what differs is written, so the audit stamp means somebody changed
+ * something. A new party size is repriced at the price per player the booking
+ * was taken at unless a total comes with it. The answer carries `warnings` --
+ * a payment link out for the old amount, more paid than the new total -- for
+ * the drawer to put in front of whoever made the change.
+ */
+router.patch('/:bookingId', async (req, res, next) => {
+  try {
+    const club = req.user.customerId;
+    const { rows: found } = await query(
+      `SELECT ${BOOKING_SELECT} FROM public.bookings WHERE booking_id = $1 AND club = $2`,
+      [req.params.bookingId, club],
+    );
+    if (!found[0]) return res.status(404).json({ error: 'Booking not found' });
+    const current = serialiseBooking(found[0]);
+
+    const check = validateBookingEdit(req.body, current);
+    if (!check.ok) return res.status(400).json({ error: check.errors.join('. '), errors: check.errors });
+
+    const entries = Object.entries(check.changes);
+    const audit = buildAuditSet(entries.length + 1, req.user.username);
+    const sets = entries.map(([field], index) => `"${columnFor(field)}" = $${index + 1}`);
+    const { rows } = await query(
+      `UPDATE public.bookings
+          SET ${[...sets, ...audit.clauses].join(', ')}
+        WHERE booking_id = $${entries.length + audit.values.length + 1}
+          AND club = $${entries.length + audit.values.length + 2}
+      RETURNING ${BOOKING_SELECT}`,
+      [...entries.map(([, value]) => value), ...audit.values, req.params.bookingId, club],
+    );
+
+    res.json({
+      booking: await withAccount(serialiseBooking(rows[0]), club),
+      changed: entries.map(([field]) => field),
+      repriced: check.repriced,
+      warnings: check.warnings,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/:bookingId/status', async (req, res, next) => {
   const requested = req.body?.status;
   if (!ALLOWED_STATUSES.includes(requested)) {
@@ -226,6 +350,32 @@ router.patch('/:bookingId/status', async (req, res, next) => {
     // this call does not (lib/booked-webhook-outbox.js).
     void handoverBookedCustomer(booking, { reason: `status by ${req.user.username}` });
     res.json({ booking });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * On the tee sheet, or not after all. A booking a payment booked waits as
+ * 'to_enter' until somebody puts it on the club's tee sheet and says so here;
+ * `entered: false` puts the flag back, for a mark made on the wrong booking.
+ */
+router.patch('/:bookingId/tee-sheet', async (req, res, next) => {
+  const entered = req.body?.entered;
+  if (typeof entered !== 'boolean') return res.status(400).json({ error: 'entered must be true or false' });
+  try {
+    const { rows } = await query(
+      `UPDATE public.bookings
+          SET tee_sheet_status = $1,
+              tee_sheet_entered_at = CASE WHEN $1 = 'entered' THEN NOW() END,
+              tee_sheet_entered_by = CASE WHEN $1 = 'entered' THEN $2 END,
+              updated_at = NOW(), updated_by = $2
+        WHERE booking_id = $3 AND club = $4
+      RETURNING ${BOOKING_SELECT}`,
+      [entered ? 'entered' : 'to_enter', req.user.username, req.params.bookingId, req.user.customerId],
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
+    res.json({ booking: await withAccount(serialiseBooking(rows[0]), req.user.customerId) });
   } catch (err) {
     next(err);
   }
