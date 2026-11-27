@@ -148,7 +148,7 @@ export default function NewBookingForm({ operators = [], onCreate, onClose }) {
             </Labelled>
             <div className="stack" style={{ gap: '0.25rem' }}>
               <span className="label">Total</span>
-              <div className="flow-value" style={{ fontSize: '1.25rem', color: 'var(--brand-gold-bright)' }}>
+              <div className="flow-value" style={{ fontSize: '1.25rem', color: 'var(--brand-strong)' }}>
                 {total === null ? '—' : formatCurrency(total)}
               </div>
             </div>

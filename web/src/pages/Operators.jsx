@@ -183,7 +183,7 @@ export default function Operators({ user }) {
             label="Trade accounts"
             value={formatNumber(totals.operators)}
             sub={`${formatNumber(totals.booked)} booked · ${formatNumber(totals.unconfirmed)} enquiries`}
-            accent="var(--brand-gold)"
+            accent="var(--brand)"
           />
           {money && (
             <KpiTile
@@ -212,7 +212,7 @@ export default function Operators({ user }) {
               label="Accounts to watch"
               value={formatNumber(totals.overLimit + totals.onHold)}
               sub={`${totals.overLimit} over limit · ${totals.onHold} on hold`}
-              accent={totals.overLimit + totals.onHold > 0 ? OVERDUE : 'var(--muted, #8a8a8a)'}
+              accent={totals.overLimit + totals.onHold > 0 ? OVERDUE : 'var(--muted)'}
             />
           ) : (
             // Over-limit is a credit judgement and there is no credit to
@@ -221,7 +221,7 @@ export default function Operators({ user }) {
               label="On hold"
               value={formatNumber(totals.onHold)}
               sub="Accounts not taking new bookings"
-              accent={totals.onHold > 0 ? OVERDUE : 'var(--muted, #8a8a8a)'}
+              accent={totals.onHold > 0 ? OVERDUE : 'var(--muted)'}
             />
           )}
         </div>
@@ -1231,7 +1231,7 @@ function Cell({ label, value, accent }) {
         style={{
           fontSize: accent ? '1.25rem' : '0.9375rem',
           fontWeight: accent ? 700 : 600,
-          color: accent ? 'var(--brand-gold-bright)' : 'var(--text-primary)',
+          color: accent ? 'var(--brand-strong)' : 'var(--text-primary)',
         }}
       >
         {value}

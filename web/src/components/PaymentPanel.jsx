@@ -297,7 +297,7 @@ function Cell({ label, value, accent }) {
         style={{
           fontSize: accent ? '1.125rem' : '0.9375rem',
           fontWeight: accent ? 700 : 600,
-          color: accent ? 'var(--brand-gold-bright)' : 'var(--text-primary)',
+          color: accent ? 'var(--brand-strong)' : 'var(--text-primary)',
         }}
       >
         {value}

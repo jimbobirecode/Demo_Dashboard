@@ -153,7 +153,7 @@ export default function Inbox({ onCountChange }) {
                 display: 'block',
                 width: '100%',
                 background: message.id === selectedId ? 'var(--surface-2)' : 'var(--surface-1)',
-                border: `1px solid ${message.id === selectedId ? 'var(--brand-gold)' : 'var(--border)'}`,
+                border: `1px solid ${message.id === selectedId ? 'var(--brand)' : 'var(--border)'}`,
                 borderRadius: 'var(--radius-sm)',
                 padding: '0.6rem 0.75rem',
               }}
@@ -309,8 +309,8 @@ function InboxDetail({ id, onChanged, onHandled }) {
               borderRadius: '999px',
               fontSize: '0.8125rem',
               whiteSpace: 'nowrap',
-              border: `1px solid ${open ? 'var(--brand-gold)' : 'var(--border)'}`,
-              color: open ? 'var(--brand-gold-bright)' : 'var(--text-secondary)',
+              border: `1px solid ${open ? 'var(--brand)' : 'var(--border)'}`,
+              color: open ? 'var(--brand-strong)' : 'var(--text-secondary)',
             }}
           >
             {status}

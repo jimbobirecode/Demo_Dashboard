@@ -2,6 +2,19 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – a light theme (November 2026)
+
+### Changed
+
+- **The dashboard is light.** A bright page (`#F6F7F9`), white cards with a soft shadow, and one accent: TeeMail teal `#1A5E58`, the primary guest email has always used on white. It replaces the dark links-green surfaces and the gorse gold accent. The change is almost entirely the tokens at the top of `web/src/theme.css` and the chart literals in `web/src/lib/palette.js`; `--brand-gold` and `--brand-gold-bright` are renamed `--brand` and `--brand-strong`, since neither is gold any more.
+- **The sidebar is grouped** — Bookings, Accounts, Outreach, Records, Admin — and the active item is the brand tint. The Inbox count is a red badge.
+- **The pipeline ramp darkens toward completion** where it used to brighten, because the surface under it flipped. Contrast figures for every pairing are in the two files' headers. The colour-vision simulation the dark ramps were validated with has not been re-run for the light ones; status is always written in words beside its colour.
+
+### Not changed
+
+- Layout. The top bar, sparklines in the KPI tiles, the tabbed table header and the other structural pieces of the design brief are not built; this is the palette, type, depth and navigation grouping only.
+- Guest email, which was already drawn on white in these colours.
+
 ## Unreleased – the demo applies its own migrations again (November 2026)
 
 ### Fixed

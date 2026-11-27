@@ -238,7 +238,7 @@ export default function Workflow({ embedded = false }) {
           label="Due now"
           value={formatNumber(scope === 'due' ? dueCount : (pending?.summary?.emails ?? 0))}
           sub={scope === 'due' ? 'Bookings with a step to send' : 'In this view'}
-          accent="var(--brand-gold)"
+          accent="var(--brand)"
         />
         <KpiTile
           label="To cancel"
@@ -268,7 +268,7 @@ export default function Workflow({ embedded = false }) {
                 ? 'No pass yet since the last restart'
                 : 'Nothing sends on its own'
           }
-          accent={config?.automatic ? 'var(--status-booked)' : 'var(--muted, #8a8a8a)'}
+          accent={config?.automatic ? 'var(--status-booked)' : 'var(--muted)'}
         />
       </div>
 

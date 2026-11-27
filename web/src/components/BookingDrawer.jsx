@@ -296,7 +296,7 @@ function Field({ label, value, accent, wide = false }) {
         style={{
           fontSize: accent ? '1.25rem' : '0.9375rem',
           fontWeight: accent ? 700 : 600,
-          color: accent ? 'var(--brand-gold-bright)' : 'var(--text-primary)',
+          color: accent ? 'var(--brand-strong)' : 'var(--text-primary)',
         }}
       >
         {value}
