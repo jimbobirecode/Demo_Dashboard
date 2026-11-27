@@ -71,6 +71,7 @@ function StaffApp() {
         <div className="divider" />
 
         <nav className="stack" style={{ gap: '0.25rem' }}>
+          <div className="nav-group">Bookings</div>
           <NavLink to="/bookings" className={navClass}>
             Bookings
           </NavLink>
@@ -81,8 +82,8 @@ function StaffApp() {
                 aria-label={`${inboxCount} to answer`}
                 style={{
                   marginLeft: '0.5rem',
-                  background: 'var(--brand-gold)',
-                  color: 'var(--surface-0)',
+                  background: 'var(--status-rejected)',
+                  color: 'var(--on-brand)',
                   borderRadius: '999px',
                   padding: '0 0.45rem',
                   fontSize: '0.75rem',
@@ -99,24 +100,28 @@ function StaffApp() {
           <NavLink to="/waitlist" className={navClass}>
             Waitlist
           </NavLink>
-          <NavLink to="/membership" className={navClass}>
-            Membership
-          </NavLink>
+          <div className="nav-group">Accounts</div>
           <NavLink to="/operators" className={navClass}>
             Tour Operators
           </NavLink>
+          <NavLink to="/membership" className={navClass}>
+            Membership
+          </NavLink>
+          <div className="nav-group">Outreach</div>
           <NavLink to="/emails" className={navClass}>
             Guest Emails
           </NavLink>
           <NavLink to="/booking-status" className={navClass}>
             Booking Status
           </NavLink>
+          <div className="nav-group">Records</div>
           <NavLink to="/import" className={navClass}>
             Upload Tee Sheet
           </NavLink>
           <NavLink to="/analytics" className={navClass}>
             Analytics
           </NavLink>
+          <div className="nav-group">Admin</div>
           {/* Account administration is hidden from staff. The API refuses them
               too — this only saves them clicking on a page they cannot use. */}
           {user.role === 'admin' && (

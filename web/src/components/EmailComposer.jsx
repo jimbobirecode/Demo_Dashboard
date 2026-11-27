@@ -278,8 +278,8 @@ export default function EmailComposer({
               padding: '0.1rem 0.5rem',
               borderRadius: '999px',
               fontSize: '0.75rem',
-              border: '1px solid var(--brand-gold)',
-              color: 'var(--brand-gold-bright)',
+              border: '1px solid var(--brand)',
+              color: 'var(--brand-strong)',
               whiteSpace: 'nowrap',
             }}
           >

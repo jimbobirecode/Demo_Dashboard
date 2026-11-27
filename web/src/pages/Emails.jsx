@@ -199,7 +199,7 @@ export default function Emails() {
           label="Due now"
           value={formatNumber(unsentCount)}
           sub={`Not yet ${campaignId === 'pre_arrival' ? 'welcomed' : 'thanked'}`}
-          accent="var(--brand-gold)"
+          accent="var(--brand)"
         />
         <KpiTile
           label="In this window"
@@ -237,7 +237,7 @@ export default function Emails() {
                 ? 'Connected, but not on this campaign'
                 : 'Feedback is not collected anywhere'
           }
-          accent={veroOn ? 'var(--links-green)' : 'var(--muted, #8a8a8a)'}
+          accent={veroOn ? 'var(--links-green)' : 'var(--muted)'}
         />
       </div>
 

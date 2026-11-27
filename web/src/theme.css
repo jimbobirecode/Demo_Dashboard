@@ -1,65 +1,71 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;500;600;700&display=swap');
 
 /* ---------------------------------------------------------------
-   TeeMail design tokens.
+   TeeMail design tokens -- the light theme.
 
-   Links green for surfaces, gorse gold for accent and the pipeline
-   ramp, sand and dune grass for text. The palette was derived for
-   Royal Dornoch and kept through the rebrand on purpose: its ramps
-   are validated against this exact chart surface, and the figures
-   below are only true of these values.
+   A bright page, white cards, and one accent: TeeMail teal #1A5E58,
+   the same primary the guest email has always used on white. It is
+   7.54:1 on white as text and carries white text at the same ratio,
+   so one value is both the link colour and the primary button.
 
-   The status ramp is a single-hue gorse gold ordinal scale validated
-   against the #1D3B2A chart surface: monotone lightness, >=0.06 step
-   gaps, light end 3.79:1. Colour brightens toward completion, and its
-   two dim steps are the club's own heather gold and gorse gold.
+   Every pairing below was measured, and the figures are only true of
+   these values:
 
-   The club's original status colours were categorical (blue Requested,
-   two greens for Confirmed and Booked) and could not be kept: on a dark
-   green surface the two greens sit DE 8.8 apart and the blue reaches
-   only 1.74:1. The terminal states are reserved status colours, checked
-   against the ramp at DE 16.6 normal / 9.7 CVD, all above 3:1.
+     text      #111827  17.7:1 on white
+     secondary #4B5563   7.6:1 on white
+     muted     #636B78   5.4:1 on white, 5.0 on the page, 4.9 on
+                         --surface-2. (#6B7280 is 4.39 there, which
+                         fails for the small labels that sit on it.)
+
+   The gorse gold of the old dark theme (#C9A227) is NOT here: it is
+   2.4:1 on white, too faint for text or for a chart mark. Where a gold
+   is wanted on a light surface it is #8A6D1F, as in guest email.
+
+   The status ramp is a single-hue teal ordinal scale that DARKENS
+   toward completion (on the dark theme it brightened): 3.36, 4.23,
+   5.65 and 7.54:1 on white, and no step below 3:1 on --surface-2,
+   where the pill dots sit. Terminal states are reserved colours
+   outside the ramp. The literals for charts are in lib/palette.js.
    --------------------------------------------------------------- */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* Links green — turf under a northern sky */
-  --surface-0: #12261b;
-  --surface-1: #1d3b2a;
-  --surface-2: #2a4f3a;
-  --surface-3: #37634a;
-  --border: #335b41;
-  --border-strong: #c9a227;
+  /* Page, card, inset */
+  --surface-0: #f6f7f9;
+  --surface-1: #ffffff;
+  --surface-2: #f3f4f6;
+  --surface-3: #e5e7eb;
+  --border: #e6e8ec;
+  --border-strong: #1a5e58;
 
-  /* Gorse gold — the club accent */
-  --brand-gold: #c9a227;
-  --brand-gold-bright: #dec163;
-  --brand-gold-deep: #b8862b;
+  /* TeeMail teal -- the one accent */
+  --brand: #1a5e58;
+  --brand-strong: #134742;
+  --brand-tint: #e4eceb;
+  --on-brand: #ffffff;
 
-  /* North Sea blue — supporting accent */
+  /* Supporting accent, and positive affordances */
   --north-sea: #2f5d7c;
+  --links-green: #047857;
 
-  /* Machair green — positive affordances */
-  --links-green: #6e8f5e;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #636b78;
+  --muted: #636b78;
+  --stone: #4b5563;
 
-  /* Links sand & dune grass */
-  --text-primary: #f6f4ee;
-  --text-secondary: #cfc9ae;
-  --text-muted: #9ba894;
-  --stone: #d9cfae;
-
-  /* Pipeline: gorse gold ordinal ramp, brightening toward completion */
-  --status-inquiry: #b8862b;
-  --status-requested: #c9a227;
-  --status-booked: #f0e0a6;
+  /* Pipeline: teal ordinal ramp, darkening toward completion */
+  --status-inquiry: #5e9690;
+  --status-requested: #4c857f;
+  --status-booked: #1a5e58;
   /* Terminal states, outside the ramp */
-  --status-rejected: #db4f7d;
-  --status-cancelled: #93a9b8;
+  --status-rejected: #b91c1c;
+  --status-cancelled: #6b7280;
 
-  --grid: #335b41;
-  --radius: 10px;
-  --radius-sm: 6px;
-  --shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --grid: #e6e8ec;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
 
   --font: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
@@ -75,7 +81,7 @@ body {
   font-family: var(--font);
   background: var(--surface-0);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -102,7 +108,7 @@ h3 {
 }
 
 a {
-  color: var(--brand-gold-bright);
+  color: var(--brand-strong);
 }
 
 /* Typographic wordmark, in the brand's display face */
@@ -119,7 +125,7 @@ a {
 .wordmark-rule {
   width: 48px;
   height: 1px;
-  background: var(--brand-gold);
+  background: var(--brand);
   margin: 0.75rem auto;
 }
 .wordmark-sub {
@@ -145,7 +151,7 @@ button {
 }
 button:hover:not(:disabled) {
   background: var(--surface-3);
-  border-color: var(--brand-gold);
+  border-color: var(--brand);
 }
 button:disabled {
   opacity: 0.45;
@@ -155,26 +161,26 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--brand-gold-bright);
+  outline: 2px solid var(--brand-strong);
   outline-offset: 2px;
 }
 
 .btn-primary {
-  background: var(--brand-gold);
-  border-color: var(--brand-gold);
-  color: #0a1c2e;
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--on-brand);
   font-weight: 700;
 }
 .btn-primary:hover:not(:disabled) {
-  background: var(--brand-gold-bright);
-  border-color: var(--brand-gold-bright);
+  background: var(--brand-strong);
+  border-color: var(--brand-strong);
 }
 .btn-danger {
   color: var(--status-rejected);
-  border-color: rgba(219, 79, 125, 0.5);
+  border-color: rgba(185, 28, 28, 0.5);
 }
 .btn-danger:hover:not(:disabled) {
-  background: rgba(219, 79, 125, 0.12);
+  background: rgba(185, 28, 28, 0.12);
   border-color: var(--status-rejected);
 }
 .btn-sm {
@@ -204,6 +210,11 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.25rem;
+  box-shadow: var(--shadow);
+}
+/* A card set inside a card is an inset panel, not a second raised surface. */
+.card .card {
+  box-shadow: none;
 }
 
 .muted {
@@ -289,9 +300,17 @@ textarea {
   color: var(--text-primary);
 }
 .nav-link.active {
-  background: var(--surface-2);
-  color: var(--text-primary);
-  box-shadow: inset 3px 0 0 var(--brand-gold);
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-weight: 600;
+}
+.nav-group {
+  padding: 0.75rem 0.75rem 0.15rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
 }
 
 .kpi-row {
@@ -315,7 +334,7 @@ textarea {
 .kpi {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--kpi-accent, var(--brand-gold));
+  border-left: 3px solid var(--kpi-accent, var(--brand));
   border-radius: var(--radius);
   padding: 0.9rem 1rem;
   text-align: left;
@@ -323,7 +342,7 @@ textarea {
   width: 100%;
 }
 .kpi[aria-pressed='true'] {
-  border-color: var(--brand-gold);
+  border-color: var(--brand);
   background: var(--surface-2);
 }
 .kpi-value {
@@ -384,7 +403,7 @@ table.data tbody tr:hover {
   background: var(--surface-2);
 }
 table.data tbody tr.selected {
-  background: var(--surface-3);
+  background: var(--brand-tint);
 }
 
 .num {
@@ -421,7 +440,7 @@ table.data tbody tr.selected {
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 12, 26, 0.65);
+  background: rgba(17, 24, 39, 0.45);
   z-index: 40;
 }
 .drawer {
@@ -485,7 +504,7 @@ table.data tbody tr.selected {
 }
 .pipeline-fill {
   left: 8%;
-  background: var(--brand-gold-bright);
+  background: var(--brand-strong);
   transition: width 0.3s ease;
 }
 .pipeline-node {
@@ -512,7 +531,7 @@ table.data tbody tr.selected {
 .pipeline-node.current .pipeline-dot {
   box-shadow:
     0 0 0 3px var(--surface-1),
-    0 0 0 6px rgba(235, 217, 143, 0.35);
+    0 0 0 6px rgba(26, 94, 88, 0.25);
 }
 .pipeline-label {
   font-size: 0.6875rem;
@@ -558,8 +577,8 @@ table.data tbody tr.selected {
 }
 .flow-step[aria-pressed='true'] {
   background: var(--surface-2);
-  border-color: var(--flow-accent, var(--brand-gold));
-  border-left-color: var(--flow-accent, var(--brand-gold));
+  border-color: var(--flow-accent, var(--brand));
+  border-left-color: var(--flow-accent, var(--brand));
 }
 /* The summary is a total, not a stage: no arrow into it, and it does not
    invite a click because there is nothing to filter to. */
@@ -610,7 +629,7 @@ table.data tbody tr.selected {
   cursor: pointer;
 }
 .ladder-clear:hover:not(:disabled) {
-  border-color: var(--brand-gold);
+  border-color: var(--brand);
   color: var(--text-primary);
 }
 .ladder-clear:disabled {
@@ -659,11 +678,11 @@ table.data tbody tr.selected {
 }
 .ladder-step.is-due {
   background: var(--surface-2);
-  border-color: var(--brand-gold);
-  border-left-color: var(--brand-gold);
+  border-color: var(--brand);
+  border-left-color: var(--brand);
 }
 .ladder-step.is-due .ladder-state {
-  color: var(--brand-gold-bright);
+  color: var(--brand-strong);
 }
 .ladder-step.is-missed,
 .ladder-step.is-blocked {
@@ -693,7 +712,7 @@ table.data tbody tr.selected {
 
 .chart-tooltip {
   background: var(--surface-0);
-  border: 1px solid var(--brand-gold);
+  border: 1px solid var(--brand);
   border-radius: var(--radius-sm);
   padding: 0.55rem 0.7rem;
   font-size: 0.8125rem;
@@ -723,38 +742,41 @@ table.data tbody tr.selected {
   border-radius: var(--radius-sm);
   padding: 0.6rem 0.85rem;
   font-size: 0.8125rem;
-  border: 1px solid;
+  /* A named colour: bare `1px solid` takes the text colour, which was a soft
+     light rule on the dark theme and is a black box on this one. */
+  border: 1px solid var(--border);
+  background: var(--surface-1);
 }
 .banner.error {
-  background: rgba(219, 79, 125, 0.12);
+  background: rgba(185, 28, 28, 0.12);
   border-color: var(--status-rejected);
-  color: #f8cbdc;
+  color: #991b1b;
 }
 .banner.success {
-  background: rgba(212, 175, 55, 0.12);
-  border-color: var(--brand-gold);
-  color: #ebd98f;
+  background: rgba(26, 94, 88, 0.12);
+  border-color: var(--brand);
+  color: var(--brand-strong);
 }
 /* Saved, but there is something to know: a payment link out for the old
    amount, more paid than the new total. Not an error, and not to be missed. */
 .banner.warning {
-  background: rgba(230, 150, 60, 0.12);
-  border-color: #e6963c;
-  color: #f5d2a8;
+  background: #fef3c7;
+  border-color: #b45309;
+  color: #92400e;
 }
 
 /* A booking a payment booked, still to go on the club's tee sheet. Green,
    because it is good news with one thing left to do -- not an error. */
 .tee-sheet-card {
-  background: rgba(74, 167, 116, 0.12);
-  border: 1px solid var(--links-green, #4aa774);
+  background: #d1fae5;
+  border: 1px solid var(--links-green, #047857);
 }
 .tee-sheet-flag {
   display: inline-block;
   font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--links-green, #4aa774);
+  color: var(--links-green, #047857);
   white-space: nowrap;
 }
 
@@ -882,7 +904,7 @@ table.data tbody tr.selected {
 }
 .segmented button[aria-pressed='true'] {
   background: var(--surface-2);
-  border: 1px solid var(--brand-gold);
+  border: 1px solid var(--brand);
   color: var(--text-primary);
 }
 
@@ -924,13 +946,13 @@ table.data tbody tr.selected {
   border-bottom-left-radius: 4px;
 }
 .from-club .chat-bubble {
-  background: rgba(212, 175, 55, 0.12);
-  border-color: rgba(212, 175, 55, 0.35);
+  background: rgba(26, 94, 88, 0.12);
+  border-color: rgba(26, 94, 88, 0.35);
   border-bottom-right-radius: 4px;
 }
 .chat-bubble.active {
-  border-color: var(--brand-gold);
-  box-shadow: 0 0 0 1px var(--brand-gold);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand);
 }
 .chat-meta {
   display: flex;
@@ -973,14 +995,14 @@ table.data tbody tr.selected {
   display: none;
 }
 .chat-replying {
-  color: var(--brand-gold);
+  color: var(--brand);
   font-weight: 600;
 }
 .link-button {
   background: none;
   border: 0;
   padding: 0;
-  color: var(--brand-gold-bright);
+  color: var(--brand-strong);
   font-size: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -1017,13 +1039,13 @@ table.data tbody tr.selected {
   cursor: pointer;
 }
 .quick-replies .chip:hover:not(:disabled) {
-  border-color: var(--brand-gold);
+  border-color: var(--brand);
   color: var(--text-primary);
 }
 .quick-replies .chip[aria-pressed='true'] {
-  background: var(--brand-gold);
-  border-color: var(--brand-gold);
-  color: #0a1c2e;
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--on-brand);
   font-weight: 600;
 }
 
@@ -1074,7 +1096,7 @@ a.button-link {
   text-decoration: none;
 }
 a.button-link:hover {
-  border-color: var(--brand-gold);
+  border-color: var(--brand);
   background: var(--surface-3);
 }
 @media (max-width: 640px) {
@@ -1092,7 +1114,7 @@ a.button-link:hover {
   border-left: 4px solid var(--status-cancelled);
 }
 .membership-toggle.is-on {
-  border-left-color: var(--brand-gold);
+  border-left-color: var(--brand);
 }
 .membership-toggle-title {
   font-family: var(--font-display);
@@ -1121,12 +1143,12 @@ a.button-link:hover {
   transition: transform 0.15s ease;
 }
 .switch[aria-checked='true'] {
-  background: rgba(212, 175, 55, 0.25);
-  border-color: var(--brand-gold);
+  background: rgba(26, 94, 88, 0.25);
+  border-color: var(--brand);
 }
 .switch[aria-checked='true'] .switch-knob {
   transform: translateX(30px);
-  background: var(--brand-gold-bright);
+  background: var(--brand-strong);
 }
 .switch:disabled {
   opacity: 0.75;
@@ -1135,9 +1157,9 @@ a.button-link:hover {
 .confirm-panel {
   gap: 0.6rem;
   padding: 0.85rem 1rem;
-  border: 1px solid var(--brand-gold);
+  border: 1px solid var(--brand);
   border-radius: var(--radius-sm);
-  background: rgba(212, 175, 55, 0.08);
+  background: rgba(26, 94, 88, 0.08);
 }
 .tag {
   display: inline-block;

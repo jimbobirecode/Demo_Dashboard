@@ -184,7 +184,7 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
           {booking.paymentReceiptSentAt ? (
             <>receipt emailed {formatDateTime(booking.paymentReceiptSentAt)}</>
           ) : (
-            <strong style={{ color: 'var(--status-rejected, #DB4F7D)' }}>receipt not sent</strong>
+            <strong style={{ color: 'var(--status-rejected)' }}>receipt not sent</strong>
           )}
           {onSendReceipt && (
             <>
@@ -245,7 +245,7 @@ export default function PaymentLinkPanel({ booking, onSend, onSendReceipt, onChe
                     aria-pressed={chosen}
                     disabled={busy}
                     onClick={() => setAmount(String(pick.amount))}
-                    style={chosen ? { borderColor: 'var(--brand-gold)', color: 'var(--brand-gold-bright)' } : undefined}
+                    style={chosen ? { borderColor: 'var(--brand)', color: 'var(--brand-strong)' } : undefined}
                     title={pick.dueDate ? `Due ${formatDate(pick.dueDate)}` : undefined}
                   >
                     {pick.label} {formatCurrency(pick.amount)}
@@ -368,11 +368,7 @@ function SetupCheck() {
             aria-hidden="true"
             style={{
               color:
-                check.ok === false
-                  ? 'var(--status-rejected, #DB4F7D)'
-                  : check.ok
-                    ? 'var(--brand-gold-bright)'
-                    : 'var(--text-muted)',
+                check.ok === false ? 'var(--status-rejected)' : check.ok ? 'var(--brand-strong)' : 'var(--text-muted)',
             }}
           >
             {check.ok === false ? '✗' : check.ok ? '✓' : '?'}
