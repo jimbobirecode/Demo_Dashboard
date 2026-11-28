@@ -1,4 +1,4 @@
-import { paymentColor } from '../lib/payments.js';
+import { paymentColor, paymentTone } from '../lib/payments.js';
 import { OVERDUE } from '../lib/palette.js';
 
 /**
@@ -28,11 +28,11 @@ export default function PaymentPill({ payment, status }) {
 
   return (
     <span className="row" style={{ gap: '0.4rem', alignItems: 'center' }}>
-      <span className="status-pill" style={{ '--pill-color': paymentColor(label) }}>
+      <span className="status-pill" data-tone={paymentTone(label)} style={{ '--pill-color': paymentColor(label) }}>
         {label}
       </span>
       {payment?.overdue && (
-        <span style={{ color: OVERDUE, fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+        <span className="late-flag" style={{ color: OVERDUE }}>
           <span aria-hidden="true">▲ </span>
           {payment.daysOverdue}d late
         </span>

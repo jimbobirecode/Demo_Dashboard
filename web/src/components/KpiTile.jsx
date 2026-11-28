@@ -1,4 +1,4 @@
-import { DELTA_DOWN, DELTA_UP } from '../lib/palette.js';
+import Icon from './Icon.jsx';
 
 /**
  * A stat tile — the right form for a single headline number. Renders as a
@@ -15,6 +15,7 @@ export default function KpiTile({
   value,
   sub,
   accent,
+  icon,
   onClick,
   pressed,
   delta,
@@ -23,7 +24,14 @@ export default function KpiTile({
 }) {
   const content = (
     <>
-      <div className="label">{label}</div>
+      <div className="kpi-head">
+        {icon && (
+          <span className="kpi-icon">
+            <Icon name={icon} size={16} />
+          </span>
+        )}
+        <div className="label">{label}</div>
+      </div>
       <div className="kpi-value">{value}</div>
       {delta !== undefined && <Delta delta={delta} label={deltaLabel} higherIsBetter={higherIsBetter} />}
       {sub && <div className="kpi-sub">{sub}</div>}
@@ -52,12 +60,14 @@ function Delta({ delta, label, higherIsBetter }) {
 
   const flat = Number(delta) === 0;
   const rising = Number(delta) > 0;
-  const color = flat ? undefined : rising === higherIsBetter ? DELTA_UP : DELTA_DOWN;
+  const tone = flat ? 'neutral' : rising === higherIsBetter ? 'positive' : 'negative';
 
   return (
-    <div className="kpi-delta" style={color ? { color } : undefined}>
-      <span aria-hidden="true">{flat ? '→' : rising ? '▲' : '▼'}</span>
-      <span className="kpi-delta-value">{flat ? 'No change' : `${Math.abs(delta)}%`}</span>
+    <div className="kpi-delta">
+      <span className="delta-pill" data-tone={tone}>
+        <span aria-hidden="true">{flat ? '→' : rising ? '▲' : '▼'}</span>
+        <span className="kpi-delta-value">{flat ? 'No change' : `${Math.abs(delta)}%`}</span>
+      </span>
       <span className="kpi-sub" style={{ margin: 0 }}>
         {label}
       </span>

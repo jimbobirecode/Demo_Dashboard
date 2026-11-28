@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, exportUrl } from '../lib/api.js';
 import { useBookings } from '../lib/useBookings.js';
@@ -12,6 +12,8 @@ import BookingsTable from '../components/BookingsTable.jsx';
 import BookingDrawer from '../components/BookingDrawer.jsx';
 import BookingFlow from '../components/BookingFlow.jsx';
 import NewBookingForm from '../components/NewBookingForm.jsx';
+import Icon from '../components/Icon.jsx';
+import { useToast } from '../lib/toast.jsx';
 
 export default function Bookings({ user }) {
   const { bookings, operators, error, loading, lastUpdated, refresh, replaceBooking, addBooking, removeBooking } =
@@ -30,6 +32,14 @@ export default function Bookings({ user }) {
   // hands over to the booking itself.
   const [params] = useSearchParams();
   const [selectedId, setSelectedId] = useState(() => params.get('booking'));
+  const toast = useToast();
+  // The address can change under a page that is already open: the search
+  // palette sends somebody to ?booking=… while they are looking at this list.
+  // The initial state above only covers arriving here.
+  const linked = params.get('booking');
+  useEffect(() => {
+    if (linked) setSelectedId(linked);
+  }, [linked]);
   const [busyId, setBusyId] = useState(null);
   const [notice, setNotice] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -123,6 +133,7 @@ export default function Bookings({ user }) {
         const { booking: updated } = await api.setStatus(booking.bookingId, stage);
         replaceBooking(updated);
       });
+      toast(`${booking.bookingId} moved to ${stage}`);
     } catch {
       /* surfaced via notice */
     } finally {
@@ -156,20 +167,24 @@ export default function Bookings({ user }) {
           </p>
         </div>
         <div className="row">
-          <button type="button" className="btn-primary" onClick={() => setAdding(true)}>
-            Add booking
+          <button type="button" className="btn-icon" onClick={() => refresh()} disabled={loading}>
+            <Icon name="refresh" size={16} />
+            {loading ? 'Refreshing…' : 'Refresh'}
           </button>
-          <a className="btn-sm" href={exportUrl('csv', exportParams)} style={linkButton}>
-            Export CSV
-          </a>
-          <a className="btn-sm" href={exportUrl('xlsx', exportParams)} style={linkButton}>
-            Export Excel
-          </a>
           <button type="button" onClick={runFixTeeTimes}>
             Fix tee times
           </button>
-          <button type="button" onClick={() => refresh()} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
+          <a className="button-link btn-icon" href={exportUrl('csv', exportParams)}>
+            <Icon name="download" size={16} />
+            Export CSV
+          </a>
+          <a className="button-link btn-icon" href={exportUrl('xlsx', exportParams)}>
+            <Icon name="download" size={16} />
+            Export Excel
+          </a>
+          <button type="button" className="btn-primary btn-icon" onClick={() => setAdding(true)}>
+            <Icon name="plus" size={16} />
+            Add booking
           </button>
         </div>
       </div>
@@ -389,6 +404,7 @@ export default function Bookings({ user }) {
                     await api.remove(booking.bookingId);
                     removeBooking(booking.bookingId);
                     setSelectedId(null);
+                    toast(`${booking.bookingId} deleted`);
                   })
               : undefined
           }
@@ -397,13 +413,3 @@ export default function Bookings({ user }) {
     </div>
   );
 }
-
-const linkButton = {
-  display: 'inline-block',
-  textDecoration: 'none',
-  color: 'var(--text-primary)',
-  background: 'var(--surface-2)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-sm)',
-  padding: '0.5rem 0.85rem',
-};

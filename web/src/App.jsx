@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useSession } from './lib/useSession.js';
 import Login from './pages/Login.jsx';
@@ -25,6 +25,10 @@ import { useInboxCount } from './lib/useInboxCount.js';
 const Analytics = lazy(() => import('./pages/Analytics.jsx'));
 
 import Wordmark from './components/Wordmark.jsx';
+import Icon from './components/Icon.jsx';
+import UserMenu from './components/UserMenu.jsx';
+import CommandPalette from './components/CommandPalette.jsx';
+import { ToastProvider } from './lib/toast.jsx';
 
 export default function App() {
   // The tour operator portal has its own sign-in and session; staff sign-in
@@ -64,124 +68,162 @@ function StaffApp() {
   }
 
   return (
+    <ToastProvider>
+      <Shell
+        user={user}
+        logout={logout}
+        inboxCount={inboxCount}
+        setInboxCount={setInboxCount}
+        completePasswordChange={completePasswordChange}
+      />
+    </ToastProvider>
+  );
+}
+
+/**
+ * The menu, as data: one list drives the sidebar and the command palette, so a
+ * page cannot be in one and missing from the other.
+ */
+const NAV = [
+  {
+    group: 'Bookings',
+    items: [
+      { to: '/bookings', label: 'Bookings', icon: 'bookings' },
+      { to: '/inbox', label: 'Inbox', icon: 'inbox', badge: 'inbox' },
+      { to: '/requests', label: 'Guest Requests', icon: 'requests' },
+      { to: '/waitlist', label: 'Waitlist', icon: 'waitlist' },
+    ],
+  },
+  {
+    group: 'Accounts',
+    items: [
+      { to: '/operators', label: 'Tour Operators', icon: 'operators' },
+      { to: '/membership', label: 'Membership', icon: 'membership' },
+    ],
+  },
+  {
+    group: 'Outreach',
+    items: [
+      { to: '/emails', label: 'Guest Emails', icon: 'emails' },
+      { to: '/booking-status', label: 'Booking Status', icon: 'status' },
+    ],
+  },
+  {
+    group: 'Records',
+    items: [
+      { to: '/import', label: 'Upload Tee Sheet', icon: 'upload' },
+      { to: '/analytics', label: 'Analytics', icon: 'analytics' },
+    ],
+  },
+  {
+    group: 'Admin',
+    items: [
+      // Account administration is hidden from staff. The API refuses them
+      // too — this only saves them clicking on a page they cannot use.
+      { to: '/users', label: 'Users', icon: 'users', adminOnly: true },
+      { to: '/settings', label: 'Settings', icon: 'settings' },
+    ],
+  },
+];
+
+/** The groups a user can see, without the pages they cannot. */
+export function navFor(user) {
+  return NAV.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => !item.adminOnly || user?.role === 'admin'),
+  })).filter((section) => section.items.length);
+}
+
+/** ⌘ on a Mac, Ctrl everywhere else — said the way the keyboard says it. */
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? '');
+
+function Shell({ user, logout, inboxCount, setInboxCount, completePasswordChange }) {
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const sections = useMemo(() => navFor(user), [user]);
+  const pages = useMemo(() => sections.flatMap((section) => section.items), [sections]);
+
+  // Ctrl/⌘ K from anywhere, including inside a field: it is a chord nobody
+  // types by accident, and the palette is most wanted mid-task.
+  useEffect(() => {
+    function onKey(event) {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setPaletteOpen((current) => !current);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  return (
     <div className="app-shell">
       <aside className="sidebar">
         <Wordmark />
 
-        <div className="divider" />
-
-        <nav className="stack" style={{ gap: '0.25rem' }}>
-          <div className="nav-group">Bookings</div>
-          <NavLink to="/bookings" className={navClass}>
-            Bookings
-          </NavLink>
-          <NavLink to="/inbox" className={navClass}>
-            Inbox
-            {inboxCount > 0 && (
-              <span
-                aria-label={`${inboxCount} to answer`}
-                style={{
-                  marginLeft: '0.5rem',
-                  background: 'var(--status-rejected)',
-                  color: 'var(--on-brand)',
-                  borderRadius: '999px',
-                  padding: '0 0.45rem',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                }}
-              >
-                {inboxCount}
-              </span>
-            )}
-          </NavLink>
-          <NavLink to="/requests" className={navClass}>
-            Guest Requests
-          </NavLink>
-          <NavLink to="/waitlist" className={navClass}>
-            Waitlist
-          </NavLink>
-          <div className="nav-group">Accounts</div>
-          <NavLink to="/operators" className={navClass}>
-            Tour Operators
-          </NavLink>
-          <NavLink to="/membership" className={navClass}>
-            Membership
-          </NavLink>
-          <div className="nav-group">Outreach</div>
-          <NavLink to="/emails" className={navClass}>
-            Guest Emails
-          </NavLink>
-          <NavLink to="/booking-status" className={navClass}>
-            Booking Status
-          </NavLink>
-          <div className="nav-group">Records</div>
-          <NavLink to="/import" className={navClass}>
-            Upload Tee Sheet
-          </NavLink>
-          <NavLink to="/analytics" className={navClass}>
-            Analytics
-          </NavLink>
-          <div className="nav-group">Admin</div>
-          {/* Account administration is hidden from staff. The API refuses them
-              too — this only saves them clicking on a page they cannot use. */}
-          {user.role === 'admin' && (
-            <NavLink to="/users" className={navClass}>
-              Users
-            </NavLink>
-          )}
-          <NavLink to="/settings" className={navClass}>
-            Settings
-          </NavLink>
-        </nav>
-
-        <div style={{ marginTop: 'auto' }} className="stack">
-          <div className="divider" />
-          <div>
-            <div style={{ fontWeight: 600 }}>{user.fullName}</div>
-            <div className="muted" style={{ fontSize: '0.75rem' }}>
-              {user.clubName}
+        <nav className="sidebar-nav" aria-label="Main">
+          {sections.map((section) => (
+            <div key={section.group} className="nav-section">
+              <div className="nav-group">{section.group}</div>
+              {section.items.map((item) => (
+                <NavLink key={item.to} to={item.to} className={navClass}>
+                  <Icon name={item.icon} />
+                  <span className="nav-label">{item.label}</span>
+                  {item.badge === 'inbox' && inboxCount > 0 && (
+                    <span className="nav-badge" aria-label={`${inboxCount} to answer`}>
+                      {inboxCount}
+                    </span>
+                  )}
+                </NavLink>
+              ))}
             </div>
-          </div>
-          <NavLink to="/account/password" className={navClass}>
-            Change password
-          </NavLink>
-          <button type="button" onClick={logout}>
-            Sign out
-          </button>
-        </div>
+          ))}
+        </nav>
       </aside>
 
-      <main className="main">
-        <Suspense fallback={<div className="empty">Loading…</div>}>
-          <Routes>
-            <Route path="/bookings" element={<Bookings user={user} />} />
-            {/* A guest's link works for a signed-in member of staff too —
-                they are often the one checking it. */}
-            <Route path="/manage-booking" element={<ManageBooking />} />
-            <Route path="/import" element={<Import user={user} />} />
-            <Route
-              path="/account/password"
-              element={<ChangePassword requireCurrent onSubmit={completePasswordChange} />}
-            />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/requests" element={<Requests />} />
-            <Route path="/inbox" element={<Inbox onCountChange={setInboxCount} />} />
-            <Route path="/waitlist" element={<Waitlist user={user} />} />
-            <Route path="/operators" element={<Operators user={user} />} />
-            <Route path="/membership" element={<Membership user={user} />} />
-            <Route path="/emails" element={<Emails />} />
-            <Route path="/booking-status" element={<BookingStatus />} />
-            <Route path="/settings" element={<Settings />} />
-            {/* The two pages Booking Status replaced. Old bookmarks still land. */}
-            <Route path="/workflow" element={<Navigate to="/booking-status" replace />} />
-            <Route path="/reminders" element={<Navigate to="/booking-status" replace />} />
-            <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />
-            {/* A signed-in reader following an old reset link goes to the
-                bookings table rather than to a form they no longer need. */}
-            <Route path="*" element={<Navigate to="/bookings" replace />} />
-          </Routes>
-        </Suspense>
-      </main>
+      <div className="app-body">
+        <header className="topbar">
+          <button type="button" className="search-trigger" onClick={() => setPaletteOpen(true)}>
+            <Icon name="search" size={16} />
+            <span>Search bookings and pages</span>
+            <kbd>{IS_MAC ? '⌘' : 'Ctrl'} K</kbd>
+          </button>
+          <UserMenu user={user} onSignOut={logout} />
+        </header>
+
+        <main className="main">
+          <Suspense fallback={<div className="empty">Loading…</div>}>
+            <Routes>
+              <Route path="/bookings" element={<Bookings user={user} />} />
+              {/* A guest's link works for a signed-in member of staff too —
+                  they are often the one checking it. */}
+              <Route path="/manage-booking" element={<ManageBooking />} />
+              <Route path="/import" element={<Import user={user} />} />
+              <Route
+                path="/account/password"
+                element={<ChangePassword requireCurrent onSubmit={completePasswordChange} />}
+              />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/requests" element={<Requests />} />
+              <Route path="/inbox" element={<Inbox onCountChange={setInboxCount} />} />
+              <Route path="/waitlist" element={<Waitlist user={user} />} />
+              <Route path="/operators" element={<Operators user={user} />} />
+              <Route path="/membership" element={<Membership user={user} />} />
+              <Route path="/emails" element={<Emails />} />
+              <Route path="/booking-status" element={<BookingStatus />} />
+              <Route path="/settings" element={<Settings />} />
+              {/* The two pages Booking Status replaced. Old bookmarks still land. */}
+              <Route path="/workflow" element={<Navigate to="/booking-status" replace />} />
+              <Route path="/reminders" element={<Navigate to="/booking-status" replace />} />
+              <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/bookings" replace />} />
+              {/* A signed-in reader following an old reset link goes to the
+                  bookings table rather than to a form they no longer need. */}
+              <Route path="*" element={<Navigate to="/bookings" replace />} />
+            </Routes>
+          </Suspense>
+        </main>
+      </div>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} pages={pages} />
     </div>
   );
 }
