@@ -37,6 +37,26 @@ export function statusColor(status) {
 }
 
 /** The stage a booking moves to next, or null at the end of the pipeline. */
+/**
+ * What a status means, for the pill it is written in: the tint behind the word.
+ *
+ * Separate from `statusColor`, which is the status's mark in a chart. A chart
+ * needs an ordinal ramp that reads as progress; a pill sits in a table beside
+ * forty others and needs to say good, bad or waiting at a glance. Booked is
+ * the only good news, Rejected the only bad; Cancelled is closed, not wrong.
+ */
+const STATUS_TONES = {
+  Inquiry: 'neutral',
+  Requested: 'info',
+  Booked: 'positive',
+  Rejected: 'negative',
+  Cancelled: 'closed',
+};
+
+export function statusTone(status) {
+  return STATUS_TONES[normaliseStatus(status)] ?? 'neutral';
+}
+
 export function nextStage(status) {
   const index = PIPELINE_STAGES.indexOf(normaliseStatus(status));
   if (index === -1) return null; // rejected, cancelled, or something unknown

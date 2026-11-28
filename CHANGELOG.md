@@ -2,6 +2,28 @@
 
 Notable changes to the TeeMail dashboard. The project has no version tags; entries are grouped by period from `git log`.
 
+## Unreleased – a top bar, a search palette, and the pieces around them (November 2026)
+
+### Added
+
+- **Search from anywhere: Ctrl/⌘ K.** A palette that jumps to any page and finds a booking by reference, guest, address or tour operator, then opens it. Every word typed has to match, and a reference that starts with what was typed sorts first. Bookings are fetched when the palette opens, so it finds the one taken five minutes ago; if that fetch fails the pages still work and it says bookings are missing.
+- **A top bar**, with the search box and a user menu (name, role, Change password, Sign out) that used to be two buttons at the foot of the sidebar.
+- **Icons on the menu**, drawn inline. The menu is now one list that drives both the sidebar and the palette, so a page cannot be in one and missing from the other.
+- **Toasts** for confirmations — moving a booking on, deleting one. Errors stay on the page as banners: a message explaining what went wrong must not vanish while it is being read.
+- **Initials avatars** in the bookings table and the user menu, coloured from the name so the same guest is the same colour everywhere.
+
+### Changed
+
+- **Status and payment pills are tinted by meaning**: Booked and Paid green, Rejected red, Unpaid amber, Requested and Deposit paid blue, Cancelled and Refunded a hollow grey. They were all one grey pill with a coloured dot. The three text-on-tint pairs the design brief gave fail contrast (3.3, 4.0 and 2.9:1) and are replaced by ones that pass.
+- **Stat tiles** are raised cards with an accent dot or icon and the period change as a pill; the coloured left edge is gone. The stage flow on Bookings has chevrons between its steps.
+- **The table is a card**, with a count ("Showing 1–25 of 134") beside the paging, and an empty state that says what to do.
+- Buttons are white with a hairline border and a visible focus ring; the drawer slides in under a shadow; motion is switched off for anyone who has asked their system for less of it.
+- A link to `/bookings?booking=…` now opens that booking even when the Bookings page is already on screen. It only worked on arrival.
+
+### Fixed
+
+- **The logo sat on a near-black plate.** The plate was meant as a light backing for a dark logo on the old dark theme and took its colour from the text token, which the light theme turned dark. A logo that reads on white gets no plate.
+
 ## Unreleased – a light theme (November 2026)
 
 ### Changed

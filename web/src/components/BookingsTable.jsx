@@ -9,7 +9,9 @@ import {
 } from '@tanstack/react-table';
 import StatusPill from './StatusPill.jsx';
 import PaymentPill from './PaymentPill.jsx';
-import { formatCurrency, formatDate, formatDateTime } from '../lib/format.js';
+import Avatar from './Avatar.jsx';
+import Icon from './Icon.jsx';
+import { formatCurrency, formatDate, formatDateTime, formatNumber } from '../lib/format.js';
 import { nextStage } from '../lib/status.js';
 import { paymentRank } from '../lib/payments.js';
 
@@ -41,12 +43,15 @@ export default function BookingsTable({ bookings, selectedId, onSelect, onAdvanc
         // address and is two -- an operator's booking desk, and a guest in the
         // party who has never written to the club.
         cell: (info) => (
-          <div>
-            <div className="mono" style={{ fontWeight: 600 }}>
-              {info.getValue()}
-            </div>
-            <div className="muted" style={{ fontSize: '0.75rem' }}>
-              {info.row.original.guestEmail}
+          <div className="cell-identity">
+            <Avatar name={info.row.original.guestName || info.row.original.guestEmail || info.getValue()} />
+            <div>
+              <div className="mono" style={{ fontWeight: 600 }}>
+                {info.getValue()}
+              </div>
+              <div className="muted" style={{ fontSize: '0.75rem' }}>
+                {info.row.original.guestEmail}
+              </div>
             </div>
           </div>
         ),
@@ -221,8 +226,20 @@ export default function BookingsTable({ bookings, selectedId, onSelect, onAdvanc
   });
 
   if (!bookings.length) {
-    return <div className="empty">No bookings match the current filters.</div>;
+    return (
+      <div className="empty">
+        <span className="empty-icon">
+          <Icon name="search" size={20} />
+        </span>
+        <div className="empty-title">No bookings match the current filters.</div>
+        <div>Widen the dates, clear the search, or press Reset.</div>
+      </div>
+    );
   }
+
+  const { pageIndex, pageSize } = table.getState().pagination;
+  const firstRow = pageIndex * pageSize + 1;
+  const lastRow = Math.min(bookings.length, (pageIndex + 1) * pageSize);
 
   return (
     <>
@@ -270,8 +287,11 @@ export default function BookingsTable({ bookings, selectedId, onSelect, onAdvanc
       </div>
 
       <div className="pagination">
+        <span className="muted pagination-count">
+          Showing {formatNumber(firstRow)}–{formatNumber(lastRow)} of {formatNumber(bookings.length)}
+        </span>
         <span className="muted">
-          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount() || 1}
+          Page {pageIndex + 1} of {table.getPageCount() || 1}
         </span>
         <button
           type="button"

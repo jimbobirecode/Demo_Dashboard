@@ -12,19 +12,7 @@ export default function Wordmark({ showTagline = true }) {
   if (BRAND.logoUrl) {
     return (
       <div style={{ textAlign: 'center' }}>
-        <div
-          style={
-            BRAND.logoOnDark
-              ? undefined
-              : {
-                  background: 'var(--text-primary)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '0.75rem 1rem',
-                  display: 'inline-block',
-                  lineHeight: 0,
-                }
-          }
-        >
+        <div className={BRAND.logoOnDark ? 'logo-plate' : undefined} style={{ lineHeight: 0 }}>
           <img src={BRAND.logoUrl} alt={BRAND.name} width="168" />
         </div>
         {showTagline && (

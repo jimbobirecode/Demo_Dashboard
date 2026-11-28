@@ -19,6 +19,24 @@ export function paymentColor(status) {
   return PAYMENT_COLORS[status] ?? INK_MUTED;
 }
 
+/**
+ * The tint a payment status is written on. Unpaid is a warning rather than an
+ * error: it is the ordinary state of a booking whose money is not due yet, and
+ * lateness has a mark of its own beside the pill.
+ */
+const PAYMENT_TONES = {
+  Unpaid: 'warning',
+  Pending: 'neutral',
+  'Deposit paid': 'info',
+  Paid: 'positive',
+  Refunded: 'closed',
+  'Written off': 'closed',
+};
+
+export function paymentTone(status) {
+  return PAYMENT_TONES[status] ?? 'neutral';
+}
+
 export { OVERDUE };
 
 /**

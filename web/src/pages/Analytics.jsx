@@ -407,12 +407,14 @@ function KpiRow({ totals }) {
     <div className="kpi-row">
       <KpiTile
         label="Total bookings"
+        icon="bookings"
         value={formatNumber(totals.bookings)}
         delta={delta.bookings}
         accent={PIPELINE_RAMP[1]}
       />
       <KpiTile
         label="Booked value"
+        icon="analytics"
         value={formatCurrency(totals.revenue)}
         sub="Booked rounds only"
         delta={delta.revenue}
@@ -420,18 +422,21 @@ function KpiRow({ totals }) {
       />
       <KpiTile
         label="Average booking value"
+        icon="operators"
         value={formatCurrency(totals.averageValue)}
         delta={delta.averageValue}
         accent={PIPELINE_RAMP[2]}
       />
       <KpiTile
         label="Conversion"
+        icon="status"
         value={`${totals.conversionRate}%`}
         sub={`${formatNumber(totals.committed)} of ${formatNumber(totals.bookings)} committed`}
         accent={STATUS_COLORS.Requested}
       />
       <KpiTile
         label="Lost"
+        icon="close"
         value={`${totals.cancellationRate}%`}
         sub={`${formatNumber(totals.lost)} rejected or cancelled`}
         accent={STATUS_COLORS.Rejected}
